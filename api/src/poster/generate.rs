@@ -124,3 +124,89 @@ pub fn placeholder_jpeg() -> Vec<u8> {
     img.write_with_encoder(encoder).ok();
     buf
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_jpeg_produces_valid_jpeg() {
+        let bytes = placeholder_jpeg();
+        assert!(!bytes.is_empty());
+        // JPEG files start with FF D8
+        assert_eq!(bytes[0], 0xFF);
+        assert_eq!(bytes[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_no_badges() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        // Create a minimal valid PNG in memory
+        let img = image::RgbaImage::from_pixel(100, 150, image::Rgba([128, 128, 128, 255]));
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            img.as_raw(),
+            100,
+            150,
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+
+        let result = render_poster_sync(&png_bytes, &[], &font, 85).unwrap();
+        assert!(!result.is_empty());
+        // Should be valid JPEG
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_with_badges() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let img = image::RgbaImage::from_pixel(500, 750, image::Rgba([128, 128, 128, 255]));
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            img.as_raw(),
+            500,
+            750,
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+
+        let badges = vec![
+            RatingBadge {
+                source: RatingSource::Imdb,
+                value: "8.5".to_string(),
+            },
+            RatingBadge {
+                source: RatingSource::Tmdb,
+                value: "85%".to_string(),
+            },
+            RatingBadge {
+                source: RatingSource::Rt,
+                value: "92%".to_string(),
+            },
+            RatingBadge {
+                source: RatingSource::Metacritic,
+                value: "78".to_string(),
+            },
+        ];
+
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_invalid_image_bytes() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(b"not an image", &[], &font, 85);
+        assert!(result.is_err());
+    }
+}

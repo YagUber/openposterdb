@@ -10,15 +10,18 @@ function makeRouter() {
   return createRouter({
     history: createWebHistory(),
     routes: [
-      { path: '/', redirect: '/keys' },
+      {
+        path: '/',
+        component: { template: '<router-view />' },
+        meta: { requiresAuth: true },
+        children: [
+          { path: '', name: 'dashboard', component: { template: '<div>Dashboard</div>' } },
+          { path: 'posters', name: 'posters', component: { template: '<div>Posters</div>' } },
+          { path: 'keys', name: 'keys', component: { template: '<div>Keys</div>' } },
+        ],
+      },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
       { path: '/setup', name: 'setup', component: { template: '<div>Setup</div>' } },
-      {
-        path: '/keys',
-        name: 'keys',
-        component: { template: '<div>Keys</div>' },
-        meta: { requiresAuth: true },
-      },
     ],
   })
 }
@@ -28,25 +31,25 @@ describe('router', () => {
     setActivePinia(createPinia())
   })
 
-  it('unauthenticated user visiting /keys gets redirected to /login', async () => {
+  it('unauthenticated user visiting / gets redirected to /login', async () => {
     const router = makeRouter()
     const auth = useAuthStore()
 
     vi.spyOn(auth, 'checkSetupRequired').mockResolvedValue(false)
 
     router.beforeEach(async (to) => {
-      if (to.meta.requiresAuth && !auth.isAuthenticated) {
+      if (to.matched.some((r) => r.meta.requiresAuth) && !auth.isAuthenticated) {
         return { name: 'login' }
       }
     })
 
-    await router.push('/keys')
+    await router.push('/')
     await router.isReady()
 
     expect(router.currentRoute.value.name).toBe('login')
   })
 
-  it('authenticated user visiting /login gets redirected to /keys', async () => {
+  it('authenticated user visiting /login gets redirected to dashboard', async () => {
     const router = makeRouter()
     const auth = useAuthStore()
     auth.token = 'valid-token'
@@ -55,13 +58,13 @@ describe('router', () => {
 
     router.beforeEach(async (to) => {
       if ((to.name === 'login' || to.name === 'setup') && auth.isAuthenticated) {
-        return { name: 'keys' }
+        return { name: 'dashboard' }
       }
     })
 
     await router.push('/login')
     await router.isReady()
 
-    expect(router.currentRoute.value.name).toBe('keys')
+    expect(router.currentRoute.value.name).toBe('dashboard')
   })
 })

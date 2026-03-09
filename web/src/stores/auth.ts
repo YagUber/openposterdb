@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+import { authApi } from '@/lib/auth-api'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
@@ -20,7 +19,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function checkSetupRequired(): Promise<boolean> {
     if (setupRequired.value !== null) return setupRequired.value
-    const res = await fetch(`${BASE_URL}/api/auth/status`)
+    const res = await authApi.status()
     if (!res.ok) throw new Error(`status check failed: ${res.status}`)
     const data = await res.json()
     setupRequired.value = data.setup_required
@@ -28,12 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function setup(username: string, password: string): Promise<boolean> {
-    const res = await fetch(`${BASE_URL}/api/auth/setup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include',
-    })
+    const res = await authApi.setup(username, password)
     if (!res.ok) return false
     const data = await res.json()
     setToken(data.token)
@@ -42,12 +36,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(username: string, password: string): Promise<boolean> {
-    const res = await fetch(`${BASE_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-      credentials: 'include',
-    })
+    const res = await authApi.login(username, password)
     if (!res.ok) return false
     const data = await res.json()
     setToken(data.token)
@@ -55,10 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function refresh(): Promise<boolean> {
-    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    })
+    const res = await authApi.refresh()
     if (!res.ok) return false
     const data = await res.json()
     setToken(data.token)

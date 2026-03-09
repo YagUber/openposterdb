@@ -83,6 +83,85 @@ fn text_width(text: &str, font: &ab_glyph::PxScaleFont<&FontArc>) -> u32 {
     width.ceil() as u32
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::ratings::{RatingBadge, RatingSource};
+
+    fn test_font() -> FontArc {
+        FontArc::try_from_slice(crate::FONT_BYTES).unwrap()
+    }
+
+    #[test]
+    fn render_badge_correct_height() {
+        let badge = RatingBadge {
+            source: RatingSource::Imdb,
+            value: "8.5".to_string(),
+        };
+        let img = render_badge(&badge, &test_font());
+        assert_eq!(img.height(), BADGE_HEIGHT);
+        assert!(img.width() > 0);
+    }
+
+    #[test]
+    fn render_badge_all_sources_produce_valid_images() {
+        let font = test_font();
+        let sources = [
+            RatingSource::Imdb,
+            RatingSource::Tmdb,
+            RatingSource::Rt,
+            RatingSource::RtAudience,
+            RatingSource::Metacritic,
+            RatingSource::Trakt,
+            RatingSource::Letterboxd,
+            RatingSource::Mal,
+        ];
+
+        for source in sources {
+            let badge = RatingBadge {
+                source,
+                value: "75%".to_string(),
+            };
+            let img = render_badge(&badge, &font);
+            assert_eq!(img.height(), BADGE_HEIGHT, "wrong height for {:?}", source);
+            assert!(img.width() > 0, "zero width for {:?}", source);
+        }
+    }
+
+    #[test]
+    fn render_badge_width_scales_with_value_length() {
+        let font = test_font();
+        let short = RatingBadge {
+            source: RatingSource::Imdb,
+            value: "5".to_string(),
+        };
+        let long = RatingBadge {
+            source: RatingSource::Imdb,
+            value: "100%".to_string(),
+        };
+
+        let short_img = render_badge(&short, &font);
+        let long_img = render_badge(&long, &font);
+
+        assert!(
+            long_img.width() > short_img.width(),
+            "longer value should produce wider badge"
+        );
+    }
+
+    #[test]
+    fn render_badge_empty_value() {
+        let font = test_font();
+        let badge = RatingBadge {
+            source: RatingSource::Tmdb,
+            value: String::new(),
+        };
+        // Should not panic
+        let img = render_badge(&badge, &font);
+        assert_eq!(img.height(), BADGE_HEIGHT);
+    }
+}
+
 fn draw_rounded_rect(img: &mut RgbaImage, x: u32, y: u32, w: u32, h: u32, r: u32, color: Rgba<u8>) {
     // Simple approach: draw a filled rect and round corners by drawing circles
     // For simplicity, just draw the filled rect — true rounded rects need more complex logic

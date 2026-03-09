@@ -1,0 +1,41 @@
+import { test, expect } from '@playwright/test'
+
+test.describe('posters page', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await request.post('/api/auth/setup', {
+      data: { username: 'admin', password: 'testpassword123' },
+    })
+
+    await page.goto('/login')
+    await page.fill('#username', 'admin')
+    await page.fill('#password', 'testpassword123')
+    await page.click('button[type="submit"]')
+    await expect(page).toHaveURL(/\/$/)
+
+    await page.click('text=Posters')
+    await expect(page).toHaveURL(/\/posters/)
+  })
+
+  test('shows table headers', async ({ page }) => {
+    await expect(page.locator('th:has-text("ID Type")')).toBeVisible()
+    await expect(page.locator('th:has-text("ID Value")')).toBeVisible()
+    await expect(page.locator('th:has-text("Release Date")')).toBeVisible()
+    await expect(page.locator('th:has-text("Last Updated")')).toBeVisible()
+    await expect(page.locator('th:has-text("Created")')).toBeVisible()
+  })
+
+  test('shows empty state when no posters', async ({ page }) => {
+    await expect(page.getByRole('cell', { name: 'No posters cached yet.' })).toBeVisible()
+    await expect(page.getByText('0 posters total')).toBeVisible()
+  })
+
+  test('has refresh button', async ({ page }) => {
+    await expect(page.locator('button:has-text("Refresh")')).toBeVisible()
+  })
+
+  test('has pagination controls', async ({ page }) => {
+    await expect(page.locator('button:has-text("Previous")')).toBeVisible()
+    await expect(page.locator('button:has-text("Next")')).toBeVisible()
+    await expect(page.locator('text=/Page \\d+ of \\d+/')).toBeVisible()
+  })
+})

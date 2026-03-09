@@ -83,6 +83,7 @@ pub const SCHEMA_SQL: &[&str] = &[
 
 pub fn build_app(state: Arc<AppState>) -> Router {
     let admin_routes = routes::api_keys::api_key_routes()
+        .merge(routes::admin::admin_routes())
         .route(
             "/api/auth/logout",
             axum::routing::post(handlers::auth::logout),

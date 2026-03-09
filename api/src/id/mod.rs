@@ -152,6 +152,43 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_imdb() {
+        assert_eq!(IdType::parse("imdb").unwrap(), IdType::Imdb);
+    }
+
+    #[test]
+    fn parse_tmdb() {
+        assert_eq!(IdType::parse("tmdb").unwrap(), IdType::Tmdb);
+    }
+
+    #[test]
+    fn parse_tvdb() {
+        assert_eq!(IdType::parse("tvdb").unwrap(), IdType::Tvdb);
+    }
+
+    #[test]
+    fn parse_invalid_id_type() {
+        assert!(IdType::parse("invalid").is_err());
+    }
+
+    #[test]
+    fn parse_empty_string() {
+        assert!(IdType::parse("").is_err());
+    }
+
+    #[test]
+    fn parse_case_sensitive() {
+        // Should not accept uppercase
+        assert!(IdType::parse("IMDB").is_err());
+        assert!(IdType::parse("Tmdb").is_err());
+    }
+}
+
 async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
     let result: FindResult = tmdb
         .get(&format!("/find/{tvdb_id}"), &[("external_source", "tvdb_id")])

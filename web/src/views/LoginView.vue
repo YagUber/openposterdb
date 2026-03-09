@@ -32,7 +32,7 @@ async function handleLogin() {
   try {
     const ok = await auth.login(username.value, password.value)
     if (ok) {
-      router.push('/keys')
+      router.push('/')
     } else {
       error.value = 'Invalid username or password'
     }

@@ -1,34 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import ApiKeysView from '@/views/ApiKeysView.vue'
 
-const mockRouter = {
-  push: vi.fn(),
-}
-
-const mockAuthStore = {
-  logout: vi.fn(),
-}
-
-const mockApi = {
-  get: vi.fn(),
-  post: vi.fn(),
-  del: vi.fn(),
-}
-
-vi.mock('vue-router', () => ({
-  useRouter: () => mockRouter,
-}))
-
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => mockAuthStore,
+const mockKeysApi = vi.hoisted(() => ({
+  list: vi.fn(),
+  create: vi.fn(),
+  delete: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
-  get: (...args: unknown[]) => mockApi.get(...args),
-  post: (...args: unknown[]) => mockApi.post(...args),
-  del: (...args: unknown[]) => mockApi.del(...args),
+  keysApi: mockKeysApi,
 }))
 
 const sampleKeys = [
@@ -49,13 +32,20 @@ const sampleKeys = [
 ]
 
 function mountView() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return mount(ApiKeysView, {
     global: {
-      plugins: [createPinia()],
+      plugins: [createPinia(), [VueQueryPlugin, { queryClient }]],
       stubs: {
         Button: {
           template: '<button @click="$emit(\'click\')"><slot /></button>',
           props: ['disabled', 'variant', 'size'],
+        },
+        Input: {
+          template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+          props: ['modelValue', 'type', 'placeholder', 'required'],
         },
       },
     },
@@ -66,14 +56,14 @@ describe('ApiKeysView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    mockApi.get.mockResolvedValue({
+    mockKeysApi.list.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
     })
   })
 
   it('renders key list from mocked API response', async () => {
-    mockApi.get.mockResolvedValue({
+    mockKeysApi.list.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(sampleKeys),
     })
@@ -88,7 +78,7 @@ describe('ApiKeysView', () => {
   })
 
   it('shows "No API keys yet." when empty', async () => {
-    mockApi.get.mockResolvedValue({
+    mockKeysApi.list.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
     })
@@ -99,17 +89,27 @@ describe('ApiKeysView', () => {
     expect(wrapper.text()).toContain('No API keys yet.')
   })
 
-  it('logout button calls auth.logout', async () => {
+  it('has a refresh button that triggers refetch', async () => {
+    mockKeysApi.list.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleKeys),
+    })
+
     const wrapper = mountView()
     await flushPromises()
 
-    const buttons = wrapper.findAll('button')
-    const logoutButton = buttons.find((b) => b.text().includes('Sign out'))
-    expect(logoutButton).toBeDefined()
+    mockKeysApi.list.mockClear()
+    mockKeysApi.list.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([sampleKeys[0]]),
+    })
 
-    await logoutButton!.trigger('click')
+    const refreshButton = wrapper.findAll('button').find((b) => b.text().includes('Refresh'))
+    expect(refreshButton).toBeDefined()
 
-    expect(mockAuthStore.logout).toHaveBeenCalled()
-    expect(mockRouter.push).toHaveBeenCalledWith('/login')
+    await refreshButton!.trigger('click')
+    await flushPromises()
+
+    expect(mockKeysApi.list).toHaveBeenCalled()
   })
 })

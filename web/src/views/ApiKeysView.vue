@@ -1,12 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import { get, post, del } from '@/lib/api'
+import { ref } from 'vue'
+import { useQuery, useQueryClient } from '@tanstack/vue-query'
+import { keysApi } from '@/lib/api'
+import RefreshButton from '@/components/RefreshButton.vue'
 import { Button } from '@/components/ui/button'
-
-const auth = useAuthStore()
-const router = useRouter()
+import { Input } from '@/components/ui/input'
 
 interface ApiKey {
   id: number
@@ -16,30 +14,34 @@ interface ApiKey {
   last_used_at: string | null
 }
 
-const keys = ref<ApiKey[]>([])
+const queryClient = useQueryClient()
+
+const { data: keys = ref([]), isFetching, refetch } = useQuery<ApiKey[]>({
+  queryKey: ['api-keys'],
+  queryFn: async () => {
+    const res = await keysApi.list()
+    if (!res.ok) throw new Error('Failed to fetch keys')
+    return res.json()
+  },
+  initialData: [],
+})
+
 const newKeyName = ref('')
 const newKeyValue = ref<string | null>(null)
 const error = ref('')
 const loading = ref(false)
 
-async function loadKeys() {
-  const res = await get('/api/keys')
-  if (res.ok) {
-    keys.value = await res.json()
-  }
-}
-
 async function createKey() {
-  if (!newKeyName.value.trim()) return
+  if (loading.value || !newKeyName.value.trim()) return
   error.value = ''
   loading.value = true
   try {
-    const res = await post('/api/keys', { name: newKeyName.value.trim() })
+    const res = await keysApi.create(newKeyName.value.trim())
     if (res.ok) {
       const data = await res.json()
       newKeyValue.value = data.key
       newKeyName.value = ''
-      await loadKeys()
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
     } else {
       const data = await res.json()
       error.value = data.error || 'Failed to create key'
@@ -53,35 +55,38 @@ async function createKey() {
 
 async function deleteKey(id: number) {
   if (!confirm('Delete this API key? Any services using it will stop working.')) return
-  await del(`/api/keys/${id}`)
-  await loadKeys()
+  error.value = ''
+  try {
+    const res = await keysApi.delete(id)
+    if (res.ok) {
+      queryClient.invalidateQueries({ queryKey: ['api-keys'] })
+    } else {
+      const data = await res.json().catch(() => null)
+      error.value = data?.error || 'Failed to delete key'
+    }
+  } catch {
+    error.value = 'Failed to delete key'
+  }
 }
-
-function handleLogout() {
-  auth.logout()
-  router.push('/login')
-}
-
-onMounted(loadKeys)
 </script>
 
 <template>
-  <div class="min-h-screen p-8 max-w-3xl mx-auto space-y-8">
+  <div class="space-y-8">
     <div class="flex items-center justify-between">
       <h1 class="text-2xl font-bold">API Keys</h1>
-      <Button variant="outline" @click="handleLogout">Sign out</Button>
+      <RefreshButton :fetching="isFetching" @refresh="refetch()" />
     </div>
 
     <!-- Create new key -->
     <div class="space-y-3">
       <h2 class="text-lg font-semibold">Create new key</h2>
       <form class="flex gap-2" @submit.prevent="createKey">
-        <input
+        <Input
           v-model="newKeyName"
           type="text"
           placeholder="Key name (e.g. jellyfin-prod)"
           required
-          class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          class="flex-1"
         />
         <Button type="submit" :disabled="loading">Create</Button>
       </form>

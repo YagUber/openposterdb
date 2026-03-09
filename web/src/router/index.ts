@@ -6,7 +6,28 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/keys',
+      component: () => import('@/layouts/DashboardLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          name: 'dashboard',
+          component: () => import('@/views/DashboardView.vue'),
+          meta: { title: 'Dashboard' },
+        },
+        {
+          path: 'posters',
+          name: 'posters',
+          component: () => import('@/views/PostersView.vue'),
+          meta: { title: 'Posters' },
+        },
+        {
+          path: 'keys',
+          name: 'keys',
+          component: () => import('@/views/ApiKeysView.vue'),
+          meta: { title: 'API Keys' },
+        },
+      ],
     },
     {
       path: '/login',
@@ -17,12 +38,6 @@ const router = createRouter({
       path: '/setup',
       name: 'setup',
       component: () => import('@/views/SetupView.vue'),
-    },
-    {
-      path: '/keys',
-      name: 'keys',
-      component: () => import('@/views/ApiKeysView.vue'),
-      meta: { requiresAuth: true },
     },
   ],
 })
@@ -44,14 +59,14 @@ router.beforeEach(async (to) => {
     // If we can't check, continue
   }
 
-  // Auth guard
-  if (to.meta.requiresAuth && !auth.isAuthenticated) {
+  // Auth guard — check the matched route chain for requiresAuth
+  if (to.matched.some((r) => r.meta.requiresAuth) && !auth.isAuthenticated) {
     return { name: 'login' }
   }
 
   // Redirect away from login/setup if already authenticated
   if ((to.name === 'login' || to.name === 'setup') && auth.isAuthenticated) {
-    return { name: 'keys' }
+    return { name: 'dashboard' }
   }
 })
 

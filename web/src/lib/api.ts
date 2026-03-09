@@ -2,6 +2,12 @@ import { useAuthStore } from '@/stores/auth'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
+let _onAuthFailure: (() => void) | null = null
+
+export function setOnAuthFailure(callback: () => void) {
+  _onAuthFailure = callback
+}
+
 async function request(path: string, options: RequestInit = {}): Promise<Response> {
   const auth = useAuthStore()
   const headers = new Headers(options.headers)
@@ -20,13 +26,17 @@ async function request(path: string, options: RequestInit = {}): Promise<Respons
     // Try refreshing the token
     const refreshed = await auth.refresh()
     if (refreshed) {
-      headers.set('Authorization', `Bearer ${auth.token}`)
-      return fetch(`${BASE_URL}${path}`, { ...options, headers, credentials: 'include' })
+      const retryHeaders = new Headers(options.headers)
+      retryHeaders.set('Authorization', `Bearer ${auth.token}`)
+      if (options.body && !retryHeaders.has('Content-Type')) {
+        retryHeaders.set('Content-Type', 'application/json')
+      }
+      return fetch(`${BASE_URL}${path}`, { ...options, headers: retryHeaders, credentials: 'include' })
     }
+    // Refresh failed — clear credentials and redirect without retrying
     auth.logout()
-    // Lazy import to avoid fragile module initialization ordering
-    const { default: router } = await import('@/router')
-    router.push({ name: 'login' })
+    _onAuthFailure?.()
+    return res
   }
 
   return res
@@ -45,4 +55,20 @@ export async function post(path: string, body?: unknown): Promise<Response> {
 
 export async function del(path: string): Promise<Response> {
   return request(path, { method: 'DELETE' })
+}
+
+// --- Typed API service layer ---
+
+export const adminApi = {
+  getStats: (): Promise<Response> => get('/api/admin/stats'),
+  getPosters: (page: number, pageSize: number): Promise<Response> =>
+    get(`/api/admin/posters?page=${page}&page_size=${pageSize}`),
+  getPosterImage: (key: string): Promise<Response> =>
+    get(`/api/admin/posters/${key}/image`),
+}
+
+export const keysApi = {
+  list: (): Promise<Response> => get('/api/keys'),
+  create: (name: string): Promise<Response> => post('/api/keys', { name }),
+  delete: (id: number): Promise<Response> => del(`/api/keys/${id}`),
 }

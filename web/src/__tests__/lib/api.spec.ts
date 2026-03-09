@@ -11,15 +11,10 @@ vi.mock('@/stores/auth', () => ({
   useAuthStore: () => mockAuthStore,
 }))
 
-const mockRouter = {
-  push: vi.fn(),
-}
+import { get, post, del, setOnAuthFailure } from '@/lib/api'
 
-vi.mock('@/router', () => ({
-  default: mockRouter,
-}))
-
-import { get, post, del } from '@/lib/api'
+const mockOnAuthFailure = vi.fn()
+setOnAuthFailure(mockOnAuthFailure)
 
 function makeFetchResponse(status: number, body: unknown = {}) {
   return {
@@ -37,7 +32,7 @@ describe('api', () => {
     mockAuthStore.token = 'test-token'
     mockAuthStore.refresh = vi.fn()
     mockAuthStore.logout = vi.fn()
-    mockRouter.push = vi.fn()
+    mockOnAuthFailure.mockClear()
   })
 
   it('get adds Authorization header when token exists', async () => {
@@ -100,6 +95,67 @@ describe('api', () => {
 
     expect(mockAuthStore.refresh).toHaveBeenCalled()
     expect(mockAuthStore.logout).toHaveBeenCalled()
-    expect(mockRouter.push).toHaveBeenCalledWith({ name: 'login' })
+    expect(mockOnAuthFailure).toHaveBeenCalled()
+  })
+
+  it('non-401 error passes through without refresh', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(500, { error: 'server error' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await get('/api/broken')
+
+    expect(res.status).toBe(500)
+    expect(mockAuthStore.refresh).not.toHaveBeenCalled()
+    expect(mockAuthStore.logout).not.toHaveBeenCalled()
+  })
+
+  it('includes credentials in fetch calls', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await get('/api/test')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.credentials).toBe('include')
+  })
+
+  it('does not set Authorization header when token is null', async () => {
+    mockAuthStore.token = null as unknown as string
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await get('/api/public')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.headers.has('Authorization')).toBe(false)
+  })
+
+  it('network error propagates', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(get('/api/test')).rejects.toThrow('Failed to fetch')
+  })
+
+  it('401 without token does not attempt refresh', async () => {
+    mockAuthStore.token = null as unknown as string
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(401))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await get('/api/protected')
+
+    expect(res.status).toBe(401)
+    expect(mockAuthStore.refresh).not.toHaveBeenCalled()
+  })
+
+  it('post without body does not set Content-Type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await post('/api/action')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.headers.has('Content-Type')).toBe(false)
+    expect(options.body).toBeUndefined()
   })
 })

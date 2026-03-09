@@ -86,6 +86,6 @@ describe('SetupView', () => {
     await flushPromises()
 
     expect(mockAuthStore.setup).toHaveBeenCalledWith('admin', 'password123')
-    expect(mockRouter.push).toHaveBeenCalledWith('/keys')
+    expect(mockRouter.push).toHaveBeenCalledWith('/')
   })
 })

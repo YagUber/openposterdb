@@ -77,6 +77,6 @@ describe('LoginView', () => {
     await flushPromises()
 
     expect(mockAuthStore.login).toHaveBeenCalledWith('admin', 'secret')
-    expect(mockRouter.push).toHaveBeenCalledWith('/keys')
+    expect(mockRouter.push).toHaveBeenCalledWith('/')
   })
 })

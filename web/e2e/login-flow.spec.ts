@@ -14,7 +14,7 @@ test.describe('login flow', () => {
     await page.fill('#password', 'testpassword123')
     await page.click('button[type="submit"]')
 
-    await expect(page).toHaveURL(/\/keys/)
+    await expect(page).toHaveURL(/\/$/)
   })
 
   test('login with invalid credentials shows error', async ({ page, request }) => {
@@ -41,9 +41,9 @@ test.describe('login flow', () => {
     await page.fill('#username', 'admin')
     await page.fill('#password', 'testpassword123')
     await page.click('button[type="submit"]')
-    await expect(page).toHaveURL(/\/keys/)
+    await expect(page).toHaveURL(/\/$/)
 
-    // Click logout
+    // Click logout in sidebar
     await page.click('text=Sign out')
     await expect(page).toHaveURL(/\/login/)
   })

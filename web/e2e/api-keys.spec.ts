@@ -11,6 +11,10 @@ test.describe('api keys', () => {
     await page.fill('#username', 'admin')
     await page.fill('#password', 'testpassword123')
     await page.click('button[type="submit"]')
+    await expect(page).toHaveURL(/\/$/)
+
+    // Navigate to API Keys page
+    await page.click('text=API Keys')
     await expect(page).toHaveURL(/\/keys/)
   })
 
@@ -38,6 +42,16 @@ test.describe('api keys', () => {
 
     // Key should appear in the list
     await expect(page.locator('text=my-prod-key')).toBeVisible()
+  })
+
+  test('refresh button is visible and clickable', async ({ page }) => {
+    const refreshButton = page.locator('button:has-text("Refresh")')
+    await expect(refreshButton).toBeVisible()
+
+    await refreshButton.click()
+
+    // Button should still be present after refresh completes
+    await expect(refreshButton).toBeVisible()
   })
 
   test('delete a key removes it from list', async ({ page }) => {

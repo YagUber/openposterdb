@@ -130,4 +130,88 @@ describe('auth store', () => {
     expect(second).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('refresh returns false on failure', async () => {
+    const fetchMock = mockFetchSuccess({}, false)
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    const result = await auth.refresh()
+
+    expect(result).toBe(false)
+    expect(auth.token).toBeNull()
+  })
+
+  it('setup returns false on failure', async () => {
+    const fetchMock = mockFetchSuccess({}, false)
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    const result = await auth.setup('admin', 'password123')
+
+    expect(result).toBe(false)
+    expect(auth.token).toBeNull()
+  })
+
+  it('checkSetupRequired throws on network error', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({}),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await expect(auth.checkSetupRequired()).rejects.toThrow('status check failed')
+  })
+
+  it('login sends credentials include', async () => {
+    const fetchMock = mockFetchSuccess({ token: 'tok' })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.login('user', 'pass')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.credentials).toBe('include')
+  })
+
+  it('setup sends credentials include', async () => {
+    const fetchMock = mockFetchSuccess({ token: 'tok' })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.setup('user', 'password123')
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.credentials).toBe('include')
+  })
+
+  it('refresh sends credentials include', async () => {
+    const fetchMock = mockFetchSuccess({ token: 'tok' })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.refresh()
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.credentials).toBe('include')
+  })
+
+  it('setup failure does not change setupRequired', async () => {
+    const fetchMock = mockFetchSuccess({}, false)
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.setup('admin', 'password123')
+
+    // setupRequired should still be null (not changed on failure)
+    expect(auth.setupRequired).toBeNull()
+  })
+
+  it('initializes token from localStorage', () => {
+    localStorageMock['token'] = 'persisted-token'
+    const auth = useAuthStore()
+    expect(auth.token).toBe('persisted-token')
+  })
 })

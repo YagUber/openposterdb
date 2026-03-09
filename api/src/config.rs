@@ -3,7 +3,7 @@ use std::env;
 #[derive(Clone, Debug)]
 pub struct Config {
     pub tmdb_api_key: String,
-    pub omdb_api_key: String,
+    pub omdb_api_key: Option<String>,
     pub cache_dir: String,
     pub listen_addr: String,
     pub ratings_min_stale_secs: u64,
@@ -15,9 +15,9 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Self {
-        Self {
+        let config = Self {
             tmdb_api_key: env::var("TMDB_API_KEY").expect("TMDB_API_KEY must be set"),
-            omdb_api_key: env::var("OMDB_API_KEY").expect("OMDB_API_KEY must be set"),
+            omdb_api_key: env::var("OMDB_API_KEY").ok(),
             cache_dir: env::var("CACHE_DIR").unwrap_or_else(|_| "./cache".into()),
             listen_addr: env::var("LISTEN_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into()),
             ratings_min_stale_secs: env::var("RATINGS_STALE_SECS")
@@ -37,6 +37,12 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(85),
             mdblist_api_key: env::var("MDBLIST_API_KEY").ok(),
+        };
+
+        if config.omdb_api_key.is_none() && config.mdblist_api_key.is_none() {
+            panic!("at least one of OMDB_API_KEY or MDBLIST_API_KEY must be set");
         }
+
+        config
     }
 }

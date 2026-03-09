@@ -24,7 +24,7 @@ use services::tmdb::TmdbClient;
 pub struct AppState {
     pub config: Config,
     pub tmdb: TmdbClient,
-    pub omdb: OmdbClient,
+    pub omdb: Option<OmdbClient>,
     pub mdblist: Option<MdblistClient>,
     pub http: reqwest::Client,
     pub font: FontArc,
@@ -46,6 +46,11 @@ async fn main() {
     let http = reqwest::Client::new();
     let font = FontArc::try_from_slice(FONT_BYTES).expect("failed to load font");
 
+    let omdb = config
+        .omdb_api_key
+        .as_ref()
+        .map(|key| OmdbClient::new(key.clone(), http.clone()));
+
     let mdblist = config
         .mdblist_api_key
         .as_ref()
@@ -53,7 +58,7 @@ async fn main() {
 
     let state = AppState {
         tmdb: TmdbClient::new(config.tmdb_api_key.clone(), http.clone()),
-        omdb: OmdbClient::new(config.omdb_api_key.clone(), http.clone()),
+        omdb,
         mdblist,
         http,
         font,

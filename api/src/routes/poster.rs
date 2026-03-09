@@ -109,7 +109,7 @@ async fn generate_poster(
         .ok_or_else(|| AppError::Other("no poster available".into()))?;
 
     let badges =
-        ratings::fetch_ratings(&resolved, &state.tmdb, &state.omdb, state.mdblist.as_ref()).await;
+        ratings::fetch_ratings(&resolved, &state.tmdb, state.omdb.as_ref(), state.mdblist.as_ref()).await;
 
     let bytes = generate::generate_poster(generate::PosterParams {
         poster_path,

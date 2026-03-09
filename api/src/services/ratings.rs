@@ -54,7 +54,7 @@ pub struct RatingBadge {
 pub async fn fetch_ratings(
     resolved: &ResolvedId,
     tmdb: &TmdbClient,
-    omdb: &OmdbClient,
+    omdb: Option<&OmdbClient>,
     mdblist: Option<&MdblistClient>,
 ) -> Vec<RatingBadge> {
     let tmdb_fut = fetch_tmdb_rating(resolved, tmdb);
@@ -90,7 +90,7 @@ pub async fn fetch_ratings(
 
     // Badge order: IMDb, TMDB, RT, RT Audience, MC, Trakt, Letterboxd
     let ordered: Vec<Option<RatingBadge>> = vec![
-        find_omdb(RatingSource::Imdb),
+        find_omdb(RatingSource::Imdb).or_else(|| find_mdb(RatingSource::Imdb)),
         tmdb_badges,
         find_omdb(RatingSource::Rt).or_else(|| if !has_rt { find_mdb(RatingSource::Rt) } else { None }),
         find_mdb(RatingSource::RtAudience),
@@ -126,9 +126,10 @@ async fn fetch_tmdb_rating(resolved: &ResolvedId, tmdb: &TmdbClient) -> Option<R
     })
 }
 
-async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: &OmdbClient) -> Option<Vec<RatingBadge>> {
+async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: Option<&OmdbClient>) -> Option<Vec<RatingBadge>> {
+    let client = omdb?;
     let imdb_id = imdb_id?;
-    let resp = omdb.get_ratings(imdb_id).await.ok()?;
+    let resp = client.get_ratings(imdb_id).await.ok()?;
     let mut badges = Vec::new();
 
     // IMDb rating
@@ -180,6 +181,10 @@ async fn fetch_mdblist_ratings(
 
     for r in &resp.ratings {
         let badge = match r.source.as_str() {
+            "imdb" => r.value.map(|v| RatingBadge {
+                source: RatingSource::Imdb,
+                value: format!("{v:.1}"),
+            }),
             "trakt" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Trakt,
                 value: format!("{s}%"),

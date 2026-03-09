@@ -73,6 +73,9 @@ async fn main() {
     let db = Database::connect(&db_url)
         .await
         .expect("failed to connect to database");
+    db.execute_unprepared("PRAGMA journal_mode=WAL")
+        .await
+        .expect("failed to enable WAL mode");
     db.execute_unprepared(
         "CREATE TABLE IF NOT EXISTS poster_meta (
             cache_key TEXT PRIMARY KEY,

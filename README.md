@@ -24,21 +24,23 @@ Self-hosted API that generates movie and TV show posters with rating badges from
 - A [TMDB API key](https://www.themoviedb.org/settings/api)
 - At least one of: [OMDb API key](https://www.omdbapi.com/apikey.aspx), [MDBList API key](https://mdblist.com/preferences/)
 
-### API
+### Docker
+
+```bash
+# Copy the example env to the project root and fill in your API keys
+cp api/.env.example .env
+# Edit .env — at minimum set TMDB_API_KEY, one of OMDB/MDBLIST, and JWT_SECRET
+
+# Build and start
+docker compose up -d
+```
+
+### API (without Docker)
 
 ```bash
 cd api
-
-# Generate a JWT secret
-JWT_SECRET=$(openssl rand -hex 32)
-
-# Create .env
-cat > .env << EOF
-TMDB_API_KEY=your_key
-OMDB_API_KEY=your_key       # and/or MDBLIST_API_KEY
-JWT_SECRET=$JWT_SECRET
-EOF
-
+cp .env.example .env
+# Edit .env — at minimum set TMDB_API_KEY, one of OMDB/MDBLIST, and JWT_SECRET
 cargo run --release
 ```
 
@@ -49,20 +51,6 @@ cd web
 npm install
 npm run dev        # development
 npm run build      # production
-```
-
-### Docker
-
-```bash
-# Create a .env file
-cat > .env << EOF
-TMDB_API_KEY=your_key
-OMDB_API_KEY=your_key       # and/or MDBLIST_API_KEY
-JWT_SECRET=$(openssl rand -hex 32)
-EOF
-
-# Build and start
-docker compose up -d
 ```
 
 The web UI will be available at `http://localhost:3000`. On first visit you'll be prompted to create an admin account.

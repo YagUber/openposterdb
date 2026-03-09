@@ -14,6 +14,7 @@ pub enum RatingSource {
     Metacritic,
     Trakt,
     Letterboxd,
+    Mal,
 }
 
 impl RatingSource {
@@ -26,6 +27,7 @@ impl RatingSource {
             Self::Metacritic => "MC",
             Self::Trakt => "Trakt",
             Self::Letterboxd => "LB",
+            Self::Mal => "MAL",
         }
     }
 
@@ -38,6 +40,7 @@ impl RatingSource {
             Self::Metacritic => Rgba([102, 204, 51, 255]), // metacritic green
             Self::Trakt => Rgba([237, 20, 61, 255]),       // trakt red
             Self::Letterboxd => Rgba([0, 210, 120, 255]),  // letterboxd green
+            Self::Mal => Rgba([46, 81, 162, 255]),           // MAL blue
         }
     }
 }
@@ -94,6 +97,7 @@ pub async fn fetch_ratings(
         find_omdb(RatingSource::Metacritic).or_else(|| if !has_mc { find_mdb(RatingSource::Metacritic) } else { None }),
         find_mdb(RatingSource::Trakt),
         find_mdb(RatingSource::Letterboxd),
+        find_mdb(RatingSource::Mal),
     ];
 
     ordered.into_iter().flatten().collect()
@@ -195,6 +199,10 @@ async fn fetch_mdblist_ratings(
             "metacritic" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Metacritic,
                 value: s.to_string(),
+            }),
+            "mal" => r.score.map(|s| RatingBadge {
+                source: RatingSource::Mal,
+                value: format!("{:.2}", s as f64 / 10.0),
             }),
             _ => None,
         };

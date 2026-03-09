@@ -78,7 +78,7 @@ jobs:
 
       - name: Build backend
         working-directory: api
-        run: cargo build --release
+        run: cargo build --release --features test-support
 
       - name: Start backend
         env:

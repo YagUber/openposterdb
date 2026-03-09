@@ -192,6 +192,45 @@ async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: Option<&OmdbClient>) ->
     Some(badges)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rating_source_labels() {
+        assert_eq!(RatingSource::Imdb.label(), "IMDb");
+        assert_eq!(RatingSource::Tmdb.label(), "TMDB");
+        assert_eq!(RatingSource::Rt.label(), "RTC");
+        assert_eq!(RatingSource::RtAudience.label(), "RTA");
+        assert_eq!(RatingSource::Metacritic.label(), "MC");
+        assert_eq!(RatingSource::Trakt.label(), "Trakt");
+        assert_eq!(RatingSource::Letterboxd.label(), "LB");
+        assert_eq!(RatingSource::Mal.label(), "MAL");
+    }
+
+    #[test]
+    fn rating_source_colors_unique_per_source() {
+        assert_eq!(RatingSource::Imdb.color(), Rgba([180, 145, 15, 255]));
+        assert_eq!(RatingSource::Tmdb.color(), Rgba([1, 155, 88, 255]));
+        assert_eq!(RatingSource::Rt.color(), Rgba([185, 35, 8, 255]));
+        assert_eq!(RatingSource::Metacritic.color(), Rgba([75, 150, 38, 255]));
+        assert_eq!(RatingSource::Trakt.color(), Rgba([175, 15, 45, 255]));
+        assert_eq!(RatingSource::Letterboxd.color(), Rgba([0, 155, 88, 255]));
+        assert_eq!(RatingSource::Mal.color(), Rgba([34, 60, 120, 255]));
+    }
+
+    #[test]
+    fn rt_and_rt_audience_share_color() {
+        assert_eq!(RatingSource::Rt.color(), RatingSource::RtAudience.color());
+    }
+
+    #[test]
+    fn rating_source_equality() {
+        assert_eq!(RatingSource::Imdb, RatingSource::Imdb);
+        assert_ne!(RatingSource::Imdb, RatingSource::Tmdb);
+    }
+}
+
 async fn fetch_mdblist_ratings(
     resolved: &ResolvedId,
     mdblist: Option<&MdblistClient>,

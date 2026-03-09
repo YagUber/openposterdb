@@ -51,6 +51,26 @@ npm run dev        # development
 npm run build      # production
 ```
 
+### Docker
+
+```bash
+# Create a .env file
+cat > .env << EOF
+TMDB_API_KEY=your_key
+OMDB_API_KEY=your_key       # and/or MDBLIST_API_KEY
+JWT_SECRET=$(openssl rand -hex 32)
+EOF
+
+# Build and start
+docker compose up -d
+```
+
+The web UI will be available at `http://localhost:3000`. On first visit you'll be prompted to create an admin account.
+
+If you access the UI over plain HTTP (no reverse proxy with TLS), add `COOKIE_SECURE=false` to your `.env` — otherwise the browser will silently drop auth cookies and login will appear broken.
+
+See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
+
 ## Configuration
 
 | Variable | Default | Description |

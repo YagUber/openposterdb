@@ -12,7 +12,7 @@ pub fn auth_routes() -> Router<Arc<AppState>> {
         .route("/api/auth/login", post(handlers::auth::login))
         .route("/api/auth/refresh", post(handlers::auth::refresh));
 
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test-support")))]
     let rate_limited = {
         use axum::http::StatusCode;
         use axum::response::IntoResponse;

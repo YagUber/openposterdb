@@ -337,4 +337,71 @@ mod tests {
         let b = hash_refresh_token("token_b");
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn refresh_cookie_secure() {
+        let cookie = refresh_cookie("abc123", 604800, true);
+        assert!(cookie.contains("refresh_token=abc123"));
+        assert!(cookie.contains("HttpOnly"));
+        assert!(cookie.contains("SameSite=Strict"));
+        assert!(cookie.contains("Path=/api/auth/refresh"));
+        assert!(cookie.contains("Max-Age=604800"));
+        assert!(cookie.contains("; Secure"));
+    }
+
+    #[test]
+    fn refresh_cookie_insecure() {
+        let cookie = refresh_cookie("abc123", 604800, false);
+        assert!(cookie.contains("refresh_token=abc123"));
+        assert!(!cookie.contains("; Secure"));
+    }
+
+    #[test]
+    fn refresh_cookie_zero_max_age() {
+        let cookie = refresh_cookie("", 0, false);
+        assert!(cookie.contains("refresh_token="));
+        assert!(cookie.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn extract_refresh_token_present() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("refresh_token=mytoken123"),
+        );
+        assert_eq!(
+            extract_refresh_token_from_cookies(&headers),
+            Some("mytoken123".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_refresh_token_missing() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("other=value"),
+        );
+        assert_eq!(extract_refresh_token_from_cookies(&headers), None);
+    }
+
+    #[test]
+    fn extract_refresh_token_multiple_cookies() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            HeaderValue::from_static("foo=bar; refresh_token=mytoken; baz=qux"),
+        );
+        assert_eq!(
+            extract_refresh_token_from_cookies(&headers),
+            Some("mytoken".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_refresh_token_no_cookie_header() {
+        let headers = HeaderMap::new();
+        assert_eq!(extract_refresh_token_from_cookies(&headers), None);
+    }
 }

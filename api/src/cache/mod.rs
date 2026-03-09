@@ -150,3 +150,90 @@ pub fn compute_stale_secs(
     // Linear interpolation: min_stale at age=0, approaches max_age at age=max_age
     min_stale + film_age * (max_age - min_stale) / max_age
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_stale_no_release_date() {
+        let result = compute_stale_secs(None, 86400, 31_536_000);
+        assert_eq!(result, 86400);
+    }
+
+    #[test]
+    fn compute_stale_invalid_date() {
+        let result = compute_stale_secs(Some("not-a-date"), 86400, 31_536_000);
+        assert_eq!(result, 86400);
+    }
+
+    #[test]
+    fn compute_stale_future_film() {
+        let result = compute_stale_secs(Some("2099-01-01"), 86400, 31_536_000);
+        assert_eq!(result, 86400);
+    }
+
+    #[test]
+    fn compute_stale_old_film() {
+        // Film from 2000 — age far exceeds max_age of 1 year
+        let result = compute_stale_secs(Some("2000-01-01"), 86400, 31_536_000);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn date_str_to_epoch_known_value() {
+        // 1970-01-02 should be exactly 86400 seconds
+        assert_eq!(date_str_to_epoch("1970-01-02"), Some(86400));
+    }
+
+    #[test]
+    fn date_str_to_epoch_epoch_start() {
+        assert_eq!(date_str_to_epoch("1970-01-01"), Some(0));
+    }
+
+    #[test]
+    fn date_str_to_epoch_invalid_month() {
+        assert_eq!(date_str_to_epoch("2020-13-01"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_invalid_day() {
+        assert_eq!(date_str_to_epoch("2020-01-32"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_pre_epoch() {
+        assert_eq!(date_str_to_epoch("1969-01-01"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_garbage() {
+        assert_eq!(date_str_to_epoch("garbage"), None);
+    }
+
+    #[test]
+    fn cache_path_construction() {
+        let p = cache_path("/tmp/cache", "imdb", "tt1234567");
+        assert_eq!(p, PathBuf::from("/tmp/cache/imdb/tt1234567.jpg"));
+    }
+
+    #[test]
+    fn poster_cache_path_strips_leading_slash() {
+        let p = poster_cache_path("/tmp/cache", "/abc123.jpg");
+        assert_eq!(p, PathBuf::from("/tmp/cache/posters/abc123.jpg"));
+    }
+
+    #[test]
+    fn poster_cache_path_no_leading_slash() {
+        let p = poster_cache_path("/tmp/cache", "abc123.jpg");
+        assert_eq!(p, PathBuf::from("/tmp/cache/posters/abc123.jpg"));
+    }
+
+    #[test]
+    fn is_leap_year_cases() {
+        assert!(is_leap(2000)); // divisible by 400
+        assert!(is_leap(2024)); // divisible by 4, not by 100
+        assert!(!is_leap(1900)); // divisible by 100, not by 400
+        assert!(!is_leap(2023)); // not divisible by 4
+    }
+}

@@ -1,63 +1,28 @@
-mod cache;
-mod config;
-mod entity;
-mod error;
-mod handlers;
-mod id;
-mod poster;
-mod routes;
-mod services;
-
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use ab_glyph::FontArc;
-use axum::middleware;
-use axum::Router;
 use dashmap::DashMap;
 use sea_orm::{ConnectionTrait, DatabaseConnection, SqlxSqliteConnector};
-use tower_http::compression::CompressionLayer;
-use tower_http::cors::CorsLayer;
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
-use zeroize::Zeroizing;
 
-use cache::MemCacheEntry;
-use config::Config;
-use id::ResolvedId;
-use services::db;
-use services::mdblist::MdblistClient;
-use services::omdb::OmdbClient;
-use services::ratings::RatingBadge;
-use services::tmdb::TmdbClient;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub config: Config,
-    pub tmdb: TmdbClient,
-    pub omdb: Option<OmdbClient>,
-    pub mdblist: Option<MdblistClient>,
-    pub http: reqwest::Client,
-    pub font: FontArc,
-    pub refresh_locks: moka::sync::Cache<String, ()>,
-    pub db: DatabaseConnection,
-    pub jwt_secret: Zeroizing<Vec<u8>>,
-    pub secure_cookies: bool,
-    pub api_key_cache: moka::future::Cache<String, Option<i32>>,
-    pub poster_inflight: moka::future::Cache<String, bytes::Bytes>,
-    pub id_cache: moka::future::Cache<String, ResolvedId>,
-    pub ratings_cache: moka::future::Cache<String, Vec<RatingBadge>>,
-    pub poster_mem_cache: moka::future::Cache<String, MemCacheEntry>,
-    pub pending_last_used: Arc<DashMap<i32, ()>>,
-}
-
-static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
+use openposterdb_api::cache::MemCacheEntry;
+use openposterdb_api::config::Config;
+use openposterdb_api::handlers;
+use openposterdb_api::services::db;
+use openposterdb_api::services::mdblist::MdblistClient;
+use openposterdb_api::services::omdb::OmdbClient;
+use openposterdb_api::services::tmdb::TmdbClient;
+use openposterdb_api::{build_app, AppState, FONT_BYTES, SCHEMA_SQL};
 
 #[tokio::main]
 async fn main() {
     // Load .env file if present (ignored if missing)
     dotenvy::dotenv().ok();
+
+    #[cfg(feature = "test-support")]
+    eprintln!("WARNING: test-support feature is enabled — rate limiting is disabled. Do not use in production.");
 
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -110,54 +75,12 @@ async fn main() {
         .await
         .expect("failed to connect to database");
     let database: DatabaseConnection = SqlxSqliteConnector::from_sqlx_sqlite_pool(pool);
-    database
-        .execute_unprepared(
-            "CREATE TABLE IF NOT EXISTS poster_meta (
-            cache_key TEXT PRIMARY KEY,
-            release_date TEXT,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
-        )",
-        )
-        .await
-        .expect("failed to create poster_meta table");
-    database
-        .execute_unprepared(
-            "CREATE TABLE IF NOT EXISTS admin_users (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            username      TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-        )",
-        )
-        .await
-        .expect("failed to create admin_users table");
-    database
-        .execute_unprepared(
-            "CREATE TABLE IF NOT EXISTS refresh_tokens (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id     INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
-            token_hash  TEXT NOT NULL UNIQUE,
-            expires_at  TEXT NOT NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-        )",
-        )
-        .await
-        .expect("failed to create refresh_tokens table");
-    database
-        .execute_unprepared(
-            "CREATE TABLE IF NOT EXISTS api_keys (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            name         TEXT NOT NULL,
-            key_hash     TEXT NOT NULL UNIQUE,
-            key_prefix   TEXT NOT NULL,
-            created_by   INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
-            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            last_used_at TEXT
-        )",
-        )
-        .await
-        .expect("failed to create api_keys table");
+    for sql in SCHEMA_SQL {
+        database
+            .execute_unprepared(sql)
+            .await
+            .expect("failed to create table");
+    }
 
     // Clean up expired refresh tokens
     match db::delete_expired_refresh_tokens(&database).await {
@@ -270,35 +193,7 @@ async fn main() {
         });
     }
 
-    // Admin-protected routes (JWT required)
-    let admin_routes = routes::api_keys::api_key_routes()
-        .route(
-            "/api/auth/logout",
-            axum::routing::post(handlers::auth::logout),
-        )
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            handlers::middleware::require_auth,
-        ));
-
-    // Auth + admin routes get compression (JSON responses benefit)
-    let compressed_routes = Router::new()
-        .merge(routes::auth::auth_routes())
-        .merge(admin_routes)
-        .layer(CompressionLayer::new());
-
-    let app = Router::new()
-        .route(
-            "/{api_key}/{id_type}/poster-default/{id_value}",
-            axum::routing::get(routes::poster::handler),
-        )
-        .merge(compressed_routes)
-        .layer(middleware::from_fn(
-            handlers::middleware::validate_origin,
-        ))
-        .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
-        .with_state(state.clone());
+    let app = build_app(state.clone());
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await

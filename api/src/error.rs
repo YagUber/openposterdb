@@ -52,3 +52,66 @@ impl IntoResponse for AppError {
         (status, axum::Json(json!({ "error": message }))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    fn status_of(err: AppError) -> StatusCode {
+        err.into_response().status()
+    }
+
+    #[test]
+    fn invalid_id_type_is_400() {
+        assert_eq!(
+            status_of(AppError::InvalidIdType("x".into())),
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn id_not_found_is_404() {
+        assert_eq!(
+            status_of(AppError::IdNotFound("x".into())),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn unauthorized_is_401() {
+        assert_eq!(status_of(AppError::Unauthorized), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(
+            status_of(AppError::Forbidden("x".into())),
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(
+            status_of(AppError::BadRequest("x".into())),
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn db_error_is_500() {
+        assert_eq!(
+            status_of(AppError::DbError("x".into())),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn other_is_500() {
+        assert_eq!(
+            status_of(AppError::Other("x".into())),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+}

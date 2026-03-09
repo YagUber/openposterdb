@@ -19,7 +19,7 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:3000',
+      '/api': process.env.E2E_BACKEND_URL || 'http://localhost:3000',
     },
   },
 })

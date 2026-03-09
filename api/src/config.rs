@@ -12,6 +12,7 @@ pub struct Config {
     pub poster_quality: u8,
     pub mdblist_api_key: Option<String>,
     pub poster_mem_cache_mb: u64,
+    pub static_dir: Option<String>,
 }
 
 impl Config {
@@ -42,6 +43,7 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(512),
+            static_dir: env::var("STATIC_DIR").ok(),
         };
 
         if config.omdb_api_key.is_none() && config.mdblist_api_key.is_none() {

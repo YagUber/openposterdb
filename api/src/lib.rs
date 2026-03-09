@@ -189,8 +189,8 @@ pub fn build_app(state: Arc<AppState>) -> Router {
             use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
 
             let governor_conf = GovernorConfigBuilder::default()
-                .per_second(1)
-                .burst_size(120)
+                .per_millisecond(200)
+                .burst_size(240)
                 .key_extractor(PosterKeyExtractor)
                 .finish()
                 .expect("valid governor config");

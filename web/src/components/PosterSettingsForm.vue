@@ -79,6 +79,17 @@ watch(() => props.settings, (s) => {
   nextTick(() => { syncing = false })
 })
 
+function revertEdits() {
+  syncing = true
+  const s = currentSettings.value
+  editSource.value = s.poster_source
+  editLang.value = s.fanart_lang
+  editTextless.value = s.fanart_textless
+  editRatingsLimit.value = s.ratings_limit
+  editRatingsOrder.value = parseOrder(s.ratings_order)
+  nextTick(() => { syncing = false })
+}
+
 async function autoSave() {
   if (saving.value) return
   saving.value = true
@@ -95,6 +106,7 @@ async function autoSave() {
     })
     if (err) {
       error.value = err
+      revertEdits()
     } else {
       const updated = await props.loadSettings()
       if (updated) {
@@ -105,6 +117,7 @@ async function autoSave() {
     }
   } catch {
     error.value = 'Failed to save'
+    revertEdits()
   } finally {
     saving.value = false
   }

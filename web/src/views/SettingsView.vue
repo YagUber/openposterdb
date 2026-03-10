@@ -103,8 +103,8 @@ async function toggleFreeApiKey() {
             />
           </button>
           <span class="text-sm font-medium">{{ freeApiKeyEnabled ? 'Enabled' : 'Disabled' }}</span>
+          <span v-if="freeKeyError" class="text-sm text-destructive">{{ freeKeyError }}</span>
         </label>
-        <p v-if="freeKeyError" class="text-sm text-destructive">{{ freeKeyError }}</p>
       </div>
 
       <div class="rounded-lg border p-6 space-y-4">

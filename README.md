@@ -22,14 +22,6 @@ Self-hosted API that generates movie and TV show posters with rating badges from
 
 ## Quick Start
 
-### Requirements
-
-- Rust toolchain
-- Node.js 20.19+ (for admin UI)
-- A [TMDB API key](https://www.themoviedb.org/settings/api)
-- At least one of: [OMDb API key](https://www.omdbapi.com/apikey.aspx), [MDBList API key](https://mdblist.com/preferences/)
-- Optional: [Fanart.tv API key](https://fanart.tv/get-an-api-key/) (for alternative poster source with language/textless support)
-
 ### Docker
 
 ```bash
@@ -41,7 +33,18 @@ cp api/.env.example .env
 docker compose up -d
 ```
 
-### API (without Docker)
+### Without Docker
+
+### Requirements
+
+- Rust toolchain
+- Node.js 20.19+ (for admin UI)
+- A [TMDB API key](https://www.themoviedb.org/settings/api)
+- At least one of: [OMDb API key](https://www.omdbapi.com/apikey.aspx), [MDBList API key](https://mdblist.com/preferences/)
+- Optional: [Fanart.tv API key](https://fanart.tv/get-an-api-key/) (for alternative poster source with language/textless support)
+
+
+### API
 
 ```bash
 cd api

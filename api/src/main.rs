@@ -57,14 +57,17 @@ async fn main() {
         .map(|v| v != "false" && v != "0")
         .unwrap_or(true);
 
-    // Initialize SQLite database
+    // Ensure cache and database directories exist
     tokio::fs::create_dir_all(&config.cache_dir)
         .await
         .expect("failed to create cache dir");
-    let cache_dir_abs = tokio::fs::canonicalize(&config.cache_dir)
+    tokio::fs::create_dir_all(&config.db_dir)
         .await
-        .expect("failed to canonicalize cache dir");
-    let db_path = cache_dir_abs.join("openposterdb.db");
+        .expect("failed to create db dir");
+    let db_dir_abs = tokio::fs::canonicalize(&config.db_dir)
+        .await
+        .expect("failed to canonicalize db dir");
+    let db_path = db_dir_abs.join("openposterdb.db");
     let sqlite_opts = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(&db_path)
         .create_if_missing(true)

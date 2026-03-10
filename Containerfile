@@ -17,11 +17,12 @@ RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib
 COPY --from=api-builder /app/target/release/openposterdb-api /usr/local/bin/openposterdb
 COPY --from=web-builder /app/dist /app/dist
 
-RUN mkdir -p /data/cache && chown -R opdb:opdb /data
+RUN mkdir -p /data/cache /data/db && chown -R opdb:opdb /data
 USER opdb
 
 ENV STATIC_DIR=/app/dist
 ENV CACHE_DIR=/data/cache
+ENV DB_DIR=/data/db
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
     CMD curl -sf http://localhost:3000/api/auth/status || exit 1

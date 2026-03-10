@@ -45,6 +45,7 @@ $CTR run -d --name "$CONTAINER_NAME" \
     -e LISTEN_ADDR=0.0.0.0:3000 \
     -e COOKIE_SECURE=false \
     -e CACHE_DIR=/tmp/openposterdb-e2e \
+    -e DB_DIR=/tmp/openposterdb-e2e \
     "$IMAGE_NAME"
 
 echo "Waiting for backend..."

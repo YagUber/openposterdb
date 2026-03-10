@@ -89,6 +89,7 @@ jobs:
           FANART_API_KEY: test
           COOKIE_SECURE: "false"
           CACHE_DIR: /tmp/openposterdb-e2e
+          DB_DIR: /tmp/openposterdb-e2e
           STATIC_DIR: web/dist
         run: |
           mkdir -p "$CACHE_DIR"

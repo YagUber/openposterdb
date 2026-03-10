@@ -86,6 +86,7 @@ jobs:
           MDBLIST_API_KEY: test
           JWT_SECRET: abababababababababababababababababababababababababababababababab
           LISTEN_ADDR: 0.0.0.0:3333
+          FANART_API_KEY: test
           COOKIE_SECURE: "false"
           CACHE_DIR: /tmp/openposterdb-e2e
           STATIC_DIR: web/dist

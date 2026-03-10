@@ -101,3 +101,6 @@ GET /{api_key}/{id_type}/poster-default/{id_value}.jpg
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
 - Returns JPEG with rating badges
+- RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)
+
+Management endpoints (auth, keys, settings) are under `/api/` and return JSON.

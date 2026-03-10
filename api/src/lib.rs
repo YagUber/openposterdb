@@ -141,6 +141,22 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
     }
 }
 
+/// Returns true if `path` looks like an API management route (`/api/...`) or
+/// a poster route (first segment is a 64-char hex API key). Used by the
+/// fallback service to return JSON 404 instead of the SPA HTML page.
+fn is_api_or_poster_path(path: &str) -> bool {
+    if path.starts_with("/api/") || path == "/api" {
+        return true;
+    }
+    // Check if first path segment looks like an API key (64 lowercase hex chars).
+    let without_slash = &path[1..]; // skip leading '/'
+    let first_segment = match without_slash.find('/') {
+        Some(pos) => &without_slash[..pos],
+        None => without_slash,
+    };
+    first_segment.len() == 64 && first_segment.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 fn redact_path(path: &str) -> String {
     if !path.starts_with("/api/") {
         // Poster route: /{api_key}/... -> /[REDACTED]/...
@@ -249,11 +265,36 @@ pub fn build_app(state: Arc<AppState>) -> Router {
     let mut app = Router::new().merge(poster_route).merge(compressed_routes);
 
     // Serve static frontend files when STATIC_DIR is set.
-    // Falls back to index.html for SPA client-side routing.
+    // Falls back to index.html for SPA client-side routing, but returns
+    // a proper JSON 404 for unmatched /api/ paths and paths that look like
+    // poster requests (64-char hex first segment) so API consumers get JSON
+    // errors instead of HTML.
     if let Some(ref dir) = state.config.static_dir {
+        use axum::response::IntoResponse;
+        use tower::ServiceExt as _;
         use tower_http::services::{ServeDir, ServeFile};
+
         let index = format!("{dir}/index.html");
-        app = app.fallback_service(ServeDir::new(dir).fallback(ServeFile::new(index)));
+        let spa = ServeDir::new(dir).fallback(ServeFile::new(index));
+
+        app = app.fallback_service(tower::service_fn(move |req: Request<axum::body::Body>| {
+            let spa = spa.clone();
+            async move {
+                let path = req.uri().path();
+                if is_api_or_poster_path(path) {
+                    // Constant-time-ish: always return the same JSON 404
+                    // regardless of whether the key exists, to avoid leaking
+                    // valid key prefixes via timing.
+                    Ok((
+                        axum::http::StatusCode::NOT_FOUND,
+                        axum::Json(serde_json::json!({"error": "not found"})),
+                    )
+                        .into_response())
+                } else {
+                    spa.oneshot(req).await.map(|r| r.into_response())
+                }
+            }
+        }));
     }
 
     let cors_layer = build_cors_layer(&state.config);
@@ -297,5 +338,38 @@ mod tests {
     fn redact_path_root() {
         // "/" — path[1..] is empty, find('/') returns None
         assert_eq!(redact_path("/"), "/[REDACTED]");
+    }
+
+    #[test]
+    fn is_api_path() {
+        assert!(is_api_or_poster_path("/api/auth/login"));
+        assert!(is_api_or_poster_path("/api/keys"));
+        assert!(is_api_or_poster_path("/api"));
+    }
+
+    #[test]
+    fn is_poster_path_valid_key() {
+        let key = "a".repeat(64);
+        assert!(is_api_or_poster_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
+        assert!(is_api_or_poster_path(&format!("/{key}/bad-path")));
+        // Key alone (no trailing path)
+        assert!(is_api_or_poster_path(&format!("/{key}")));
+    }
+
+    #[test]
+    fn is_poster_path_invalid_key() {
+        // Too short
+        assert!(!is_api_or_poster_path("/abcdef/imdb/poster-default/tt123.jpg"));
+        // Not hex
+        let key = "g".repeat(64);
+        assert!(!is_api_or_poster_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
+    }
+
+    #[test]
+    fn spa_paths_not_matched() {
+        assert!(!is_api_or_poster_path("/"));
+        assert!(!is_api_or_poster_path("/login"));
+        assert!(!is_api_or_poster_path("/settings"));
+        assert!(!is_api_or_poster_path("/posters"));
     }
 }

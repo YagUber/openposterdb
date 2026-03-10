@@ -43,10 +43,7 @@ async function saveSettings(s: {
   ratings_limit: number
   ratings_order: string
 }): Promise<string | null> {
-  const res = await adminApi.updateSettings({
-    ...s,
-    free_api_key_enabled: freeApiKeyEnabled.value,
-  })
+  const res = await adminApi.updateSettings(s)
   if (res.ok) return null
   const data = await res.json().catch(() => null)
   return data?.error || 'Failed to save settings'
@@ -123,6 +120,8 @@ async function toggleFreeApiKey() {
           :load-settings="loadSettings"
           :save-settings="saveSettings"
           :fetch-preview="adminApi.previewPoster"
+          :fetch-logo-preview="adminApi.previewLogo"
+          :fetch-backdrop-preview="adminApi.previewBackdrop"
         />
       </div>
     </div>

@@ -3,7 +3,7 @@
 
 # OpenPosterDB
 
-A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters with rating badges from multiple sources overlaid on them. Fetches poster art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
+A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters, logos, and backdrops with rating badges from multiple sources overlaid on them. Fetches art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
 
 ## Features
 
@@ -85,7 +85,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `RATINGS_MAX_AGE_SECS` | `31536000` | Film age after which ratings stop refreshing |
 | `POSTER_STALE_SECS` | `0` | Base poster cache lifetime (0 = never re-fetch) |
 | `COOKIE_SECURE` | `true` | HTTPS-only cookies |
-| `FANART_API_KEY` | — | [Fanart.tv](https://fanart.tv/get-an-api-key/) key (enables Fanart.tv as alternative poster source) |
+| `FANART_API_KEY` | — | [Fanart.tv](https://fanart.tv/get-an-api-key/) key (enables Fanart.tv as alternative poster source; required for logo and backdrop endpoints) |
 | `CORS_ORIGIN` | — | Allowed origin for admin requests |
 | `ADMIN_USERNAME` | — | Seed admin username on first run |
 | `ADMIN_PASSWORD` | — | Seed admin password on first run |
@@ -98,9 +98,32 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 GET /{api_key}/{id_type}/poster-default/{id_value}.jpg
 ```
 
+- Returns JPEG with rating badges overlaid on the poster
+- Uses TMDB (default) or Fanart.tv as the poster source
+
+### Logo
+
+```
+GET /{api_key}/{id_type}/logo-default/{id_value}.png
+```
+
+- Returns transparent PNG with rating badges stacked below the logo
+- Requires `FANART_API_KEY` (returns 501 if not configured)
+
+### Backdrop
+
+```
+GET /{api_key}/{id_type}/backdrop-default/{id_value}.jpg
+```
+
+- Returns JPEG with rating badges stacked vertically in the top-right corner
+- Requires `FANART_API_KEY` (returns 501 if not configured)
+
+**Common parameters:**
+
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
-- Returns JPEG with rating badges
+- `?fallback=true`: return a placeholder image instead of an error on failure
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.

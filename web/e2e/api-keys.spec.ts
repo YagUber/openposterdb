@@ -91,16 +91,15 @@ test.describe('api keys', () => {
     await expect(limitInput).toHaveValue('3')
   })
 
-  test('per-key rating settings persist after save', async ({ page }) => {
+  test('per-key rating settings persist after auto-save', async ({ page }) => {
     const keyName = await createKeyAndOpenSettings(page)
 
     // Change limit to a non-default value
     const limitInput = page.locator('input[type="number"]')
     await limitInput.fill('5')
 
-    // Save
-    await page.locator('button:has-text("Save")').click()
-    await expect(page.locator('button:has-text("Save") .text-green-500')).toBeVisible()
+    // Wait for auto-save confirmation
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     // Collapse and re-expand settings to verify persistence
     const keyRow = page.getByText(keyName).locator('..').locator('..')

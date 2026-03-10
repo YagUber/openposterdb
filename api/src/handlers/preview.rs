@@ -30,6 +30,46 @@ static SAMPLE_POSTER_PNG: LazyLock<Vec<u8>> = LazyLock::new(|| {
     buf
 });
 
+/// A 500x200 sample logo (white text-like shape on transparent background).
+static SAMPLE_LOGO_PNG: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let width = 400u32;
+    let height = 120u32;
+    let img = RgbaImage::from_fn(width, height, |x, y| {
+        // Simple rounded rectangle shape to simulate a logo
+        let margin = 8u32;
+        if x >= margin && x < width - margin && y >= margin && y < height - margin {
+            Rgba([220, 220, 220, 240])
+        } else {
+            Rgba([0, 0, 0, 0])
+        }
+    });
+    let mut buf = Vec::new();
+    let encoder = PngEncoder::new(&mut buf);
+    encoder
+        .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+        .expect("PNG encoding should not fail");
+    buf
+});
+
+/// A 1280x720 dark gradient backdrop, computed once.
+static SAMPLE_BACKDROP_PNG: LazyLock<Vec<u8>> = LazyLock::new(|| {
+    let width = 1280u32;
+    let height = 720u32;
+    let img = RgbaImage::from_fn(width, height, |x, _y| {
+        // Horizontal gradient from #1a1a2a (left) to #2a1a1a (right)
+        let t = x as f32 / width as f32;
+        let r = (26.0 + t * 16.0) as u8;
+        let b = (42.0 - t * 16.0) as u8;
+        Rgba([r, 26, b, 255])
+    });
+    let mut buf = Vec::new();
+    let encoder = PngEncoder::new(&mut buf);
+    encoder
+        .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+        .expect("PNG encoding should not fail");
+    buf
+});
+
 fn sample_badges() -> Vec<RatingBadge> {
     vec![
         RatingBadge { source: RatingSource::Imdb, value: "8.5".into() },
@@ -96,10 +136,96 @@ pub async fn preview_poster(
     Ok(preview_response(bytes))
 }
 
+pub async fn preview_logo(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PreviewQuery>,
+) -> Result<Response, AppError> {
+    let suffix = ratings::ratings_cache_suffix(&query.ratings_order, query.ratings_limit);
+    let cache_key = format!("preview-logo:{suffix}");
+    let cache_path = cache::cache_path_ext(&state.config.cache_dir, "preview", &format!("logo_{suffix}"), "png")?;
+
+    if let Some(cached) = state.preview_cache.get(&cache_key).await {
+        return Ok(preview_png_response(cached));
+    }
+
+    if let Some(entry) = cache::read(&cache_path, 0).await {
+        let bytes: bytes::Bytes = entry.bytes.into();
+        state.preview_cache.insert(cache_key, bytes.clone()).await;
+        return Ok(preview_png_response(bytes));
+    }
+
+    let badges = sample_badges();
+    let badges = ratings::apply_rating_preferences(badges, &query.ratings_order, query.ratings_limit);
+
+    let logo_png: &'static Vec<u8> = &SAMPLE_LOGO_PNG;
+    let font = state.font.clone();
+
+    let buf = tokio::task::spawn_blocking(move || {
+        generate::render_logo_sync(logo_png, &badges, &font)
+    })
+    .await
+    .map_err(|e| AppError::Other(e.to_string()))??;
+
+    cache::write(&cache_path, &buf).await?;
+    let bytes = bytes::Bytes::from(buf);
+    state.preview_cache.insert(cache_key, bytes.clone()).await;
+
+    Ok(preview_png_response(bytes))
+}
+
+pub async fn preview_backdrop(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PreviewQuery>,
+) -> Result<Response, AppError> {
+    let suffix = ratings::ratings_cache_suffix(&query.ratings_order, query.ratings_limit);
+    let cache_key = format!("preview-backdrop:{suffix}");
+    let cache_path = cache::cache_path_ext(&state.config.cache_dir, "preview", &format!("backdrop_{suffix}"), "jpg")?;
+
+    if let Some(cached) = state.preview_cache.get(&cache_key).await {
+        return Ok(preview_response(cached));
+    }
+
+    if let Some(entry) = cache::read(&cache_path, 0).await {
+        let bytes: bytes::Bytes = entry.bytes.into();
+        state.preview_cache.insert(cache_key, bytes.clone()).await;
+        return Ok(preview_response(bytes));
+    }
+
+    let badges = sample_badges();
+    let badges = ratings::apply_rating_preferences(badges, &query.ratings_order, query.ratings_limit);
+
+    let backdrop_png: &'static Vec<u8> = &SAMPLE_BACKDROP_PNG;
+    let font = state.font.clone();
+    let quality = state.config.poster_quality;
+
+    let buf = tokio::task::spawn_blocking(move || {
+        generate::render_backdrop_sync(backdrop_png, &badges, &font, quality)
+    })
+    .await
+    .map_err(|e| AppError::Other(e.to_string()))??;
+
+    cache::write(&cache_path, &buf).await?;
+    let bytes = bytes::Bytes::from(buf);
+    state.preview_cache.insert(cache_key, bytes.clone()).await;
+
+    Ok(preview_response(bytes))
+}
+
 fn preview_response(bytes: bytes::Bytes) -> Response {
     (
         [
             (header::CONTENT_TYPE, "image/jpeg"),
+            (header::CACHE_CONTROL, "public, max-age=60"),
+        ],
+        bytes,
+    )
+        .into_response()
+}
+
+fn preview_png_response(bytes: bytes::Bytes) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
             (header::CACHE_CONTROL, "public, max-age=60"),
         ],
         bytes,

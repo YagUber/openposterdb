@@ -15,16 +15,32 @@ pub struct FanartPoster {
     pub likes: String,
 }
 
+/// All image types fetched from fanart.tv in a single API call.
+#[derive(Debug, Clone)]
+pub struct FanartImages {
+    pub posters: Vec<FanartPoster>,
+    pub logos: Vec<FanartPoster>,
+    pub backdrops: Vec<FanartPoster>,
+}
+
 #[derive(Debug, Deserialize)]
 struct MovieImages {
     #[serde(default)]
     movieposter: Vec<FanartPoster>,
+    #[serde(default)]
+    hdmovielogo: Vec<FanartPoster>,
+    #[serde(default)]
+    moviebackground: Vec<FanartPoster>,
 }
 
 #[derive(Debug, Deserialize)]
 struct TvImages {
     #[serde(default)]
     tvposter: Vec<FanartPoster>,
+    #[serde(default)]
+    hdtvlogo: Vec<FanartPoster>,
+    #[serde(default)]
+    showbackground: Vec<FanartPoster>,
 }
 
 /// Which tier the selected poster came from.
@@ -39,36 +55,44 @@ impl FanartClient {
         Self { api_key, http }
     }
 
-    pub async fn get_movie_posters(&self, tmdb_id: u64) -> Result<Vec<FanartPoster>, AppError> {
+    pub async fn get_movie_images(&self, tmdb_id: u64) -> Result<FanartImages, AppError> {
         let url = format!(
             "https://webservice.fanart.tv/v3/movies/{tmdb_id}?api_key={}",
             self.api_key
         );
         let resp = self.http.get(&url).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(vec![]);
+            return Ok(FanartImages { posters: vec![], logos: vec![], backdrops: vec![] });
         }
         let resp = resp.error_for_status()?;
         let images: MovieImages = resp.json().await?;
-        Ok(images.movieposter)
+        Ok(FanartImages {
+            posters: images.movieposter,
+            logos: images.hdmovielogo,
+            backdrops: images.moviebackground,
+        })
     }
 
-    /// Fetch TV posters. Fanart.tv accepts TVDB, TMDB, or IMDb IDs for TV shows.
-    pub async fn get_tv_posters(&self, id: u64) -> Result<Vec<FanartPoster>, AppError> {
+    /// Fetch TV images. Fanart.tv accepts TVDB, TMDB, or IMDb IDs for TV shows.
+    pub async fn get_tv_images(&self, id: u64) -> Result<FanartImages, AppError> {
         let url = format!(
             "https://webservice.fanart.tv/v3/tv/{id}?api_key={}",
             self.api_key
         );
         let resp = self.http.get(&url).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            return Ok(vec![]);
+            return Ok(FanartImages { posters: vec![], logos: vec![], backdrops: vec![] });
         }
         let resp = resp.error_for_status()?;
         let images: TvImages = resp.json().await?;
-        Ok(images.tvposter)
+        Ok(FanartImages {
+            posters: images.tvposter,
+            logos: images.hdtvlogo,
+            backdrops: images.showbackground,
+        })
     }
 
-    pub fn select_poster<'a>(
+    pub fn select_image<'a>(
         posters: &'a [FanartPoster],
         lang: &str,
         textless: bool,
@@ -94,6 +118,10 @@ impl FanartClient {
                 return Some((p, PosterMatch::Language));
             }
         }
+        // Fallback: try empty-string lang (common for backdrops/logos)
+        if let Some(p) = find_best("") {
+            return Some((p, PosterMatch::Language));
+        }
         None
     }
 
@@ -108,58 +136,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn select_poster_by_lang() {
+    fn select_image_by_lang() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "de".into(), likes: "20".into() },
             FanartPoster { id: "3".into(), url: "http://c".into(), lang: "en".into(), likes: "30".into() },
         ];
-        let result = FanartClient::select_poster(&posters, "en", false);
+        let result = FanartClient::select_image(&posters, "en", false);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "3"); // highest likes
     }
 
     #[test]
-    fn select_poster_textless() {
+    fn select_image_textless() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "00".into(), likes: "20".into() },
         ];
-        let result = FanartClient::select_poster(&posters, "en", true);
+        let result = FanartClient::select_image(&posters, "en", true);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.lang, "00");
     }
 
     #[test]
-    fn select_poster_textless_fallback_to_lang() {
+    fn select_image_textless_fallback_to_lang() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "de".into(), likes: "20".into() },
         ];
         // No textless ("00") posters — should fall back to "en"
-        let result = FanartClient::select_poster(&posters, "en", true);
+        let result = FanartClient::select_image(&posters, "en", true);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "1");
     }
 
     #[test]
-    fn select_poster_no_match() {
+    fn select_image_no_match() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "fr".into(), likes: "10".into() },
         ];
         // No "ja" posters and no "en" fallback available — should return None
-        let result = FanartClient::select_poster(&posters, "ja", false);
+        let result = FanartClient::select_image(&posters, "ja", false);
         assert!(result.is_none());
     }
 
     #[test]
-    fn select_poster_falls_back_to_english() {
+    fn select_image_falls_back_to_english() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "fr".into(), likes: "20".into() },
         ];
         // No "de" posters — should fall back to "en"
-        let result = FanartClient::select_poster(&posters, "de", false);
+        let result = FanartClient::select_image(&posters, "de", false);
         assert!(result.is_some());
         let (poster, tier) = result.unwrap();
         assert_eq!(poster.id, "1");
@@ -167,41 +195,41 @@ mod tests {
     }
 
     #[test]
-    fn select_poster_empty_list() {
+    fn select_image_empty_list() {
         let posters: Vec<FanartPoster> = vec![];
-        assert!(FanartClient::select_poster(&posters, "en", false).is_none());
-        assert!(FanartClient::select_poster(&posters, "en", true).is_none());
+        assert!(FanartClient::select_image(&posters, "en", false).is_none());
+        assert!(FanartClient::select_image(&posters, "en", true).is_none());
     }
 
     #[test]
-    fn select_poster_multiple_textless_picks_most_liked() {
+    fn select_image_multiple_textless_picks_most_liked() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "00".into(), likes: "5".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "00".into(), likes: "50".into() },
             FanartPoster { id: "3".into(), url: "http://c".into(), lang: "00".into(), likes: "10".into() },
         ];
-        let result = FanartClient::select_poster(&posters, "en", true);
+        let result = FanartClient::select_image(&posters, "en", true);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "2");
     }
 
     #[test]
-    fn select_poster_unparseable_likes_treated_as_zero() {
+    fn select_image_unparseable_likes_treated_as_zero() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "not_a_number".into() },
             FanartPoster { id: "2".into(), url: "http://b".into(), lang: "en".into(), likes: "5".into() },
         ];
-        let result = FanartClient::select_poster(&posters, "en", false);
+        let result = FanartClient::select_image(&posters, "en", false);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "2");
     }
 
     #[test]
-    fn select_poster_zero_likes() {
+    fn select_image_zero_likes() {
         let posters = vec![
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "0".into() },
         ];
-        let result = FanartClient::select_poster(&posters, "en", false);
+        let result = FanartClient::select_image(&posters, "en", false);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "1");
     }

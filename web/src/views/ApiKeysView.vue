@@ -212,6 +212,8 @@ async function deleteKey(id: number) {
             :save-settings="makeSaveSettings(key.id)"
             :reset-settings="makeResetSettings(key.id)"
             :fetch-preview="adminApi.previewPoster"
+            :fetch-logo-preview="adminApi.previewLogo"
+            :fetch-backdrop-preview="adminApi.previewBackdrop"
           />
         </div>
       </div>

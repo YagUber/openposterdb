@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
-import { Save, Loader2, Check } from 'lucide-vue-next'
+import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { Loader2, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -32,6 +32,8 @@ const props = defineProps<{
   saveSettings: (s: { poster_source: string; fanart_lang: string; fanart_textless: boolean; ratings_limit: number; ratings_order: string }) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
   fetchPreview: (ratingsLimit: number, ratingsOrder: string) => Promise<Response>
+  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string) => Promise<Response>
 }>()
 
 const editSource = ref(props.settings.poster_source)
@@ -67,15 +69,17 @@ function getRatingSource(key: string) {
 }
 
 watch(() => props.settings, (s) => {
+  syncing = true
   currentSettings.value = s
   editSource.value = s.poster_source
   editLang.value = s.fanart_lang
   editTextless.value = s.fanart_textless
   editRatingsLimit.value = s.ratings_limit
   editRatingsOrder.value = parseOrder(s.ratings_order)
+  nextTick(() => { syncing = false })
 })
 
-async function handleSave() {
+async function autoSave() {
   if (saving.value) return
   saving.value = true
   error.value = ''
@@ -95,11 +99,6 @@ async function handleSave() {
       const updated = await props.loadSettings()
       if (updated) {
         currentSettings.value = updated
-        editSource.value = updated.poster_source
-        editLang.value = updated.fanart_lang
-        editTextless.value = updated.fanart_textless
-        editRatingsLimit.value = updated.ratings_limit
-        editRatingsOrder.value = parseOrder(updated.ratings_order)
       }
       showCheck.value = true
       checkTimeout = setTimeout(() => (showCheck.value = false), 1500)
@@ -110,6 +109,19 @@ async function handleSave() {
     saving.value = false
   }
 }
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+// Auto-save on any setting change (debounced)
+watch(
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder],
+  () => {
+    if (syncing) return
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(autoSave, 600)
+  },
+  { deep: true },
+)
 
 async function handleReset() {
   if (!props.resetSettings) return
@@ -141,61 +153,91 @@ async function handleReset() {
   }
 }
 
-const previewSrc = ref('')
-const previewLoading = ref(false)
-const previewError = ref(false)
-const previewSize = ref<{ w: number; h: number } | null>(null)
-let previewTimer: ReturnType<typeof setTimeout> | null = null
-let previewGeneration = 0
-
-function onPreviewLoad(e: Event) {
-  const img = e.target as HTMLImageElement
-  if (img.naturalWidth && img.naturalHeight) {
-    previewSize.value = { w: img.naturalWidth, h: img.naturalHeight }
-  }
-  previewLoading.value = false
-  previewError.value = false
+// --- Preview state for poster, logo, backdrop ---
+interface PreviewState {
+  src: string
+  loading: boolean
+  error: boolean
+  size: { w: number; h: number } | null
+  generation: number
 }
 
-async function updatePreview() {
-  previewLoading.value = true
-  previewError.value = false
-  const generation = ++previewGeneration
+function makePreviewState(): PreviewState {
+  return { src: '', loading: false, error: false, size: null, generation: 0 }
+}
+
+const posterPreview = ref<PreviewState>(makePreviewState())
+const logoPreview = ref<PreviewState>(makePreviewState())
+const backdropPreview = ref<PreviewState>(makePreviewState())
+
+function onPreviewLoad(state: PreviewState, e: Event) {
+  const img = e.target as HTMLImageElement
+  if (img.naturalWidth && img.naturalHeight) {
+    state.size = { w: img.naturalWidth, h: img.naturalHeight }
+  }
+  state.loading = false
+  state.error = false
+}
+
+async function fetchPreviewImage(
+  state: PreviewState,
+  fetcher: (ratingsLimit: number, ratingsOrder: string) => Promise<Response>,
+) {
+  state.loading = true
+  state.error = false
+  const generation = ++state.generation
 
   try {
-    const res = await props.fetchPreview(editRatingsLimit.value, editRatingsOrder.value.join(','))
-    if (generation !== previewGeneration) return // stale response
+    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','))
+    if (generation !== state.generation) return
     if (!res.ok) {
-      previewError.value = true
-      previewLoading.value = false
+      state.error = true
+      state.loading = false
       return
     }
     const blob = await res.blob()
-    if (generation !== previewGeneration) return
-    if (previewSrc.value) URL.revokeObjectURL(previewSrc.value)
-    previewSrc.value = URL.createObjectURL(blob)
+    if (generation !== state.generation) return
+    if (state.src) URL.revokeObjectURL(state.src)
+    state.src = URL.createObjectURL(blob)
   } catch {
-    if (generation === previewGeneration) {
-      previewError.value = true
-      previewLoading.value = false
+    if (generation === state.generation) {
+      state.error = true
+      state.loading = false
     }
+  }
+}
+
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function updateAllPreviews() {
+  fetchPreviewImage(posterPreview.value, props.fetchPreview)
+  if (props.fetchLogoPreview) {
+    fetchPreviewImage(logoPreview.value, props.fetchLogoPreview)
+  }
+  if (props.fetchBackdropPreview) {
+    fetchPreviewImage(backdropPreview.value, props.fetchBackdropPreview)
   }
 }
 
 // Debounced watcher on rating settings
 watch([editRatingsLimit, editRatingsOrder], () => {
+  if (syncing) return
   if (previewTimer) clearTimeout(previewTimer)
-  previewTimer = setTimeout(updatePreview, 500)
+  previewTimer = setTimeout(updateAllPreviews, 500)
 }, { deep: true })
 
 // Initial preview on mount
-updatePreview()
+updateAllPreviews()
 
 onBeforeUnmount(() => {
   if (previewTimer) clearTimeout(previewTimer)
-  if (previewSrc.value) URL.revokeObjectURL(previewSrc.value)
+  if (saveTimer) clearTimeout(saveTimer)
+  if (posterPreview.value.src) URL.revokeObjectURL(posterPreview.value.src)
+  if (logoPreview.value.src) URL.revokeObjectURL(logoPreview.value.src)
+  if (backdropPreview.value.src) URL.revokeObjectURL(backdropPreview.value.src)
 })
 
+let syncing = false
 const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
 </script>
 
@@ -303,43 +345,67 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
 
     <div class="space-y-2 pt-2">
       <h3 class="text-sm font-semibold">Preview</h3>
-      <div class="relative max-w-[250px]" :style="previewSize ? { aspectRatio: `${previewSize.w} / ${previewSize.h}` } : undefined">
-        <img
-          v-show="previewSrc && !previewError"
-          :src="previewSrc"
-          alt="Poster preview"
-          class="rounded border w-full"
-          @load="onPreviewLoad"
-          @error="previewLoading = false; previewError = true"
-        />
-        <p v-if="previewError && !previewLoading" class="text-sm text-muted-foreground py-4">Failed to load preview</p>
-        <div
-          v-if="previewLoading"
-          class="absolute inset-0 flex items-center justify-center rounded"
-        >
-          <Loader2 class="size-6 animate-spin text-white drop-shadow-md" />
+      <div class="flex gap-4 items-start flex-wrap">
+        <!-- Poster preview -->
+        <div class="space-y-1">
+          <p class="text-xs text-muted-foreground">Poster</p>
+          <div class="relative w-[170px]" :style="posterPreview.size ? { aspectRatio: `${posterPreview.size.w} / ${posterPreview.size.h}` } : undefined">
+            <img
+              v-show="posterPreview.src && !posterPreview.error"
+              :src="posterPreview.src"
+              alt="Poster preview"
+              class="rounded border w-full"
+              @load="(e: Event) => onPreviewLoad(posterPreview, e)"
+              @error="posterPreview.loading = false; posterPreview.error = true"
+            />
+            <p v-if="posterPreview.error && !posterPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+            <div v-if="posterPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Logo preview -->
+        <div v-if="fetchLogoPreview" class="space-y-1">
+          <p class="text-xs text-muted-foreground">Logo</p>
+          <div class="relative w-[170px]" :style="logoPreview.size ? { aspectRatio: `${logoPreview.size.w} / ${logoPreview.size.h}` } : undefined">
+            <img
+              v-show="logoPreview.src && !logoPreview.error"
+              :src="logoPreview.src"
+              alt="Logo preview"
+              class="rounded border w-full bg-neutral-900"
+              @load="(e: Event) => onPreviewLoad(logoPreview, e)"
+              @error="logoPreview.loading = false; logoPreview.error = true"
+            />
+            <p v-if="logoPreview.error && !logoPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+            <div v-if="logoPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Backdrop preview -->
+        <div v-if="fetchBackdropPreview" class="space-y-1">
+          <p class="text-xs text-muted-foreground">Backdrop</p>
+          <div class="relative w-[280px]" :style="backdropPreview.size ? { aspectRatio: `${backdropPreview.size.w} / ${backdropPreview.size.h}` } : undefined">
+            <img
+              v-show="backdropPreview.src && !backdropPreview.error"
+              :src="backdropPreview.src"
+              alt="Backdrop preview"
+              class="rounded border w-full"
+              @load="(e: Event) => onPreviewLoad(backdropPreview, e)"
+              @error="backdropPreview.loading = false; backdropPreview.error = true"
+            />
+            <p v-if="backdropPreview.error && !backdropPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+            <div v-if="backdropPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-3 pt-1">
-      <Button size="sm" :disabled="saving" @click="handleSave">
-        <span class="relative size-4">
-          <Transition
-            enter-active-class="transition duration-200 ease-out"
-            enter-from-class="opacity-0 scale-50"
-            enter-to-class="opacity-100 scale-100"
-            leave-active-class="transition duration-150 ease-in"
-            leave-from-class="opacity-100 scale-100"
-            leave-to-class="opacity-0 scale-50"
-          >
-            <Check v-if="showCheck" class="absolute inset-0 size-4 text-green-500" />
-            <Loader2 v-else-if="saving" class="absolute inset-0 size-4 animate-spin" />
-            <Save v-else class="absolute inset-0 size-4" />
-          </Transition>
-        </span>
-        Save
-      </Button>
+    <div class="flex items-center gap-3 pt-1 min-h-[32px]">
       <Button
         v-if="resetSettings && !currentSettings.is_default"
         variant="outline"
@@ -349,6 +415,23 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
       >
         Reset to defaults
       </Button>
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <span v-if="saving" class="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Loader2 class="size-4 animate-spin" />
+          Saving...
+        </span>
+        <span v-else-if="showCheck" class="flex items-center gap-1.5 text-sm text-green-500">
+          <Check class="size-4" />
+          Saved
+        </span>
+      </Transition>
       <span v-if="error" class="text-sm text-destructive">{{ error }}</span>
     </div>
   </div>

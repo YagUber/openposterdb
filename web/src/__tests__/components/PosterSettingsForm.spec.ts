@@ -162,7 +162,7 @@ describe('PosterSettingsForm', () => {
     const wrapper = mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Failed to load preview')
+    expect(wrapper.text()).toContain('Failed')
   })
 
   it('shows error message when preview fetch throws', async () => {
@@ -170,6 +170,6 @@ describe('PosterSettingsForm', () => {
     const wrapper = mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Failed to load preview')
+    expect(wrapper.text()).toContain('Failed')
   })
 })

@@ -186,8 +186,7 @@ pub struct UpdateGlobalSettingsRequest {
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
-    #[serde(default)]
-    pub free_api_key_enabled: bool,
+    pub free_api_key_enabled: Option<bool>,
 }
 
 pub async fn update_settings(
@@ -199,24 +198,26 @@ pub async fn update_settings(
     validate_ratings_limit(req.ratings_limit)?;
     validate_ratings_order(&req.ratings_order)?;
     let textless_str = if req.fanart_textless { "true" } else { "false" };
-    let free_key_str = if req.free_api_key_enabled { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
-    db::set_global_settings_batch(
-        &state.db,
-        &[
-            ("poster_source", &req.poster_source),
-            ("fanart_lang", &req.fanart_lang),
-            ("fanart_textless", textless_str),
-            ("ratings_limit", &limit_str),
-            ("ratings_order", &req.ratings_order),
-            ("free_api_key_enabled", free_key_str),
-        ],
-    )
-    .await?;
+    let mut batch: Vec<(&str, &str)> = vec![
+        ("poster_source", &req.poster_source),
+        ("fanart_lang", &req.fanart_lang),
+        ("fanart_textless", textless_str),
+        ("ratings_limit", &limit_str),
+        ("ratings_order", &req.ratings_order),
+    ];
+    let free_key_str;
+    if let Some(enabled) = req.free_api_key_enabled {
+        free_key_str = if enabled { "true" } else { "false" };
+        batch.push(("free_api_key_enabled", free_key_str));
+    }
+    db::set_global_settings_batch(&state.db, &batch).await?;
     // Invalidate caches (preview_cache needs no invalidation — keys encode the config)
     state.global_settings_cache.invalidate(&()).await;
     state.settings_cache.invalidate_all();
-    state.free_api_key_cache.invalidate(&()).await;
+    if req.free_api_key_enabled.is_some() {
+        state.free_api_key_cache.invalidate(&()).await;
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

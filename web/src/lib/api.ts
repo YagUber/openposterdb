@@ -75,16 +75,20 @@ export const adminApi = {
   getSettings: (): Promise<Response> => get('/api/admin/settings'),
   updateSettings: (settings: {
     poster_source: string
-    fanart_lang: string
-    fanart_textless: boolean
-    ratings_limit: number
-    ratings_order: string
+    fanart_lang?: string
+    fanart_textless?: boolean
+    ratings_limit?: number
+    ratings_order?: string
     free_api_key_enabled?: boolean
   }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),
   previewPoster: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
     get(`/api/admin/preview/poster?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewLogo: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
+    get(`/api/admin/preview/logo?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewBackdrop: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
+    get(`/api/admin/preview/backdrop?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
 }
 
 // --- Self-service API (API key session JWT auth) ---
@@ -124,6 +128,10 @@ export const selfApi = {
     keyRequest('/api/key/me/settings', { method: 'DELETE' }),
   previewPoster: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
     keyRequest(`/api/key/me/preview/poster?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewLogo: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
+    keyRequest(`/api/key/me/preview/logo?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewBackdrop: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
+    keyRequest(`/api/key/me/preview/backdrop?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
 }
 
 export const keysApi = {

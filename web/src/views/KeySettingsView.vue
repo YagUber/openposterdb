@@ -99,6 +99,8 @@ function handleLogout() {
           :save-settings="saveSettings"
           :reset-settings="resetSettings"
           :fetch-preview="selfApi.previewPoster"
+          :fetch-logo-preview="selfApi.previewLogo"
+          :fetch-backdrop-preview="selfApi.previewBackdrop"
         />
       </div>
     </div>

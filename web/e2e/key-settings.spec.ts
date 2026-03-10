@@ -1,21 +1,24 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('key settings (self-service)', () => {
+  /** Ensure admin exists and return an admin JWT token. */
+  async function ensureAdmin(request: any): Promise<string> {
+    await request.post('/api/auth/setup', {
+      data: { username: 'admin', password: 'testpassword123' },
+    })
+    const loginRes = await request.post('/api/auth/login', {
+      data: { username: 'admin', password: 'testpassword123' },
+    })
+    const { token } = await loginRes.json()
+    return token
+  }
+
   /** Create admin + API key, login with key via UI. */
   async function loginWithApiKey(
     page: any,
     request: any,
   ): Promise<string> {
-    // Ensure admin exists
-    await request.post('/api/auth/setup', {
-      data: { username: 'admin', password: 'testpassword123' },
-    })
-
-    // Login as admin to create key
-    const loginRes = await request.post('/api/auth/login', {
-      data: { username: 'admin', password: 'testpassword123' },
-    })
-    const { token } = await loginRes.json()
+    const token = await ensureAdmin(request)
 
     const keyRes = await request.post('/api/keys', {
       headers: { Authorization: `Bearer ${token}` },
@@ -35,6 +38,16 @@ test.describe('key settings (self-service)', () => {
   }
 
   test('displays settings form with defaults', async ({ page, request }) => {
+    // Ensure global settings are at a known state (other tests may change them)
+    const adminToken = await ensureAdmin(request)
+    await request.put('/api/admin/settings', {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { poster_source: 'tmdb' },
+    })
+
     await loginWithApiKey(page, request)
 
     await expect(page.locator('h1')).toContainText('Poster Settings')
@@ -46,17 +59,27 @@ test.describe('key settings (self-service)', () => {
     await expect(select).toHaveValue('tmdb')
   })
 
-  test('save settings shows confirmation', async ({ page, request }) => {
+  test('auto-saves and shows confirmation', async ({ page, request }) => {
     await loginWithApiKey(page, request)
 
-    const saveButton = page.locator('button:has-text("Save")')
-    await expect(saveButton).toBeVisible()
+    // Change a setting to trigger auto-save
+    await page.locator('select').selectOption('fanart')
 
-    await saveButton.click()
-    await expect(page.locator('button:has-text("Save") .text-green-500')).toBeVisible()
+    // Wait for auto-save confirmation
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
   })
 
   test('fanart options appear when fanart is selected', async ({ page, request }) => {
+    // Ensure global source is "tmdb" so fanart options start hidden
+    const adminToken = await ensureAdmin(request)
+    await request.put('/api/admin/settings', {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { poster_source: 'tmdb' },
+    })
+
     await loginWithApiKey(page, request)
 
     // Language should not be visible initially
@@ -70,16 +93,14 @@ test.describe('key settings (self-service)', () => {
     await expect(page.locator('label:has-text("Prefer textless")')).toBeVisible()
   })
 
-  test('settings persist after save and reload', async ({ page, request }) => {
+  test('settings persist after auto-save and reload', async ({ page, request }) => {
     await loginWithApiKey(page, request)
 
     // Change to fanart
     await page.locator('select').selectOption('fanart')
-    await page.locator('input[placeholder="en"]').fill('de')
 
-    // Save
-    await page.locator('button:has-text("Save")').click()
-    await expect(page.locator('button:has-text("Save") .text-green-500')).toBeVisible()
+    // Wait for auto-save confirmation
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     // Reload
     await page.reload()
@@ -106,16 +127,26 @@ test.describe('key settings (self-service)', () => {
   })
 
   test('reset to defaults works', async ({ page, request }) => {
+    // Ensure global settings are at a known state before testing reset.
+    // Other tests (e.g. settings.spec.ts) may change global poster_source,
+    // which would make the post-reset value unpredictable.
+    const adminToken = await ensureAdmin(request)
+    await request.put('/api/admin/settings', {
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      data: { poster_source: 'tmdb' },
+    })
+
     await loginWithApiKey(page, request)
 
-    // Note the current (default) poster source
-    const defaultSource = await page.locator('select').inputValue()
+    // Global is now "tmdb", key has no overrides → should show "tmdb"
+    await expect(page.locator('select')).toHaveValue('tmdb')
 
-    // Change to something different
-    const altSource = defaultSource === 'tmdb' ? 'fanart' : 'tmdb'
-    await page.locator('select').selectOption(altSource)
-    await page.locator('button:has-text("Save")').click()
-    await expect(page.locator('button:has-text("Save") .text-green-500')).toBeVisible()
+    // Change to fanart — auto-save triggers
+    await page.locator('select').selectOption('fanart')
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     // Wait for "Using defaults" badge to disappear (confirms custom settings saved)
     await expect(page.locator('text=Using defaults')).not.toBeVisible()
@@ -123,8 +154,8 @@ test.describe('key settings (self-service)', () => {
     // Reset to defaults
     await page.locator('button:has-text("Reset to defaults")').click()
 
-    // Should be back to defaults
+    // Should be back to global default ("tmdb")
     await expect(page.locator('text=Using defaults')).toBeVisible({ timeout: 10000 })
-    await expect(page.locator('select')).toHaveValue(defaultSource)
+    await expect(page.locator('select')).toHaveValue('tmdb')
   })
 })

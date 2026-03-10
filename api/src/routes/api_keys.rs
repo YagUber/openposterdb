@@ -23,6 +23,8 @@ pub fn api_key_self_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/key/me", get(handlers::api_keys::get_own_key_info))
         .route("/api/key/me/preview/poster", get(handlers::preview::preview_poster))
+        .route("/api/key/me/preview/logo", get(handlers::preview::preview_logo))
+        .route("/api/key/me/preview/backdrop", get(handlers::preview::preview_backdrop))
         .route(
             "/api/key/me/settings",
             get(handlers::api_keys::get_own_settings)

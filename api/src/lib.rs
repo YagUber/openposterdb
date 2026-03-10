@@ -27,7 +27,7 @@ use cache::MemCacheEntry;
 use config::Config;
 use id::ResolvedId;
 use services::db::PosterSettings;
-use services::fanart::{FanartClient, FanartPoster};
+use services::fanart::{FanartClient, FanartImages};
 use services::mdblist::MdblistClient;
 use services::omdb::OmdbClient;
 use services::ratings::RatingBadge;
@@ -52,7 +52,7 @@ pub struct AppState {
     pub poster_mem_cache: moka::future::Cache<String, MemCacheEntry>,
     pub pending_last_used: Arc<DashMap<i32, ()>>,
     pub fanart: Option<FanartClient>,
-    pub fanart_cache: moka::future::Cache<String, Arc<Vec<FanartPoster>>>,
+    pub fanart_cache: moka::future::Cache<String, Arc<FanartImages>>,
     /// Tracks negative fanart results — e.g. "movie:123:textless" means no textless poster exists.
     /// Entries expire after the same TTL as fanart_cache so we recheck periodically.
     pub fanart_negative: moka::future::Cache<String, ()>,
@@ -255,10 +255,19 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .layer(CompressionLayer::new());
 
     let poster_route = {
-        let router = Router::new().route(
-            "/{api_key}/{id_type}/poster-default/{id_value}",
-            axum::routing::get(routes::poster::handler),
-        );
+        let router = Router::new()
+            .route(
+                "/{api_key}/{id_type}/poster-default/{id_value}",
+                axum::routing::get(routes::poster::handler),
+            )
+            .route(
+                "/{api_key}/{id_type}/logo-default/{id_value}",
+                axum::routing::get(routes::poster::logo_handler),
+            )
+            .route(
+                "/{api_key}/{id_type}/backdrop-default/{id_value}",
+                axum::routing::get(routes::poster::backdrop_handler),
+            );
 
         #[cfg(not(any(test, feature = "test-support")))]
         let router = {

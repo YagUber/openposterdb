@@ -8,6 +8,8 @@ const mockAdminApi = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
   previewPoster: vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) }),
+  previewLogo: vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) }),
+  previewBackdrop: vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) }),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -120,40 +122,45 @@ describe('SettingsView', () => {
     expect(fanartOption.text()).toContain('no API key')
   })
 
-  it('calls updateSettings on save', async () => {
+  it('auto-saves when settings change', async () => {
+    vi.useFakeTimers()
     mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
 
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    // Change poster source to trigger auto-save
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        poster_source: 'tmdb',
+        poster_source: 'fanart',
         fanart_lang: 'en',
         fanart_textless: false,
-        ratings_limit: 3,
       }),
     )
+    vi.useRealTimers()
   })
 
-  it('shows success check icon after save', async () => {
+  it('shows saved indicator after auto-save', async () => {
+    vi.useFakeTimers()
     mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
 
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(wrapper.find('.text-green-500').exists()).toBe(true)
+    vi.useRealTimers()
   })
 
-  it('shows error message on save failure', async () => {
+  it('shows error message on auto-save failure', async () => {
+    vi.useFakeTimers()
     mockAdminApi.updateSettings.mockResolvedValue({
       ok: false,
       json: () => Promise.resolve({ error: 'Invalid language' }),
@@ -162,14 +169,16 @@ describe('SettingsView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Invalid language')
+    vi.useRealTimers()
   })
 
-  it('includes ratings fields in save payload', async () => {
+  it('includes ratings fields in auto-save payload', async () => {
+    vi.useFakeTimers()
     mockAdminApi.getSettings.mockResolvedValue({
       ok: true,
       json: () =>
@@ -184,8 +193,9 @@ describe('SettingsView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    // Change something to trigger auto-save
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
@@ -194,19 +204,22 @@ describe('SettingsView', () => {
         ratings_order: expect.stringContaining('mal'),
       }),
     )
+    vi.useRealTimers()
   })
 
   it('shows generic error on network failure', async () => {
+    vi.useFakeTimers()
     mockAdminApi.updateSettings.mockRejectedValue(new Error('Network error'))
 
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(wrapper.text()).toContain('Failed to save')
+    vi.useRealTimers()
   })
 
   // --- Free API Key toggle ---
@@ -264,7 +277,8 @@ describe('SettingsView', () => {
     )
   })
 
-  it('save includes current free_api_key_enabled value', async () => {
+  it('auto-save does not include free_api_key_enabled', async () => {
+    vi.useFakeTimers()
     mockAdminApi.getSettings.mockResolvedValue({
       ok: true,
       json: () =>
@@ -278,14 +292,16 @@ describe('SettingsView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
-    await saveBtn.trigger('click')
+    // Change something to trigger auto-save
+    await wrapper.find('select').setValue('fanart')
+    vi.advanceTimersByTime(700)
     await flushPromises()
 
     expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        free_api_key_enabled: true,
+      expect.not.objectContaining({
+        free_api_key_enabled: expect.anything(),
       }),
     )
+    vi.useRealTimers()
   })
 })

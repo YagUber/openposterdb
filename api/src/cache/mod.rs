@@ -22,11 +22,18 @@ fn is_safe_path_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && !s.contains('/') && !s.contains('\\') && !s.contains('\0')
 }
 
-pub fn cache_path(cache_dir: &str, id_type: &str, id_value: &str) -> Result<PathBuf, AppError> {
+pub fn cache_path_ext(cache_dir: &str, id_type: &str, id_value: &str, ext: &str) -> Result<PathBuf, AppError> {
     if !is_safe_path_component(id_value) {
         return Err(AppError::BadRequest("invalid id value".into()));
     }
-    Ok(Path::new(cache_dir).join(id_type).join(format!("{id_value}.jpg")))
+    if !is_safe_path_component(ext) {
+        return Err(AppError::BadRequest("invalid file extension".into()));
+    }
+    Ok(Path::new(cache_dir).join(id_type).join(format!("{id_value}.{ext}")))
+}
+
+pub fn cache_path(cache_dir: &str, id_type: &str, id_value: &str) -> Result<PathBuf, AppError> {
+    cache_path_ext(cache_dir, id_type, id_value, "jpg")
 }
 
 pub fn poster_cache_path(cache_dir: &str, poster_path: &str) -> Result<PathBuf, AppError> {
@@ -247,6 +254,28 @@ mod tests {
         assert!(cache_path("/tmp/cache", "imdb", "").is_err());
         assert!(cache_path("/tmp/cache", "imdb", "foo/bar").is_err());
         assert!(cache_path("/tmp/cache", "imdb", "foo\\bar").is_err());
+    }
+
+    #[test]
+    fn cache_path_ext_valid() {
+        let p = cache_path_ext("/tmp/cache", "imdb", "tt1234567", "png").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/imdb/tt1234567.png"));
+    }
+
+    #[test]
+    fn cache_path_ext_rejects_traversal_in_ext() {
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "../etc/passwd").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "..").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", ".").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "a/b").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "a\\b").is_err());
+    }
+
+    #[test]
+    fn cache_path_ext_rejects_traversal_in_id() {
+        assert!(cache_path_ext("/tmp/cache", "imdb", "..", "png").is_err());
+        assert!(cache_path_ext("/tmp/cache", "imdb", "foo/bar", "png").is_err());
     }
 
     #[test]

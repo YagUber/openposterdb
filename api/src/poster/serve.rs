@@ -9,9 +9,67 @@ use crate::error::AppError;
 use crate::id::{self, IdType, MediaType};
 use crate::poster::generate;
 use crate::services::db::PosterSettings;
-use crate::services::fanart::{FanartClient, PosterMatch};
+use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::ratings;
 use crate::AppState;
+
+/// Which kind of image to select from the unified fanart cache.
+#[derive(Debug, Clone, Copy)]
+pub enum ImageKind {
+    Poster,
+    Logo,
+    Backdrop,
+}
+
+/// Logo or backdrop — the subset of [`ImageKind`] served exclusively via fanart.tv.
+/// Posters are excluded because they use a separate code path (`handle_inner`) with
+/// TMDB fallback, staleness checks, and background refresh that these endpoints don't need.
+#[derive(Debug, Clone, Copy)]
+pub enum FanartImageKind {
+    Logo,
+    Backdrop,
+}
+
+impl From<FanartImageKind> for ImageKind {
+    fn from(k: FanartImageKind) -> Self {
+        match k {
+            FanartImageKind::Logo => ImageKind::Logo,
+            FanartImageKind::Backdrop => ImageKind::Backdrop,
+        }
+    }
+}
+
+impl ImageKind {
+    fn kind_prefix(self) -> &'static str {
+        match self {
+            ImageKind::Poster => "",
+            ImageKind::Logo => ":logo",
+            ImageKind::Backdrop => ":backdrop",
+        }
+    }
+
+    fn file_ext(self) -> &'static str {
+        match self {
+            ImageKind::Poster | ImageKind::Backdrop => "jpg",
+            ImageKind::Logo => "png",
+        }
+    }
+
+    fn strip_ext(self, s: &str) -> &str {
+        match self {
+            ImageKind::Poster | ImageKind::Backdrop => s.strip_suffix(".jpg").unwrap_or(s),
+            ImageKind::Logo => s.strip_suffix(".png").unwrap_or(s),
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ImageKind::Poster => "poster",
+            ImageKind::Logo => "logo",
+            ImageKind::Backdrop => "backdrop",
+        }
+    }
+}
 
 pub async fn handle_inner(
     state: &AppState,
@@ -383,13 +441,14 @@ async fn generate_poster_with_source(
     // Try to fetch poster bytes from fanart.tv if configured
     let fanart_result = if settings.poster_source == "fanart" {
         if let Some(ref fanart) = state.fanart {
-            fetch_fanart_poster(
+            fetch_fanart_image(
                 fanart,
                 &state.tmdb,
                 &state.fanart_cache,
                 &resolved,
                 &settings.fanart_lang,
                 settings.fanart_textless,
+                ImageKind::Poster,
             )
             .await
         } else {
@@ -446,61 +505,79 @@ async fn resolve_tvdb_id(
     ext.ok().and_then(|e| e.external_ids).and_then(|e| e.tvdb_id)
 }
 
-async fn fetch_fanart_poster(
+/// Fetch all fanart images (cached) and return the appropriate list for the given kind.
+async fn fetch_fanart_images(
     fanart: &FanartClient,
     tmdb: &crate::services::tmdb::TmdbClient,
-    cache: &moka::future::Cache<String, Arc<Vec<crate::services::fanart::FanartPoster>>>,
+    cache: &moka::future::Cache<String, Arc<FanartImages>>,
     resolved: &id::ResolvedId,
-    lang: &str,
-    textless: bool,
-) -> Option<FanartResult> {
-    let (cache_key, posters_result) = match resolved.media_type {
+) -> Option<Arc<FanartImages>> {
+    let (cache_key, images_result) = match resolved.media_type {
         MediaType::Movie => {
             let key = format!("movie:{}", resolved.tmdb_id);
             let fanart = fanart.clone();
             let tmdb_id = resolved.tmdb_id;
-            let posters = cache
+            let images = cache
                 .try_get_with(key.clone(), async move {
-                    let p = fanart.get_movie_posters(tmdb_id).await?;
-                    Ok::<_, AppError>(Arc::new(p))
+                    let imgs = fanart.get_movie_images(tmdb_id).await?;
+                    Ok::<_, AppError>(Arc::new(imgs))
                 })
                 .await;
-            (key, posters)
+            (key, images)
         }
         MediaType::Tv => {
-            // Fanart.tv accepts TVDB, TMDB, or IMDb IDs for TV — prefer TVDB, fall back to TMDB.
-            // Lazily resolve TVDB ID only when fanart is actually needed.
             let tv_id = match resolved.tvdb_id {
                 Some(id) => id,
                 None => resolve_tvdb_id(tmdb, resolved.tmdb_id).await.unwrap_or(resolved.tmdb_id),
             };
             let key = format!("tv:{tv_id}");
             let fanart = fanart.clone();
-            let posters = cache
+            let images = cache
                 .try_get_with(key.clone(), async move {
-                    let p = fanart.get_tv_posters(tv_id).await?;
-                    Ok::<_, AppError>(Arc::new(p))
+                    let imgs = fanart.get_tv_images(tv_id).await?;
+                    Ok::<_, AppError>(Arc::new(imgs))
                 })
                 .await;
-            (key, posters)
+            (key, images)
         }
     };
 
-    let posters = match posters_result {
-        Ok(p) => p,
+    match images_result {
+        Ok(imgs) => Some(imgs),
         Err(e) => {
-            tracing::warn!(error = %e, key = %cache_key, "failed to fetch fanart posters");
-            return None;
+            tracing::warn!(error = %e, key = %cache_key, "failed to fetch fanart images");
+            None
         }
-    };
+    }
+}
 
-    let (selected, match_tier) = FanartClient::select_poster(posters.as_ref(), lang, textless)?;
+fn select_images_for_kind(images: &FanartImages, kind: ImageKind) -> &[FanartPoster] {
+    match kind {
+        ImageKind::Poster => &images.posters,
+        ImageKind::Logo => &images.logos,
+        ImageKind::Backdrop => &images.backdrops,
+    }
+}
+
+async fn fetch_fanart_image(
+    fanart: &FanartClient,
+    tmdb: &crate::services::tmdb::TmdbClient,
+    cache: &moka::future::Cache<String, Arc<FanartImages>>,
+    resolved: &id::ResolvedId,
+    lang: &str,
+    textless: bool,
+    kind: ImageKind,
+) -> Option<FanartResult> {
+    let images = fetch_fanart_images(fanart, tmdb, cache, resolved).await?;
+    let candidates = select_images_for_kind(&images, kind);
+
+    let (selected, match_tier) = FanartClient::select_image(candidates, lang, textless)?;
     let url = selected.url.clone();
 
     match fanart.fetch_poster_bytes(&url).await {
         Ok(bytes) => Some(FanartResult { bytes, match_tier }),
         Err(e) => {
-            tracing::warn!(error = %e, url = %url, "failed to download fanart poster");
+            tracing::warn!(error = %e, url = %url, "failed to download fanart image");
             None
         }
     }
@@ -518,4 +595,180 @@ pub fn jpeg_response(bytes: Bytes) -> Response {
         bytes,
     )
         .into_response()
+}
+
+pub fn png_response(bytes: Bytes) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=3600, stale-while-revalidate=86400",
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
+}
+
+/// Serve a fanart-only image (logo or backdrop). Handles caching and negative-cache lookups.
+pub async fn handle_fanart_image_inner(
+    state: &AppState,
+    id_type_str: &str,
+    id_value_raw: &str,
+    settings: &PosterSettings,
+    fanart_kind: FanartImageKind,
+) -> Result<Bytes, AppError> {
+    let fanart = state
+        .fanart
+        .as_ref()
+        .ok_or_else(|| AppError::Other("FANART_API_KEY not configured".into()))?;
+
+    let kind: ImageKind = fanart_kind.into();
+    let id_type = IdType::parse(id_type_str)?;
+    let id_value = kind.strip_ext(id_value_raw);
+    let kind_prefix = kind.kind_prefix();
+    let label = kind.label();
+    let ext = kind.file_ext();
+
+    let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
+
+    // Backdrops are language-agnostic (no text) — skip lang/textless entirely.
+    // Logos ARE the text — textless makes no sense, only lang matters.
+    let fanart_lang = match kind {
+        ImageKind::Backdrop => "",
+        _ => settings.fanart_lang.as_str(),
+    };
+    let fanart_textless = matches!(kind, ImageKind::Poster) && settings.fanart_textless;
+
+    // Check negative cache — skip generation if we already know there's nothing
+    let neg_textless_key = format!("{id_type_str}/{id_value}{kind_prefix}:fanart:textless:neg");
+    let textless_known_missing = fanart_textless
+        && state.fanart_negative.get(&neg_textless_key).await.is_some();
+
+    let neg_lang_key = format!("{id_type_str}/{id_value}{kind_prefix}:fanart:{}:neg", fanart_lang);
+    let lang_known_missing = state.fanart_negative.get(&neg_lang_key).await.is_some();
+
+    if lang_known_missing && (!fanart_textless || textless_known_missing) {
+        return Err(AppError::Other(format!("no {label} available").into()));
+    }
+
+    let variant = match kind {
+        ImageKind::Backdrop => kind_prefix.to_string(),
+        ImageKind::Logo => format!("{kind_prefix}:fanart:{fanart_lang}"),
+        ImageKind::Poster => format!("{kind_prefix}:fanart:{fanart_lang}{}", if fanart_textless { ":textless" } else { "" }),
+    };
+    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
+    let path_variant = variant.replace(':', "_");
+    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
+    let cache_path = cache::cache_path_ext(&state.config.cache_dir, id_type_str, &cache_path_base, ext)?;
+
+    // Check in-memory cache
+    if let Some(entry) = state.poster_mem_cache.get(&cache_key).await {
+        return Ok(entry.bytes.clone());
+    }
+
+    // Check filesystem cache
+    if let Some(entry) = cache::read(&cache_path, 0).await {
+        let bytes: Bytes = entry.bytes.into();
+        state
+            .poster_mem_cache
+            .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
+            .await;
+        return Ok(bytes);
+    }
+
+    // Generate: resolve ID, fetch ratings, fetch image from fanart
+    let resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
+
+    let badges = ratings::fetch_ratings(
+        &resolved,
+        &state.tmdb,
+        state.omdb.as_ref(),
+        state.mdblist.as_ref(),
+        &state.ratings_cache,
+    )
+    .await;
+    let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, settings.ratings_limit);
+
+    let fanart_result = fetch_fanart_image(
+        fanart,
+        &state.tmdb,
+        &state.fanart_cache,
+        &resolved,
+        fanart_lang,
+        fanart_textless,
+        kind,
+    )
+    .await;
+
+    let image_bytes = match fanart_result {
+        Some(r) => {
+            // Record negative for textless if we only got a language match
+            if fanart_textless && r.match_tier == PosterMatch::Language {
+                state.fanart_negative.insert(neg_textless_key, ()).await;
+            }
+            r.bytes
+        }
+        None => {
+            // No match at all — record negatives so we don't re-query
+            if fanart_textless {
+                state.fanart_negative.insert(neg_textless_key, ()).await;
+            }
+            state.fanart_negative.insert(neg_lang_key, ()).await;
+            return Err(AppError::Other(format!("no {label} available").into()));
+        }
+    };
+
+    let bytes = match fanart_kind {
+        FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state.font.clone()).await?,
+        FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state.font.clone(), state.config.poster_quality).await?,
+    };
+
+    let _ = cache::write(&cache_path, &bytes).await;
+    let bytes = Bytes::from(bytes);
+    state
+        .poster_mem_cache
+        .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
+        .await;
+    Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_kind_prefix() {
+        assert_eq!(ImageKind::Poster.kind_prefix(), "");
+        assert_eq!(ImageKind::Logo.kind_prefix(), ":logo");
+        assert_eq!(ImageKind::Backdrop.kind_prefix(), ":backdrop");
+    }
+
+    #[test]
+    fn image_kind_file_ext() {
+        assert_eq!(ImageKind::Poster.file_ext(), "jpg");
+        assert_eq!(ImageKind::Logo.file_ext(), "png");
+        assert_eq!(ImageKind::Backdrop.file_ext(), "jpg");
+    }
+
+    #[test]
+    fn image_kind_strip_ext() {
+        assert_eq!(ImageKind::Poster.strip_ext("tt123.jpg"), "tt123");
+        assert_eq!(ImageKind::Poster.strip_ext("tt123"), "tt123");
+        assert_eq!(ImageKind::Logo.strip_ext("tt123.png"), "tt123");
+        assert_eq!(ImageKind::Logo.strip_ext("tt123"), "tt123");
+        assert_eq!(ImageKind::Backdrop.strip_ext("tt123.jpg"), "tt123");
+        assert_eq!(ImageKind::Backdrop.strip_ext("tt123"), "tt123");
+        // Wrong extension is not stripped
+        assert_eq!(ImageKind::Logo.strip_ext("tt123.jpg"), "tt123.jpg");
+        assert_eq!(ImageKind::Poster.strip_ext("tt123.png"), "tt123.png");
+    }
+
+    #[test]
+    fn image_kind_label() {
+        assert_eq!(ImageKind::Poster.label(), "poster");
+        assert_eq!(ImageKind::Logo.label(), "logo");
+        assert_eq!(ImageKind::Backdrop.label(), "backdrop");
+    }
 }

@@ -44,7 +44,7 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
         bytes
     } else {
         // Fetch base poster from TMDB, using cache
-        let poster_cache = cache::poster_cache_path(cache_dir, poster_path)?;
+        let poster_cache = cache::base_poster_path(cache_dir, poster_path)?;
         if let Some(entry) = cache::read(&poster_cache, poster_stale_secs).await {
             if entry.is_stale {
                 let bytes = tmdb.fetch_poster_bytes(poster_path, http).await?;

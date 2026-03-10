@@ -7,6 +7,8 @@ pub struct Model {
     pub cache_key: String,
     #[sea_orm(column_type = "Text", nullable)]
     pub release_date: Option<String>,
+    #[sea_orm(column_type = "Text")]
+    pub image_type: String,
     pub created_at: i64,
     pub updated_at: i64,
 }

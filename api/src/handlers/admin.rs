@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache;
 use crate::error::AppError;
-use crate::poster::serve;
+use crate::poster::serve::{self, FanartImageKind};
 use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order};
 use crate::AppState;
 
@@ -78,7 +78,7 @@ pub async fn list_posters(
     let page = query.page.max(1);
     let page_size = query.page_size.clamp(1, 100);
 
-    let (items, total) = db::list_poster_meta(&state.db, page, page_size).await?;
+    let (items, total) = db::list_poster_meta_by_kind(&state.db, cache::ImageType::Poster, page, page_size).await?;
 
     let items = items
         .into_iter()
@@ -101,43 +101,8 @@ pub async fn list_posters(
 pub async fn poster_image(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
-) -> Result<impl IntoResponse, AppError> {
-    // Validate id_type is one of the known variants (imdb, tmdb, tvdb)
-    crate::id::IdType::parse(&id_type)?;
-
-    let path = cache::cache_path(&state.config.cache_dir, &id_type, &id_value)?;
-
-    // Canonicalize and verify the resolved path is within cache_dir to prevent traversal
-    let canonical_path = tokio::fs::canonicalize(&path).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            AppError::IdNotFound(format!("Poster not found: {id_type}/{id_value}"))
-        } else {
-            tracing::error!(error = %e, path = %path.display(), "Failed to canonicalize poster path");
-            AppError::Io(e)
-        }
-    })?;
-    let canonical_cache_dir = tokio::fs::canonicalize(&state.config.cache_dir)
-        .await
-        .map_err(|e| AppError::Other(format!("Failed to resolve cache dir: {e}")))?;
-    if !canonical_path.starts_with(&canonical_cache_dir) {
-        return Err(AppError::IdNotFound(format!(
-            "Poster not found: {id_type}/{id_value}"
-        )));
-    }
-
-    let bytes = tokio::fs::read(&canonical_path).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            AppError::IdNotFound(format!("Poster not found: {id_type}/{id_value}"))
-        } else {
-            tracing::error!(error = %e, path = %canonical_path.display(), "Failed to read poster image");
-            AppError::Io(e)
-        }
-    })?;
-
-    Ok((
-        [(axum::http::header::CONTENT_TYPE, "image/jpeg")],
-        bytes,
-    ))
+) -> Result<Response, AppError> {
+    image_from_cache_key(&state, &id_type, &id_value, cache::ImageType::Poster, "image/jpeg").await
 }
 
 #[derive(Serialize)]
@@ -241,4 +206,151 @@ pub async fn fetch_poster(
 
     let bytes = serve::handle_inner(&state, &id_type, &id_value, &settings).await?;
     Ok(serve::jpeg_response(bytes))
+}
+
+// --- Logos ---
+
+pub async fn list_logos(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListPostersQuery>,
+) -> Result<Json<ListPostersResponse>, AppError> {
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+
+    let (items, total) = db::list_poster_meta_by_kind(&state.db, cache::ImageType::Logo, page, page_size).await?;
+
+    let items = items
+        .into_iter()
+        .map(|m| PosterMetaItem {
+            cache_key: m.cache_key,
+            release_date: m.release_date,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        })
+        .collect();
+
+    Ok(Json(ListPostersResponse { items, total, page, page_size }))
+}
+
+pub async fn logo_image(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    image_from_cache_key(&state, &id_type, &id_value, cache::ImageType::Logo, "image/png").await
+}
+
+pub async fn fetch_logo(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    fetch_fanart_image(&state, &id_type, &id_value, FanartImageKind::Logo, "image/png").await
+}
+
+// --- Backdrops ---
+
+pub async fn list_backdrops(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListPostersQuery>,
+) -> Result<Json<ListPostersResponse>, AppError> {
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+
+    let (items, total) = db::list_poster_meta_by_kind(&state.db, cache::ImageType::Backdrop, page, page_size).await?;
+
+    let items = items
+        .into_iter()
+        .map(|m| PosterMetaItem {
+            cache_key: m.cache_key,
+            release_date: m.release_date,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+        })
+        .collect();
+
+    Ok(Json(ListPostersResponse { items, total, page, page_size }))
+}
+
+pub async fn backdrop_image(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    image_from_cache_key(&state, &id_type, &id_value, cache::ImageType::Backdrop, "image/jpeg").await
+}
+
+pub async fn fetch_backdrop(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    fetch_fanart_image(&state, &id_type, &id_value, FanartImageKind::Backdrop, "image/jpeg").await
+}
+
+// --- Helpers ---
+
+async fn image_from_cache_key(
+    state: &AppState,
+    id_type: &str,
+    id_value: &str,
+    image_type: cache::ImageType,
+    content_type: &str,
+) -> Result<Response, AppError> {
+    crate::id::IdType::parse(id_type)?;
+
+    // id_value contains colons (e.g. "tt123:logo:fanart:en:r_imdb").
+    // Replace colons with underscores to get the filesystem filename base.
+    let file_base = id_value.replace(':', "_");
+    let path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type, &file_base)?;
+
+    let canonical_path = tokio::fs::canonicalize(&path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            AppError::IdNotFound(format!("Image not found: {id_type}/{id_value}"))
+        } else {
+            AppError::Io(e)
+        }
+    })?;
+    let canonical_cache_dir = tokio::fs::canonicalize(&state.config.cache_dir)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to resolve cache dir: {e}")))?;
+    if !canonical_path.starts_with(&canonical_cache_dir) {
+        return Err(AppError::IdNotFound(format!("Image not found: {id_type}/{id_value}")));
+    }
+
+    let bytes = tokio::fs::read(&canonical_path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            AppError::IdNotFound(format!("Image not found: {id_type}/{id_value}"))
+        } else {
+            AppError::Io(e)
+        }
+    })?;
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, content_type.to_string())],
+        bytes,
+    ).into_response())
+}
+
+async fn fetch_fanart_image(
+    state: &AppState,
+    id_type: &str,
+    id_value: &str,
+    fanart_kind: FanartImageKind,
+    content_type: &str,
+) -> Result<Response, AppError> {
+    crate::id::IdType::parse(id_type)?;
+
+    let db_ref = state.db.clone();
+    let settings = state
+        .global_settings_cache
+        .try_get_with((), async move {
+            let globals = db::get_global_settings(&db_ref).await?;
+            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&globals)))
+        })
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+
+    let bytes = serve::handle_fanart_image_inner(state, id_type, id_value, &settings, fanart_kind).await?;
+
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, content_type)],
+        bytes,
+    ).into_response())
 }

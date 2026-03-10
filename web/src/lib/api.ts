@@ -83,6 +83,18 @@ export const adminApi = {
   }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),
+  getLogos: (page: number, pageSize: number): Promise<Response> =>
+    get(`/api/admin/logos?page=${page}&page_size=${pageSize}`),
+  getLogoImage: (key: string): Promise<Response> =>
+    get(`/api/admin/logos/${key}`),
+  fetchLogo: (idType: string, idValue: string): Promise<Response> =>
+    post(`/api/admin/logos/${idType}/${idValue}/fetch`),
+  getBackdrops: (page: number, pageSize: number): Promise<Response> =>
+    get(`/api/admin/backdrops?page=${page}&page_size=${pageSize}`),
+  getBackdropImage: (key: string): Promise<Response> =>
+    get(`/api/admin/backdrops/${key}`),
+  fetchBackdrop: (idType: string, idValue: string): Promise<Response> =>
+    post(`/api/admin/backdrops/${idType}/${idValue}/fetch`),
   previewPoster: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
     get(`/api/admin/preview/poster?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
   previewLogo: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>

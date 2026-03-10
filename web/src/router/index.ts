@@ -22,6 +22,18 @@ const router = createRouter({
           meta: { title: 'Posters' },
         },
         {
+          path: 'logos',
+          name: 'logos',
+          component: () => import('@/views/LogosView.vue'),
+          meta: { title: 'Logos' },
+        },
+        {
+          path: 'backdrops',
+          name: 'backdrops',
+          component: () => import('@/views/BackdropsView.vue'),
+          meta: { title: 'Backdrops' },
+        },
+        {
           path: 'keys',
           name: 'keys',
           component: () => import('@/views/ApiKeysView.vue'),

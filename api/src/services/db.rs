@@ -540,14 +540,18 @@ pub async fn count_api_keys(db: &impl ConnectionTrait) -> Result<u64, AppError> 
         .map_err(|e| AppError::DbError(e.to_string()))
 }
 
-pub async fn list_poster_meta(
+pub async fn list_poster_meta_by_kind(
     db: &impl ConnectionTrait,
+    image_type: crate::cache::ImageType,
     page: u64,
     page_size: u64,
 ) -> Result<(Vec<crate::entity::poster_meta::Model>, u64), AppError> {
     use crate::entity::poster_meta;
-    use sea_orm::PaginatorTrait;
-    let paginator = poster_meta::Entity::find().paginate(db, page_size);
+    use sea_orm::{PaginatorTrait, QueryFilter, ColumnTrait};
+
+    let paginator = poster_meta::Entity::find()
+        .filter(poster_meta::Column::ImageType.eq(image_type.db_value()))
+        .paginate(db, page_size);
     let total = paginator.num_items().await.map_err(|e| AppError::DbError(e.to_string()))?;
     let items = paginator
         .fetch_page(page.saturating_sub(1))

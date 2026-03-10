@@ -22,27 +22,85 @@ fn is_safe_path_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && !s.contains('/') && !s.contains('\\') && !s.contains('\0')
 }
 
-pub fn cache_path_ext(cache_dir: &str, id_type: &str, id_value: &str, ext: &str) -> Result<PathBuf, AppError> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageType {
+    Poster,
+    Logo,
+    Backdrop,
+}
+
+impl ImageType {
+    pub fn subdir(self) -> &'static str {
+        match self {
+            ImageType::Poster => "posters",
+            ImageType::Logo => "logos",
+            ImageType::Backdrop => "backdrops",
+        }
+    }
+
+    pub fn ext(self) -> &'static str {
+        match self {
+            ImageType::Poster | ImageType::Backdrop => "jpg",
+            ImageType::Logo => "png",
+        }
+    }
+
+    pub fn db_value(self) -> &'static str {
+        match self {
+            ImageType::Poster => "poster",
+            ImageType::Logo => "logo",
+            ImageType::Backdrop => "backdrop",
+        }
+    }
+}
+
+/// Path for a rendered (composited) image: `{cache_dir}/{subdir}/{id_type}/{id_value}.{ext}`
+pub fn typed_cache_path(
+    cache_dir: &str,
+    image_type: ImageType,
+    id_type: &str,
+    id_value: &str,
+) -> Result<PathBuf, AppError> {
     if !is_safe_path_component(id_value) {
         return Err(AppError::BadRequest("invalid id value".into()));
     }
-    if !is_safe_path_component(ext) {
-        return Err(AppError::BadRequest("invalid file extension".into()));
-    }
-    Ok(Path::new(cache_dir).join(id_type).join(format!("{id_value}.{ext}")))
+    let ext = image_type.ext();
+    Ok(Path::new(cache_dir)
+        .join(image_type.subdir())
+        .join(id_type)
+        .join(format!("{id_value}.{ext}")))
 }
 
-pub fn cache_path(cache_dir: &str, id_type: &str, id_value: &str) -> Result<PathBuf, AppError> {
-    cache_path_ext(cache_dir, id_type, id_value, "jpg")
-}
-
-pub fn poster_cache_path(cache_dir: &str, poster_path: &str) -> Result<PathBuf, AppError> {
+/// Path for a TMDB base poster: `{cache_dir}/base/posters/{filename}`
+pub fn base_poster_path(cache_dir: &str, poster_path: &str) -> Result<PathBuf, AppError> {
     // poster_path is like "/abc123.jpg" from TMDB
     let filename = poster_path.trim_start_matches('/');
     if !is_safe_path_component(filename) {
         return Err(AppError::BadRequest("invalid poster path".into()));
     }
-    Ok(Path::new(cache_dir).join("posters").join(filename))
+    Ok(Path::new(cache_dir).join("base").join("posters").join(filename))
+}
+
+/// Path for a fanart base image: `{cache_dir}/base/fanart/{fanart_id}.{ext}`
+pub fn base_fanart_path(cache_dir: &str, fanart_id: &str, ext: &str) -> Result<PathBuf, AppError> {
+    if !is_safe_path_component(fanart_id) {
+        return Err(AppError::BadRequest("invalid fanart id".into()));
+    }
+    if !is_safe_path_component(ext) {
+        return Err(AppError::BadRequest("invalid file extension".into()));
+    }
+    Ok(Path::new(cache_dir).join("base").join("fanart").join(format!("{fanart_id}.{ext}")))
+}
+
+/// Path for a preview image: `{cache_dir}/preview/{subdir}/{suffix}.{ext}`
+pub fn preview_path(cache_dir: &str, image_type: ImageType, suffix: &str, ext: &str) -> Result<PathBuf, AppError> {
+    if !is_safe_path_component(suffix) {
+        return Err(AppError::BadRequest("invalid preview suffix".into()));
+    }
+    if !is_safe_path_component(ext) {
+        return Err(AppError::BadRequest("invalid file extension".into()));
+    }
+    Ok(Path::new(cache_dir).join("preview").join(image_type.subdir()).join(format!("{suffix}.{ext}")))
 }
 
 /// Read a cached file. `stale_secs = 0` means never stale.
@@ -82,6 +140,7 @@ pub async fn upsert_meta_db(
     db: &DatabaseConnection,
     cache_key: &str,
     release_date: Option<&str>,
+    image_type: ImageType,
 ) -> Result<(), AppError> {
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -91,6 +150,7 @@ pub async fn upsert_meta_db(
     let model = poster_meta::ActiveModel {
         cache_key: Set(cache_key.to_string()),
         release_date: Set(release_date.map(|s| s.to_string())),
+        image_type: Set(image_type.db_value().to_string()),
         created_at: Set(now),
         updated_at: Set(now),
     };
@@ -229,60 +289,103 @@ mod tests {
     }
 
     #[test]
-    fn cache_path_construction() {
-        let p = cache_path("/tmp/cache", "imdb", "tt1234567").unwrap();
-        assert_eq!(p, PathBuf::from("/tmp/cache/imdb/tt1234567.jpg"));
+    fn typed_cache_path_poster() {
+        let p = typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "tt1234567").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/posters/imdb/tt1234567.jpg"));
     }
 
     #[test]
-    fn poster_cache_path_strips_leading_slash() {
-        let p = poster_cache_path("/tmp/cache", "/abc123.jpg").unwrap();
-        assert_eq!(p, PathBuf::from("/tmp/cache/posters/abc123.jpg"));
+    fn typed_cache_path_logo() {
+        let p = typed_cache_path("/tmp/cache", ImageType::Logo, "imdb", "tt1234567").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/logos/imdb/tt1234567.png"));
     }
 
     #[test]
-    fn poster_cache_path_no_leading_slash() {
-        let p = poster_cache_path("/tmp/cache", "abc123.jpg").unwrap();
-        assert_eq!(p, PathBuf::from("/tmp/cache/posters/abc123.jpg"));
+    fn typed_cache_path_backdrop() {
+        let p = typed_cache_path("/tmp/cache", ImageType::Backdrop, "imdb", "tt1234567").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/backdrops/imdb/tt1234567.jpg"));
     }
 
     #[test]
-    fn cache_path_rejects_traversal() {
-        assert!(cache_path("/tmp/cache", "imdb", "../../etc/passwd").is_err());
-        assert!(cache_path("/tmp/cache", "imdb", "..").is_err());
-        assert!(cache_path("/tmp/cache", "imdb", ".").is_err());
-        assert!(cache_path("/tmp/cache", "imdb", "").is_err());
-        assert!(cache_path("/tmp/cache", "imdb", "foo/bar").is_err());
-        assert!(cache_path("/tmp/cache", "imdb", "foo\\bar").is_err());
+    fn typed_cache_path_rejects_traversal() {
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "../../etc/passwd").is_err());
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "..").is_err());
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", ".").is_err());
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "").is_err());
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "foo/bar").is_err());
+        assert!(typed_cache_path("/tmp/cache", ImageType::Poster, "imdb", "foo\\bar").is_err());
     }
 
     #[test]
-    fn cache_path_ext_valid() {
-        let p = cache_path_ext("/tmp/cache", "imdb", "tt1234567", "png").unwrap();
-        assert_eq!(p, PathBuf::from("/tmp/cache/imdb/tt1234567.png"));
+    fn base_poster_path_strips_leading_slash() {
+        let p = base_poster_path("/tmp/cache", "/abc123.jpg").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/base/posters/abc123.jpg"));
     }
 
     #[test]
-    fn cache_path_ext_rejects_traversal_in_ext() {
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "../etc/passwd").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "..").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", ".").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "a/b").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "tt1234567", "a\\b").is_err());
+    fn base_poster_path_no_leading_slash() {
+        let p = base_poster_path("/tmp/cache", "abc123.jpg").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/base/posters/abc123.jpg"));
     }
 
     #[test]
-    fn cache_path_ext_rejects_traversal_in_id() {
-        assert!(cache_path_ext("/tmp/cache", "imdb", "..", "png").is_err());
-        assert!(cache_path_ext("/tmp/cache", "imdb", "foo/bar", "png").is_err());
+    fn base_poster_path_rejects_traversal() {
+        assert!(base_poster_path("/tmp/cache", "/../etc/passwd").is_err());
+        assert!(base_poster_path("/tmp/cache", "..").is_err());
+        assert!(base_poster_path("/tmp/cache", "").is_err());
     }
 
     #[test]
-    fn poster_cache_path_rejects_traversal() {
-        assert!(poster_cache_path("/tmp/cache", "/../etc/passwd").is_err());
-        assert!(poster_cache_path("/tmp/cache", "..").is_err());
-        assert!(poster_cache_path("/tmp/cache", "").is_err());
+    fn base_fanart_path_valid() {
+        let p = base_fanart_path("/tmp/cache", "12345", "png").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/base/fanart/12345.png"));
+    }
+
+    #[test]
+    fn base_fanart_path_rejects_traversal() {
+        assert!(base_fanart_path("/tmp/cache", "..", "png").is_err());
+        assert!(base_fanart_path("/tmp/cache", "12345", "..").is_err());
+        assert!(base_fanart_path("/tmp/cache", "", "png").is_err());
+        assert!(base_fanart_path("/tmp/cache", "foo/bar", "png").is_err());
+    }
+
+    #[test]
+    fn preview_path_valid() {
+        let p = preview_path("/tmp/cache", ImageType::Poster, "r_imdb", "jpg").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/preview/posters/r_imdb.jpg"));
+    }
+
+    #[test]
+    fn preview_path_logo() {
+        let p = preview_path("/tmp/cache", ImageType::Logo, "r_imdb", "png").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/preview/logos/r_imdb.png"));
+    }
+
+    #[test]
+    fn preview_path_backdrop() {
+        let p = preview_path("/tmp/cache", ImageType::Backdrop, "r_imdb", "jpg").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/preview/backdrops/r_imdb.jpg"));
+    }
+
+    #[test]
+    fn preview_path_rejects_traversal() {
+        assert!(preview_path("/tmp/cache", ImageType::Poster, "..", "jpg").is_err());
+        assert!(preview_path("/tmp/cache", ImageType::Poster, "", "jpg").is_err());
+        assert!(preview_path("/tmp/cache", ImageType::Poster, "foo", "..").is_err());
+    }
+
+    #[test]
+    fn image_type_subdir() {
+        assert_eq!(ImageType::Poster.subdir(), "posters");
+        assert_eq!(ImageType::Logo.subdir(), "logos");
+        assert_eq!(ImageType::Backdrop.subdir(), "backdrops");
+    }
+
+    #[test]
+    fn image_type_ext() {
+        assert_eq!(ImageType::Poster.ext(), "jpg");
+        assert_eq!(ImageType::Logo.ext(), "png");
+        assert_eq!(ImageType::Backdrop.ext(), "jpg");
     }
 
     #[test]

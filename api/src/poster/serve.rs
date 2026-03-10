@@ -39,6 +39,25 @@ impl From<FanartImageKind> for ImageKind {
     }
 }
 
+impl From<ImageKind> for cache::ImageType {
+    fn from(k: ImageKind) -> Self {
+        match k {
+            ImageKind::Poster => cache::ImageType::Poster,
+            ImageKind::Logo => cache::ImageType::Logo,
+            ImageKind::Backdrop => cache::ImageType::Backdrop,
+        }
+    }
+}
+
+impl From<FanartImageKind> for cache::ImageType {
+    fn from(k: FanartImageKind) -> Self {
+        match k {
+            FanartImageKind::Logo => cache::ImageType::Logo,
+            FanartImageKind::Backdrop => cache::ImageType::Backdrop,
+        }
+    }
+}
+
 impl ImageKind {
     fn kind_prefix(self) -> &'static str {
         match self {
@@ -49,10 +68,7 @@ impl ImageKind {
     }
 
     fn file_ext(self) -> &'static str {
-        match self {
-            ImageKind::Poster | ImageKind::Backdrop => "jpg",
-            ImageKind::Logo => "png",
-        }
+        cache::ImageType::from(self).ext()
     }
 
     fn strip_ext(self, s: &str) -> &str {
@@ -97,7 +113,7 @@ pub async fn handle_inner(
     };
     let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
     let cache_value = format!("{id_value}{ratings_suffix}");
-    let cache_path = cache::cache_path(&state.config.cache_dir, id_type_str, &cache_value)?;
+    let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
     let cache_key = format!("{id_type_str}/{id_value}{ratings_suffix}");
 
     // Check in-memory poster cache first
@@ -170,7 +186,7 @@ pub async fn handle_inner(
             let (bytes, rd, _used_fanart) =
                 generate_poster_with_source(&state2, id_type, &id_value2, &settings2).await?;
             cache::write(&cache_path2, &bytes).await?;
-            cache::upsert_meta_db(&state2.db, &cache_key2, rd.as_deref()).await?;
+            cache::upsert_meta_db(&state2.db, &cache_key2, rd.as_deref(), cache::ImageType::Poster).await?;
             Ok::<_, AppError>(Bytes::from(bytes))
         })
         .await
@@ -267,7 +283,7 @@ fn fanart_variant_paths(
     let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
     let path_variant = variant.replace(':', "_");
     let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
-    let cache_path = cache::cache_path(cache_dir, id_type_str, &cache_path_base)?;
+    let cache_path = cache::typed_cache_path(cache_dir, cache::ImageType::Poster, id_type_str, &cache_path_base)?;
     Ok((cache_key, cache_path))
 }
 
@@ -335,7 +351,7 @@ async fn try_fanart_path(
             let (cache_key, cache_path) =
                 fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &ratings_suffix)?;
             let _ = cache::write(&cache_path, &bytes).await;
-            let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref()).await;
+            let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), cache::ImageType::Poster).await;
             let bytes = Bytes::from(bytes);
             state
                 .poster_mem_cache
@@ -363,37 +379,38 @@ async fn try_fanart_path(
     }
 }
 
-fn trigger_background_refresh(
+/// Spawn a background refresh task. The `generate` future produces
+/// `(image_bytes, release_date, image_type)` on success.
+fn spawn_background_refresh<F>(
     state: &AppState,
     cache_key: &str,
     cache_path: &std::path::Path,
-    id_type: IdType,
-    id_value: &str,
-    settings: &PosterSettings,
-) {
-    // Best-effort dedup: a narrow race can spawn a duplicate refresh, which is harmless
+    generate: F,
+)
+where
+    F: std::future::Future<Output = Result<(Vec<u8>, Option<String>, cache::ImageType), AppError>>
+        + Send
+        + 'static,
+{
     if state.refresh_locks.contains_key(cache_key) {
         return;
     }
     state.refresh_locks.insert(cache_key.to_string(), ());
     let state = state.clone();
-    let id_value = id_value.to_string();
     let cache_path = cache_path.to_path_buf();
     let cache_key = cache_key.to_string();
-    let settings = settings.clone();
     tokio::spawn(async move {
         tracing::info!(key = %cache_key, "background refresh started");
-        match generate_poster_with_source(&state, id_type, &id_value, &settings).await {
-            Ok((bytes, rd, _used_fanart)) => {
+        match generate.await {
+            Ok((bytes, rd, image_type)) => {
                 if let Err(e) = cache::write(&cache_path, &bytes).await {
                     tracing::error!(error = %e, "failed to write cache");
                 }
                 if let Err(e) =
-                    cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref()).await
+                    cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), image_type).await
                 {
                     tracing::error!(error = %e, "failed to write meta to db");
                 }
-                // Update memory cache with fresh data
                 state
                     .poster_mem_cache
                     .insert(
@@ -410,6 +427,88 @@ fn trigger_background_refresh(
             }
         }
         state.refresh_locks.invalidate(&cache_key);
+    });
+}
+
+fn trigger_background_refresh(
+    state: &AppState,
+    cache_key: &str,
+    cache_path: &std::path::Path,
+    id_type: IdType,
+    id_value: &str,
+    settings: &PosterSettings,
+) {
+    let state2 = state.clone();
+    let id_value = id_value.to_string();
+    let settings = settings.clone();
+    spawn_background_refresh(state, cache_key, cache_path, async move {
+        let (bytes, rd, _tier) =
+            generate_poster_with_source(&state2, id_type, &id_value, &settings).await?;
+        Ok((bytes, rd, cache::ImageType::Poster))
+    });
+}
+
+fn trigger_fanart_background_refresh(
+    state: &AppState,
+    cache_key: &str,
+    cache_path: &std::path::Path,
+    id_type: IdType,
+    id_value: &str,
+    settings: &PosterSettings,
+    fanart_kind: FanartImageKind,
+) {
+    let state2 = state.clone();
+    let id_value = id_value.to_string();
+    let settings = settings.clone();
+    spawn_background_refresh(state, cache_key, cache_path, async move {
+        let fanart = state2
+            .fanart
+            .as_ref()
+            .ok_or_else(|| AppError::Other("FANART_API_KEY not configured".into()))?;
+
+        let kind: ImageKind = fanart_kind.into();
+        let fanart_lang = match kind {
+            ImageKind::Backdrop => "",
+            _ => settings.fanart_lang.as_str(),
+        };
+        let fanart_textless = matches!(kind, ImageKind::Poster) && settings.fanart_textless;
+
+        let resolved = id::resolve(id_type, &id_value, &state2.tmdb, &state2.id_cache).await?;
+
+        let badges = ratings::fetch_ratings(
+            &resolved,
+            &state2.tmdb,
+            state2.omdb.as_ref(),
+            state2.mdblist.as_ref(),
+            &state2.ratings_cache,
+        )
+        .await;
+        let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, settings.ratings_limit);
+
+        let fanart_result = fetch_fanart_image(
+            fanart,
+            &state2.tmdb,
+            &state2.fanart_cache,
+            &resolved,
+            fanart_lang,
+            fanart_textless,
+            kind,
+            &state2.config.cache_dir,
+        )
+        .await;
+
+        let image_bytes = fanart_result
+            .map(|r| r.bytes)
+            .ok_or_else(|| AppError::Other("no fanart image available".into()))?;
+
+        let image_type: cache::ImageType = fanart_kind.into();
+
+        let bytes = match fanart_kind {
+            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone()).await?,
+            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality).await?,
+        };
+
+        Ok((bytes, resolved.release_date, image_type))
     });
 }
 
@@ -449,6 +548,7 @@ async fn generate_poster_with_source(
                 &settings.fanart_lang,
                 settings.fanart_textless,
                 ImageKind::Poster,
+                &state.config.cache_dir,
             )
             .await
         } else {
@@ -567,20 +667,36 @@ async fn fetch_fanart_image(
     lang: &str,
     textless: bool,
     kind: ImageKind,
+    cache_dir: &str,
 ) -> Option<FanartResult> {
     let images = fetch_fanart_images(fanart, tmdb, cache, resolved).await?;
     let candidates = select_images_for_kind(&images, kind);
 
     let (selected, match_tier) = FanartClient::select_image(candidates, lang, textless)?;
     let url = selected.url.clone();
+    let fanart_id = selected.id.clone();
 
-    match fanart.fetch_poster_bytes(&url).await {
-        Ok(bytes) => Some(FanartResult { bytes, match_tier }),
-        Err(e) => {
-            tracing::warn!(error = %e, url = %url, "failed to download fanart image");
-            None
+    // Try to serve from base fanart cache
+    let ext = kind.file_ext();
+    let base_path = cache::base_fanart_path(cache_dir, &fanart_id, ext).ok()?;
+
+    let bytes = match cache::read(&base_path, 0).await {
+        Some(entry) => entry.bytes,
+        None => {
+            match fanart.fetch_poster_bytes(&url).await {
+                Ok(fresh) => {
+                    let _ = cache::write(&base_path, &fresh).await;
+                    fresh
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, url = %url, "failed to download fanart image");
+                    return None;
+                }
+            }
         }
-    }
+    };
+
+    Some(FanartResult { bytes, match_tier })
 }
 
 pub fn jpeg_response(bytes: Bytes) -> Response {
@@ -629,7 +745,6 @@ pub async fn handle_fanart_image_inner(
     let id_value = kind.strip_ext(id_value_raw);
     let kind_prefix = kind.kind_prefix();
     let label = kind.label();
-    let ext = kind.file_ext();
 
     let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
 
@@ -658,18 +773,62 @@ pub async fn handle_fanart_image_inner(
         ImageKind::Logo => format!("{kind_prefix}:fanart:{fanart_lang}"),
         ImageKind::Poster => format!("{kind_prefix}:fanart:{fanart_lang}{}", if fanart_textless { ":textless" } else { "" }),
     };
+    let image_type = match fanart_kind {
+        FanartImageKind::Logo => cache::ImageType::Logo,
+        FanartImageKind::Backdrop => cache::ImageType::Backdrop,
+    };
     let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
     let path_variant = variant.replace(':', "_");
     let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
-    let cache_path = cache::cache_path_ext(&state.config.cache_dir, id_type_str, &cache_path_base, ext)?;
+    let cache_path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type_str, &cache_path_base)?;
 
-    // Check in-memory cache
+    // Check in-memory cache with staleness
     if let Some(entry) = state.poster_mem_cache.get(&cache_key).await {
+        if entry.last_checked.elapsed() >= std::time::Duration::from_secs(60) {
+            let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+            let stale_secs = cache::compute_stale_secs(
+                release_date.as_deref(),
+                state.config.ratings_min_stale_secs,
+                state.config.ratings_max_age_secs,
+            );
+            if let Some(fs_entry) = cache::read(&cache_path, stale_secs).await
+                && fs_entry.is_stale
+            {
+                trigger_fanart_background_refresh(
+                    state, &cache_key, &cache_path, id_type, id_value,
+                    settings, fanart_kind,
+                );
+            }
+            state
+                .poster_mem_cache
+                .insert(
+                    cache_key.clone(),
+                    MemCacheEntry {
+                        bytes: entry.bytes.clone(),
+                        last_checked: Instant::now(),
+                    },
+                )
+                .await;
+        }
         return Ok(entry.bytes.clone());
     }
 
-    // Check filesystem cache
-    if let Some(entry) = cache::read(&cache_path, 0).await {
+    // Read release date from DB for dynamic staleness
+    let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+    let stale_secs = cache::compute_stale_secs(
+        release_date.as_deref(),
+        state.config.ratings_min_stale_secs,
+        state.config.ratings_max_age_secs,
+    );
+
+    // Check filesystem cache with staleness
+    if let Some(entry) = cache::read(&cache_path, stale_secs).await {
+        if entry.is_stale {
+            trigger_fanart_background_refresh(
+                state, &cache_key, &cache_path, id_type, id_value,
+                settings, fanart_kind,
+            );
+        }
         let bytes: Bytes = entry.bytes.into();
         state
             .poster_mem_cache
@@ -699,6 +858,7 @@ pub async fn handle_fanart_image_inner(
         fanart_lang,
         fanart_textless,
         kind,
+        &state.config.cache_dir,
     )
     .await;
 
@@ -726,6 +886,7 @@ pub async fn handle_fanart_image_inner(
     };
 
     let _ = cache::write(&cache_path, &bytes).await;
+    let _ = cache::upsert_meta_db(&state.db, &cache_key, resolved.release_date.as_deref(), image_type).await;
     let bytes = Bytes::from(bytes);
     state
         .poster_mem_cache

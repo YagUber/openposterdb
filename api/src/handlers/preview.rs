@@ -101,7 +101,7 @@ pub async fn preview_poster(
 ) -> Result<Response, AppError> {
     let suffix = ratings::ratings_cache_suffix(&query.ratings_order, query.ratings_limit);
     let cache_key = format!("preview:{suffix}");
-    let cache_path = cache::cache_path(&state.config.cache_dir, "preview", &suffix)?;
+    let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Poster, &suffix, "jpg")?;
 
     // 1. Check in-memory cache
     if let Some(cached) = state.preview_cache.get(&cache_key).await {
@@ -142,7 +142,7 @@ pub async fn preview_logo(
 ) -> Result<Response, AppError> {
     let suffix = ratings::ratings_cache_suffix(&query.ratings_order, query.ratings_limit);
     let cache_key = format!("preview-logo:{suffix}");
-    let cache_path = cache::cache_path_ext(&state.config.cache_dir, "preview", &format!("logo_{suffix}"), "png")?;
+    let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Logo, &suffix, "png")?;
 
     if let Some(cached) = state.preview_cache.get(&cache_key).await {
         return Ok(preview_png_response(cached));
@@ -179,7 +179,7 @@ pub async fn preview_backdrop(
 ) -> Result<Response, AppError> {
     let suffix = ratings::ratings_cache_suffix(&query.ratings_order, query.ratings_limit);
     let cache_key = format!("preview-backdrop:{suffix}");
-    let cache_path = cache::cache_path_ext(&state.config.cache_dir, "preview", &format!("backdrop_{suffix}"), "jpg")?;
+    let cache_path = cache::preview_path(&state.config.cache_dir, cache::ImageType::Backdrop, &suffix, "jpg")?;
 
     if let Some(cached) = state.preview_cache.get(&cache_key).await {
         return Ok(preview_response(cached));

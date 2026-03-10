@@ -133,6 +133,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN ratings_order TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,rta,mc,tmdb,trakt'",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE poster_meta ADD COLUMN image_type TEXT NOT NULL DEFAULT 'poster'",
+        "duplicate column",
+    ),
 ];
 
 fn build_cors_layer(config: &Config) -> CorsLayer {

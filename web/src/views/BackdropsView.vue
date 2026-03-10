@@ -5,9 +5,9 @@ import ImageListView from '@/components/ImageListView.vue'
 
 <template>
   <ImageListView
-    kind="poster"
-    :list-fn="adminApi.getPosters"
-    :image-fn="adminApi.getPosterImage"
-    :fetch-fn="adminApi.fetchPoster"
+    kind="backdrop"
+    :list-fn="adminApi.getBackdrops"
+    :image-fn="adminApi.getBackdropImage"
+    :fetch-fn="adminApi.fetchBackdrop"
   />
 </template>

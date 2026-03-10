@@ -203,4 +203,66 @@ describe('api', () => {
     expect(url).toContain('ratings_limit=3')
     expect(url).toContain('ratings_order=imdb%2Crt%2Ctmdb')
   })
+
+  it('adminApi.getLogos calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getLogos(1, 50)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/logos?page=1&page_size=50')
+  })
+
+  it('adminApi.getLogoImage calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getLogoImage('imdb/tt0111161')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/logos/imdb/tt0111161')
+  })
+
+  it('adminApi.fetchLogo calls POST with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.fetchLogo('imdb', 'tt0111161')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/logos/imdb/tt0111161/fetch')
+    expect(options.method).toBe('POST')
+  })
+
+  it('adminApi.getBackdrops calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getBackdrops(1, 50)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/backdrops?page=1&page_size=50')
+  })
+
+  it('adminApi.getBackdropImage calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getBackdropImage('tmdb/550')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/backdrops/tmdb/550')
+  })
+
+  it('adminApi.fetchBackdrop calls POST with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.fetchBackdrop('tmdb', '550')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/backdrops/tmdb/550/fetch')
+    expect(options.method).toBe('POST')
+  })
 })

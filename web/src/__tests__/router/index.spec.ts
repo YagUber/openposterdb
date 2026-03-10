@@ -20,6 +20,8 @@ function makeRouter() {
         children: [
           { path: '', name: 'dashboard', component: { template: '<div>Dashboard</div>' } },
           { path: 'posters', name: 'posters', component: { template: '<div>Posters</div>' } },
+          { path: 'logos', name: 'logos', component: { template: '<div>Logos</div>' } },
+          { path: 'backdrops', name: 'backdrops', component: { template: '<div>Backdrops</div>' } },
           { path: 'keys', name: 'keys', component: { template: '<div>Keys</div>' } },
         ],
       },

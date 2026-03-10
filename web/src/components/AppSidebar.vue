@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { LayoutDashboard, Image, KeyRound, Settings, LogOut } from 'lucide-vue-next'
+import { LayoutDashboard, Image, Stamp, Wallpaper, KeyRound, Settings, LogOut } from 'lucide-vue-next'
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +24,8 @@ const { state, isMobile, setOpenMobile } = useSidebar()
 const items = [
   { title: 'Dashboard', icon: LayoutDashboard, to: '/' },
   { title: 'Posters', icon: Image, to: '/posters' },
+  { title: 'Logos', icon: Stamp, to: '/logos' },
+  { title: 'Backdrops', icon: Wallpaper, to: '/backdrops' },
   { title: 'API Keys', icon: KeyRound, to: '/keys' },
   { title: 'Settings', icon: Settings, to: '/settings' },
 ]

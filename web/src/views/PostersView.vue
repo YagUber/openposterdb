@@ -3,9 +3,10 @@ import { ref, computed, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
 import { adminApi } from '@/lib/api'
-import { Eye } from 'lucide-vue-next'
+import { Eye, Loader2, Download } from 'lucide-vue-next'
 import RefreshButton from '@/components/RefreshButton.vue'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
@@ -93,6 +94,43 @@ onUnmounted(() => {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
 })
 
+const fetchModalOpen = ref(false)
+const fetchIdType = ref('imdb')
+const fetchIdValue = ref('')
+const fetchLoading = ref(false)
+const fetchError = ref('')
+
+async function fetchPoster() {
+  const idValue = fetchIdValue.value.trim()
+  if (!idValue) return
+
+  fetchLoading.value = true
+  fetchError.value = ''
+
+  try {
+    const res = await adminApi.fetchPoster(fetchIdType.value, idValue)
+    if (!res.ok) {
+      const text = await res.text()
+      try { fetchError.value = JSON.parse(text).error || text } catch { fetchError.value = text || `Error ${res.status}` }
+      return
+    }
+    const fetchedKey = `${fetchIdType.value}/${idValue}`
+    fetchIdValue.value = ''
+    fetchModalOpen.value = false
+    refetch()
+    openPreview(fetchedKey)
+  } catch (e) {
+    fetchError.value = e instanceof Error ? e.message : 'Fetch failed'
+  } finally {
+    fetchLoading.value = false
+  }
+}
+
+function openFetchModal() {
+  fetchError.value = ''
+  fetchModalOpen.value = true
+}
+
 function parseKey(cacheKey: string) {
   const idx = cacheKey.indexOf('/')
   if (idx === -1) return { idType: cacheKey, idValue: '' }
@@ -124,7 +162,11 @@ function nextPage() {
 
 <template>
   <div class="space-y-4">
-    <div class="flex justify-end">
+    <div class="flex justify-end gap-2">
+      <Button variant="outline" size="sm" @click="openFetchModal">
+        <Download class="size-4 mr-1" />
+        Fetch
+      </Button>
       <RefreshButton :fetching="isFetching" @refresh="refetch()" />
     </div>
     <div v-if="isPending" class="space-y-3">
@@ -169,6 +211,35 @@ function nextPage() {
         </div>
       </div>
     </template>
+
+    <Dialog :open="fetchModalOpen" @update:open="(v: boolean) => { if (!v) fetchModalOpen = false }">
+      <DialogContent class="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Fetch Poster</DialogTitle>
+        </DialogHeader>
+        <form class="space-y-4" @submit.prevent="fetchPoster">
+          <div class="space-y-2">
+            <label class="text-sm font-medium">ID Type</label>
+            <select v-model="fetchIdType" class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <option value="imdb">IMDb</option>
+              <option value="tmdb">TMDb</option>
+              <option value="tvdb">TVDB</option>
+            </select>
+          </div>
+          <div class="space-y-2">
+            <label class="text-sm font-medium">ID Value</label>
+            <Input v-model="fetchIdValue" placeholder="e.g. tt1234567" />
+          </div>
+          <p v-if="fetchError" class="text-sm text-destructive">{{ fetchError }}</p>
+          <div class="flex justify-end">
+            <Button type="submit" :disabled="fetchLoading || !fetchIdValue.trim()">
+              <Loader2 v-if="fetchLoading" class="size-4 animate-spin mr-1" />
+              Fetch
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
 
     <Dialog :open="previewOpen" @update:open="(v: boolean) => { if (!v) closePreview() }">
       <DialogContent class="max-w-md">

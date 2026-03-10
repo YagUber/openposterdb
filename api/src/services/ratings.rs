@@ -223,6 +223,35 @@ async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: Option<&OmdbClient>) ->
     Some(badges)
 }
 
+/// Canonical order of all rating sources, used for deterministic cache keys.
+const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt"];
+
+/// Compute a deterministic cache key suffix from rating preferences.
+///
+/// Parses `order` into known `RatingSource` keys, appends any missing sources
+/// in canonical order for determinism, then truncates to `limit` if positive.
+/// Returns a string like `@mal,imdb,lb`.
+pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
+    let mut keys: Vec<&str> = order
+        .split(',')
+        .map(|k| k.trim())
+        .filter(|k| RatingSource::from_key(k).is_some())
+        .collect();
+
+    // Append missing sources in canonical order
+    for &canonical in CANONICAL_ORDER {
+        if !keys.contains(&canonical) {
+            keys.push(canonical);
+        }
+    }
+
+    if limit > 0 {
+        keys.truncate(limit as usize);
+    }
+
+    format!("@{}", keys.join(","))
+}
+
 /// Reorder and/or limit rating badges based on user preferences.
 ///
 /// - If `order` is non-empty, badges are reordered to match the specified order.
@@ -358,6 +387,43 @@ mod tests {
         ];
         let result = apply_rating_preferences(badges.clone(), "", 0);
         assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn ratings_cache_suffix_default_order_limit_3() {
+        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", 3);
+        assert_eq!(suffix, "@mal,imdb,lb");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_custom_order() {
+        let suffix = ratings_cache_suffix("trakt,imdb,rt", 3);
+        assert_eq!(suffix, "@trakt,imdb,rt");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_partial_order_normalized() {
+        // Only two sources specified — missing ones appended in canonical order
+        let suffix = ratings_cache_suffix("imdb,rt", 0);
+        assert_eq!(suffix, "@imdb,rt,mal,lb,rta,mc,tmdb,trakt");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_limit_zero_includes_all() {
+        let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", 0);
+        assert_eq!(suffix, "@mal,imdb,lb,rt,rta,mc,tmdb,trakt");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_empty_order() {
+        let suffix = ratings_cache_suffix("", 3);
+        assert_eq!(suffix, "@mal,imdb,lb");
+    }
+
+    #[test]
+    fn ratings_cache_suffix_invalid_sources_ignored() {
+        let suffix = ratings_cache_suffix("imdb,bogus,rt,fake", 3);
+        assert_eq!(suffix, "@imdb,rt,mal");
     }
 
     #[test]

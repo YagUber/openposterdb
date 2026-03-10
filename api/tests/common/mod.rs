@@ -138,6 +138,10 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool) -> (
             .max_capacity(1)
             .time_to_live(Duration::from_secs(300))
             .build(),
+        preview_cache: moka::future::Cache::builder()
+            .max_capacity(500)
+            .time_to_live(Duration::from_secs(300))
+            .build(),
     });
 
     let app = build_app(state.clone());

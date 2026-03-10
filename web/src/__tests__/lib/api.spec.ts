@@ -11,7 +11,7 @@ vi.mock('@/stores/auth', () => ({
   useAuthStore: () => mockAuthStore,
 }))
 
-import { get, post, put, del, setOnAuthFailure } from '@/lib/api'
+import { get, post, put, del, setOnAuthFailure, adminApi } from '@/lib/api'
 
 const mockOnAuthFailure = vi.fn()
 setOnAuthFailure(mockOnAuthFailure)
@@ -169,5 +169,26 @@ describe('api', () => {
     const [, options] = fetchMock.mock.calls[0]
     expect(options.headers.has('Content-Type')).toBe(false)
     expect(options.body).toBeUndefined()
+  })
+
+  it('adminApi.fetchPoster calls POST with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.fetchPoster('imdb', 'tt0111161')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/posters/imdb/tt0111161/fetch')
+    expect(options.method).toBe('POST')
+  })
+
+  it('adminApi.fetchPoster works with tmdb id type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.fetchPoster('tmdb', '550')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/posters/tmdb/550/fetch')
   })
 })

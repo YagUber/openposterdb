@@ -11,6 +11,7 @@ const mockAdminApi = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({
   adminApi: mockAdminApi,
+  BASE_URL: '',
 }))
 
 const defaultSettings = {

@@ -72,7 +72,7 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
     Ok(buf)
 }
 
-fn render_poster_sync(
+pub fn render_poster_sync(
     poster_bytes: &[u8],
     badges: &[RatingBadge],
     font: &FontArc,

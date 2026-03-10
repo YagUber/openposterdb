@@ -324,6 +324,62 @@ async fn update_settings_rejects_invalid_ratings_limit() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
+// --- Fetch poster endpoint ---
+
+#[tokio::test]
+async fn fetch_poster_requires_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/admin/posters/imdb/tt0111161/fetch")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn fetch_poster_rejects_invalid_id_type() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/admin/posters/invalid/tt0111161/fetch")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn fetch_poster_accepts_valid_id_types() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    // These will fail at the generation stage (no real TMDB key) but should not
+    // be rejected at the id_type validation stage (i.e. not 400).
+    for id_type in &["imdb", "tmdb", "tvdb"] {
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/api/admin/posters/{id_type}/12345/fetch"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_ne!(
+            res.status(),
+            StatusCode::BAD_REQUEST,
+            "id_type {id_type} should not be rejected as invalid"
+        );
+    }
+}
+
 #[tokio::test]
 async fn update_settings_rejects_invalid_ratings_order() {
     let (app, _state) = common::setup_test_app().await;

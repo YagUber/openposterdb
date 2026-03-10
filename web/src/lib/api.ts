@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/stores/auth'
 
-const BASE_URL = import.meta.env.VITE_API_URL || ''
+export const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 let _onAuthFailure: (() => void) | null = null
 
@@ -80,6 +80,8 @@ export const adminApi = {
     ratings_limit: number
     ratings_order: string
   }): Promise<Response> => put('/api/admin/settings', settings),
+  fetchPoster: (idType: string, idValue: string): Promise<Response> =>
+    post(`/api/admin/posters/${idType}/${idValue}/fetch`),
 }
 
 // --- Self-service API (API key session JWT auth) ---

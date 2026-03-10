@@ -58,6 +58,7 @@ pub struct AppState {
     pub fanart_negative: moka::future::Cache<String, ()>,
     pub settings_cache: moka::future::Cache<i32, Arc<PosterSettings>>,
     pub global_settings_cache: moka::future::Cache<(), Arc<PosterSettings>>,
+    pub preview_cache: moka::future::Cache<String, bytes::Bytes>,
 }
 
 pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
@@ -218,6 +219,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
 
     let compressed_routes = Router::new()
         .merge(routes::auth::auth_routes())
+        .merge(routes::preview::preview_routes())
         .merge(admin_routes)
         .merge(key_self_routes)
         .layer(CompressionLayer::new());

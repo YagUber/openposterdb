@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::cache;
 use crate::error::AppError;
+use crate::routes::poster;
 use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order};
 use crate::AppState;
 
@@ -205,8 +206,30 @@ pub async fn update_settings(
         ],
     )
     .await?;
-    // Invalidate caches
+    // Invalidate caches (preview_cache needs no invalidation — keys encode the config)
     state.global_settings_cache.invalidate(&()).await;
     state.settings_cache.invalidate_all();
     Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+pub async fn fetch_poster(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    // Validate id_type
+    crate::id::IdType::parse(&id_type)?;
+
+    // Load global settings (cached)
+    let db_ref = state.db.clone();
+    let settings = state
+        .global_settings_cache
+        .try_get_with((), async move {
+            let globals = db::get_global_settings(&db_ref).await?;
+            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&globals)))
+        })
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+
+    let bytes = poster::handle_inner(&state, &id_type, &id_value, &settings).await?;
+    Ok(poster::jpeg_response(bytes))
 }

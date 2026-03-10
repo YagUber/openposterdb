@@ -8,6 +8,7 @@ import PostersView from '@/views/PostersView.vue'
 const mockAdminApi = vi.hoisted(() => ({
   getPosters: vi.fn(),
   getPosterImage: vi.fn(),
+  fetchPoster: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -58,6 +59,18 @@ function mountView() {
         TableHead: { template: '<th><slot /></th>' },
         TableCell: { template: '<td><slot /></td>' },
         RefreshCw: { template: '<span />' },
+        Dialog: { template: '<div v-if="open"><slot /></div>', props: ['open'] },
+        DialogContent: { template: '<div><slot /></div>' },
+        DialogHeader: { template: '<div><slot /></div>' },
+        DialogTitle: { template: '<div><slot /></div>' },
+        Input: {
+          template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+          props: ['modelValue'],
+          emits: ['update:modelValue'],
+        },
+        Download: { template: '<span />' },
+        Loader2: { template: '<span />' },
+        Eye: { template: '<span />' },
       },
     },
   })
@@ -150,5 +163,105 @@ describe('PostersView', () => {
 
     expect(mockAdminApi.getPosters).toHaveBeenCalled()
     expect(wrapper.text()).toContain('10 posters total')
+  })
+
+  it('has a fetch button', async () => {
+    mockAdminApi.getPosters.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleResponse),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const fetchButton = wrapper.findAll('button').find((b) => b.text().includes('Fetch'))
+    expect(fetchButton).toBeDefined()
+  })
+
+  it('opens fetch modal when fetch button is clicked', async () => {
+    mockAdminApi.getPosters.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleResponse),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // Modal content should not be visible initially
+    expect(wrapper.text()).not.toContain('Fetch Poster')
+
+    const fetchButton = wrapper.findAll('button').find((b) => b.text().includes('Fetch'))
+    await fetchButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Fetch Poster')
+    expect(wrapper.text()).toContain('ID Type')
+    expect(wrapper.text()).toContain('ID Value')
+  })
+
+  it('calls fetchPoster API on form submit', async () => {
+    mockAdminApi.getPosters.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleResponse),
+    })
+    mockAdminApi.fetchPoster.mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob()),
+    })
+    mockAdminApi.getPosterImage.mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob()),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // Open modal
+    const fetchButton = wrapper.findAll('button').find((b) => b.text().includes('Fetch'))
+    await fetchButton!.trigger('click')
+    await flushPromises()
+
+    // Fill in ID value
+    const input = wrapper.find('input')
+    await input.setValue('tt0111161')
+    await flushPromises()
+
+    // Submit form
+    const form = wrapper.find('form')
+    await form.trigger('submit')
+    await flushPromises()
+
+    expect(mockAdminApi.fetchPoster).toHaveBeenCalledWith('imdb', 'tt0111161')
+  })
+
+  it('shows error on fetch failure', async () => {
+    mockAdminApi.getPosters.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleResponse),
+    })
+    mockAdminApi.fetchPoster.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: () => Promise.resolve('not found'),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // Open modal
+    const fetchButton = wrapper.findAll('button').find((b) => b.text().includes('Fetch'))
+    await fetchButton!.trigger('click')
+    await flushPromises()
+
+    // Fill in ID value and submit
+    const input = wrapper.find('input')
+    await input.setValue('tt9999999')
+    await flushPromises()
+
+    const form = wrapper.find('form')
+    await form.trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('not found')
   })
 })

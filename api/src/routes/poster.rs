@@ -93,7 +93,7 @@ pub async fn handler(
     }
 }
 
-async fn handle_inner(
+pub async fn handle_inner(
     state: &AppState,
     id_type_str: &str,
     id_value_jpg: &str,
@@ -117,8 +117,10 @@ async fn handle_inner(
     } else {
         settings
     };
-    let cache_path = cache::cache_path(&state.config.cache_dir, id_type_str, id_value)?;
-    let cache_key = format!("{id_type_str}/{id_value}");
+    let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
+    let cache_value = format!("{id_value}{ratings_suffix}");
+    let cache_path = cache::cache_path(&state.config.cache_dir, id_type_str, &cache_value)?;
+    let cache_key = format!("{id_type_str}/{id_value}{ratings_suffix}");
 
     // Check in-memory poster cache first
     if let Some(entry) = state.poster_mem_cache.get(&cache_key).await {
@@ -282,10 +284,11 @@ fn fanart_variant_paths(
     id_type_str: &str,
     id_value: &str,
     variant: &str,
+    ratings_suffix: &str,
 ) -> Result<(String, std::path::PathBuf), AppError> {
-    let cache_key = format!("{id_type_str}/{id_value}{variant}");
+    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
     let path_variant = variant.replace(':', "_");
-    let cache_path_base = format!("{id_value}{path_variant}");
+    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
     let cache_path = cache::cache_path(cache_dir, id_type_str, &cache_path_base)?;
     Ok((cache_key, cache_path))
 }
@@ -315,6 +318,9 @@ async fn try_fanart_path(
         return Ok(None);
     }
 
+    // Compute ratings suffix once for all fanart variants
+    let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
+
     // Check cached variants (textless first if requested, then language)
     let mut variants_to_check: Vec<String> = Vec::new();
     if settings.fanart_textless && !textless_known_missing {
@@ -326,7 +332,7 @@ async fn try_fanart_path(
 
     for variant in &variants_to_check {
         let (cache_key, cache_path) =
-            fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, variant)?;
+            fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, variant, &ratings_suffix)?;
         if let Some(bytes) =
             check_fanart_cache_variant(state, &cache_key, &cache_path, id_type, id_value, settings).await?
         {
@@ -349,7 +355,7 @@ async fn try_fanart_path(
                 PosterMatch::Language => format!(":fanart:{}", settings.fanart_lang),
             };
             let (cache_key, cache_path) =
-                fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant)?;
+                fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &ratings_suffix)?;
             let _ = cache::write(&cache_path, &bytes).await;
             let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref()).await;
             let bytes = Bytes::from(bytes);
@@ -580,7 +586,7 @@ async fn fetch_fanart_poster(
     }
 }
 
-fn jpeg_response(bytes: Bytes) -> Response {
+pub fn jpeg_response(bytes: Bytes) -> Response {
     (
         [
             (header::CONTENT_TYPE, "image/jpeg"),

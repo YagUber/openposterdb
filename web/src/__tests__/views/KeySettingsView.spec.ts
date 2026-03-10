@@ -31,6 +31,7 @@ const mockSelfApi = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({
   selfApi: mockSelfApi,
+  BASE_URL: '',
 }))
 
 function mountView() {

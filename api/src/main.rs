@@ -191,6 +191,11 @@ async fn main() {
         .time_to_live(Duration::from_secs(300))
         .build();
 
+    let preview_cache = moka::future::Cache::builder()
+        .max_capacity(500)
+        .time_to_live(Duration::from_secs(3600))
+        .build();
+
     let pending_last_used: Arc<DashMap<i32, ()>> = Arc::new(DashMap::new());
 
     let state = Arc::new(AppState {
@@ -214,6 +219,7 @@ async fn main() {
         fanart_negative,
         settings_cache,
         global_settings_cache,
+        preview_cache,
         config: config.clone(),
     });
 

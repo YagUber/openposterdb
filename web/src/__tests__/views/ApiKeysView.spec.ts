@@ -15,6 +15,7 @@ const mockKeysApi = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({
   keysApi: mockKeysApi,
+  BASE_URL: '',
 }))
 
 const sampleKeys = [

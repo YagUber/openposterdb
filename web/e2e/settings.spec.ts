@@ -127,4 +127,50 @@ test.describe('settings', () => {
     await page.click('text=Settings')
     await expect(page).toHaveURL(/\/settings/)
   })
+
+  test('preview section is visible', async ({ page }) => {
+    await expect(page.locator('text=Preview').first()).toBeVisible()
+    const previewImg = page.locator('img[alt="Poster preview"]')
+    await expect(previewImg).toBeVisible()
+  })
+
+  test('preview image loads as valid image', async ({ page }) => {
+    const previewImg = page.locator('img[alt="Poster preview"]')
+    await expect(previewImg).toBeVisible()
+
+    // Wait for the image to have a non-zero natural width (i.e. it actually loaded)
+    await expect(previewImg).toHaveJSProperty('complete', true)
+    const naturalWidth = await previewImg.evaluate((img: HTMLImageElement) => img.naturalWidth)
+    expect(naturalWidth).toBeGreaterThan(0)
+  })
+
+  test('preview image src includes ratings params', async ({ page }) => {
+    const previewImg = page.locator('img[alt="Poster preview"]')
+    await expect(previewImg).toBeVisible()
+
+    const src = await previewImg.getAttribute('src')
+    expect(src).toContain('/api/preview/poster')
+    expect(src).toMatch(/ratings_limit=\d+/)
+    expect(src).toContain('ratings_order=')
+  })
+
+  test('preview updates when ratings limit changes', async ({ page }) => {
+    const previewImg = page.locator('img[alt="Poster preview"]')
+    await expect(previewImg).toBeVisible()
+
+    const initialSrc = await previewImg.getAttribute('src')
+
+    // Read the current limit and change to a different value
+    const limitInput = page.locator('input[type="number"]')
+    const currentValue = await limitInput.inputValue()
+    const newValue = currentValue === '7' ? '2' : '7'
+    await limitInput.fill(newValue)
+
+    // Wait for debounced update (500ms) + network
+    await page.waitForTimeout(1000)
+
+    const newSrc = await previewImg.getAttribute('src')
+    expect(newSrc).toContain(`ratings_limit=${newValue}`)
+    expect(newSrc).not.toBe(initialSrc)
+  })
 })

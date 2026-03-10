@@ -38,4 +38,39 @@ test.describe('posters page', () => {
     await expect(page.locator('button:has-text("Next")')).toBeVisible()
     await expect(page.locator('text=/Page \\d+ of \\d+/')).toBeVisible()
   })
+
+  test('has fetch button', async ({ page }) => {
+    await expect(page.locator('button:has-text("Fetch")')).toBeVisible()
+  })
+
+  test('fetch button opens modal with form', async ({ page }) => {
+    await page.click('button:has-text("Fetch")')
+    await expect(page.getByText('Fetch Poster')).toBeVisible()
+    const modal = page.getByText('Fetch Poster').locator('..')
+    await expect(modal.getByText('ID Type')).toBeVisible()
+    await expect(modal.getByText('ID Value')).toBeVisible()
+    await expect(page.locator('select')).toBeVisible()
+    await expect(page.locator('input[placeholder="e.g. tt1234567"]')).toBeVisible()
+  })
+
+  test('fetch modal has correct id type options', async ({ page }) => {
+    await page.click('button:has-text("Fetch")')
+    const select = page.locator('select')
+    await expect(select.locator('option[value="imdb"]')).toHaveText('IMDb')
+    await expect(select.locator('option[value="tmdb"]')).toHaveText('TMDb')
+    await expect(select.locator('option[value="tvdb"]')).toHaveText('TVDB')
+  })
+
+  test('fetch submit button is disabled when input is empty', async ({ page }) => {
+    await page.click('button:has-text("Fetch")')
+    const submitButton = page.locator('button[type="submit"]:has-text("Fetch")')
+    await expect(submitButton).toBeDisabled()
+  })
+
+  test('fetch submit button is enabled when input has value', async ({ page }) => {
+    await page.click('button:has-text("Fetch")')
+    await page.fill('input[placeholder="e.g. tt1234567"]', 'tt0111161')
+    const submitButton = page.locator('button[type="submit"]:has-text("Fetch")')
+    await expect(submitButton).toBeEnabled()
+  })
 })

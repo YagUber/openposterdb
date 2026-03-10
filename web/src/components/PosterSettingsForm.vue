@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import { Save, Loader2, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BASE_URL } from '@/lib/api'
 
 export interface PosterSettings {
   poster_source: string
@@ -140,6 +141,48 @@ async function handleReset() {
   }
 }
 
+const previewSrc = ref('')
+const previewLoading = ref(false)
+const previewError = ref(false)
+const previewSize = ref<{ w: number; h: number } | null>(null)
+let previewTimer: ReturnType<typeof setTimeout> | null = null
+
+function onPreviewLoad(e: Event) {
+  const img = e.target as HTMLImageElement
+  if (img.naturalWidth && img.naturalHeight) {
+    previewSize.value = { w: img.naturalWidth, h: img.naturalHeight }
+  }
+  previewLoading.value = false
+  previewError.value = false
+}
+
+function buildPreviewUrl() {
+  const params = new URLSearchParams({
+    ratings_limit: String(editRatingsLimit.value),
+    ratings_order: editRatingsOrder.value.join(','),
+  })
+  return `${BASE_URL}/api/preview/poster?${params}`
+}
+
+function updatePreview() {
+  previewLoading.value = true
+  previewError.value = false
+  previewSrc.value = buildPreviewUrl()
+}
+
+// Debounced watcher on rating settings
+watch([editRatingsLimit, editRatingsOrder], () => {
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(updatePreview, 500)
+}, { deep: true })
+
+// Initial preview on mount
+updatePreview()
+
+onBeforeUnmount(() => {
+  if (previewTimer) clearTimeout(previewTimer)
+})
+
 const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
 </script>
 
@@ -241,6 +284,27 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               title="Move down"
             >&darr;</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-2 pt-2">
+      <h3 class="text-sm font-semibold">Preview</h3>
+      <div class="relative max-w-[250px]" :style="previewSize ? { aspectRatio: `${previewSize.w} / ${previewSize.h}` } : undefined">
+        <img
+          v-show="previewSrc && !previewLoading && !previewError"
+          :src="previewSrc"
+          alt="Poster preview"
+          class="rounded border w-full"
+          @load="onPreviewLoad"
+          @error="previewLoading = false; previewError = true"
+        />
+        <p v-if="previewError && !previewLoading" class="text-sm text-muted-foreground py-4">Failed to load preview</p>
+        <div
+          v-if="previewLoading"
+          class="absolute inset-0 flex items-center justify-center bg-muted rounded border"
+        >
+          <Loader2 class="size-6 animate-spin text-muted-foreground" />
         </div>
       </div>
     </div>

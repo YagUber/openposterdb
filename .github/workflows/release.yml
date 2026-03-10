@@ -4,9 +4,6 @@ on:
   release:
     types: [published]
 
-env:
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   docker:
     name: Build and push Docker image
@@ -32,12 +29,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Extract version and image name
         id: version
         run: |
           TAG="${{ github.event.release.tag_name }}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "image_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@v6
         with:
@@ -45,9 +43,9 @@ jobs:
           file: Containerfile
           push: true
           tags: |
-            ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
-            ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            ghcr.io/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.tag }}
+            ghcr.io/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.version }}
+            ghcr.io/${{ steps.version.outputs.image_name }}:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/openposterdb:${{ steps.version.outputs.tag }}
             ${{ secrets.DOCKERHUB_USERNAME }}/openposterdb:${{ steps.version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/openposterdb:latest

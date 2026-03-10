@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
-    echo "Usage: $0 <version>" >&2
-    echo "Example: $0 1.0.0" >&2
-    exit 1
-fi
+case "${1:-}" in
+    repair)
+        TAG=$(gh release list --limit 1 --json tagName --jq '.[0].tagName')
+        echo "Re-triggering release for $TAG..."
+        gh release delete "$TAG" --yes
+        git tag -f "$TAG"
+        git push origin "$TAG" --force
+        gh release create "$TAG" --generate-notes
+        echo "Re-created release $TAG"
+        exit 0
+        ;;
+    ""|--help|-h)
+        echo "Usage: $0 <version>    Create a new release" >&2
+        echo "       $0 repair       Re-trigger the last release workflow" >&2
+        echo "Example: $0 1.0.0" >&2
+        exit 1
+        ;;
+esac
 
 VERSION="${1#v}"
 TAG="v$VERSION"

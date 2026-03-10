@@ -174,7 +174,11 @@ pub async fn auth_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Value>, AppError> {
     let count = db::count_admin_users(&state.db).await?;
-    Ok(Json(json!({ "setup_required": count == 0 })))
+    let free_api_key_enabled = state.is_free_api_key_enabled().await;
+    Ok(Json(json!({
+        "setup_required": count == 0,
+        "free_api_key_enabled": free_api_key_enabled,
+    })))
 }
 
 pub async fn setup(

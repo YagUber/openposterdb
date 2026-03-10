@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
+import { FREE_API_KEY } from '@/lib/constants'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -121,6 +122,14 @@ function toggleMode() {
           {{ mode === 'admin' ? 'Sign in with API key instead' : 'Sign in as admin instead' }}
         </button>
       </p>
+
+      <div v-if="auth.freeApiKeyEnabled" class="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-2">
+        <p class="text-sm font-medium">Free API Key Available</p>
+        <p class="text-sm text-muted-foreground">
+          Use the following key for poster serving (read-only, global defaults):
+        </p>
+        <code class="block text-sm font-mono bg-muted px-3 py-2 rounded select-all">{{ FREE_API_KEY }}</code>
+      </div>
     </div>
   </div>
 </template>

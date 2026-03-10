@@ -3,7 +3,7 @@
 
 # OpenPosterDB
 
-Self-hosted API that generates movie and TV show posters with rating badges from multiple sources overlaid on them. Fetches poster art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
+A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters with rating badges from multiple sources overlaid on them. Fetches poster art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
 
 ## Features
 

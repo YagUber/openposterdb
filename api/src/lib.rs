@@ -59,6 +59,21 @@ pub struct AppState {
     pub settings_cache: moka::future::Cache<i32, Arc<PosterSettings>>,
     pub global_settings_cache: moka::future::Cache<(), Arc<PosterSettings>>,
     pub preview_cache: moka::future::Cache<String, bytes::Bytes>,
+    pub free_api_key_cache: moka::future::Cache<(), bool>,
+}
+
+impl AppState {
+    pub async fn is_free_api_key_enabled(&self) -> bool {
+        let db_ref = self.db.clone();
+        self.free_api_key_cache
+            .try_get_with((), async move {
+                let globals = services::db::get_global_settings(&db_ref).await?;
+                let val = globals.get("free_api_key_enabled").map(|v| v.as_str());
+                Ok::<_, error::AppError>(val == Some("true"))
+            })
+            .await
+            .unwrap_or(false)
+    }
 }
 
 pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");

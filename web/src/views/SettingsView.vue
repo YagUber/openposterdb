@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { adminApi } from '@/lib/api'
+import { FREE_API_KEY } from '@/lib/constants'
 import RefreshButton from '@/components/RefreshButton.vue'
 import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
 import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
+
+type SettingsResponse = PosterSettings & { free_api_key_enabled: boolean }
+
+const freeApiKeyEnabled = ref(false)
+const freeKeyLoading = ref(false)
+const freeKeyError = ref('')
 
 const {
   data: settings,
   isFetching,
   refetch,
-} = useQuery<PosterSettings>({
+} = useQuery<SettingsResponse>({
   queryKey: ['global-settings'],
   queryFn: async () => {
     const res = await adminApi.getSettings()
@@ -18,6 +25,10 @@ const {
     return res.json()
   },
 })
+
+watch(settings, (s) => {
+  if (s) freeApiKeyEnabled.value = s.free_api_key_enabled
+}, { immediate: true })
 
 async function loadSettings(): Promise<PosterSettings | null> {
   const res = await adminApi.getSettings()
@@ -32,10 +43,35 @@ async function saveSettings(s: {
   ratings_limit: number
   ratings_order: string
 }): Promise<string | null> {
-  const res = await adminApi.updateSettings(s)
+  const res = await adminApi.updateSettings({
+    ...s,
+    free_api_key_enabled: freeApiKeyEnabled.value,
+  })
   if (res.ok) return null
   const data = await res.json().catch(() => null)
   return data?.error || 'Failed to save settings'
+}
+
+async function toggleFreeApiKey() {
+  if (!settings.value) return
+  freeKeyLoading.value = true
+  freeKeyError.value = ''
+  const newVal = !freeApiKeyEnabled.value
+  const res = await adminApi.updateSettings({
+    poster_source: settings.value.poster_source,
+    fanart_lang: settings.value.fanart_lang,
+    fanart_textless: settings.value.fanart_textless,
+    ratings_limit: settings.value.ratings_limit,
+    ratings_order: settings.value.ratings_order,
+    free_api_key_enabled: newVal,
+  })
+  if (res.ok) {
+    freeApiKeyEnabled.value = newVal
+  } else {
+    const data = await res.json().catch(() => null)
+    freeKeyError.value = data?.error || 'Failed to save'
+  }
+  freeKeyLoading.value = false
 }
 </script>
 
@@ -47,6 +83,33 @@ async function saveSettings(s: {
     </div>
 
     <div class="max-w-lg space-y-6">
+      <div class="rounded-lg border p-6 space-y-4">
+        <h2 class="text-lg font-semibold">Free API Key</h2>
+        <p class="text-sm text-muted-foreground">
+          When enabled, the key <code class="font-mono text-xs bg-muted px-1 py-0.5 rounded">{{ FREE_API_KEY }}</code>
+          can be used for poster serving with global default settings.
+          It does not grant access to self-service features.
+        </p>
+        <label class="flex items-center gap-3 cursor-pointer">
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="freeApiKeyEnabled"
+            :disabled="freeKeyLoading || !settings"
+            class="relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            :class="freeApiKeyEnabled ? 'bg-primary' : 'bg-input'"
+            @click="toggleFreeApiKey"
+          >
+            <span
+              class="pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform"
+              :class="freeApiKeyEnabled ? 'translate-x-4' : 'translate-x-0'"
+            />
+          </button>
+          <span class="text-sm font-medium">{{ freeApiKeyEnabled ? 'Enabled' : 'Disabled' }}</span>
+        </label>
+        <p v-if="freeKeyError" class="text-sm text-destructive">{{ freeKeyError }}</p>
+      </div>
+
       <div class="rounded-lg border p-6 space-y-4">
         <h2 class="text-lg font-semibold">Global Poster Defaults</h2>
         <p class="text-sm text-muted-foreground">

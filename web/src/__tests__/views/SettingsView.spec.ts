@@ -21,6 +21,7 @@ const defaultSettings = {
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+  free_api_key_enabled: false,
 }
 
 function mountView() {
@@ -206,5 +207,85 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Failed to save')
+  })
+
+  // --- Free API Key toggle ---
+
+  it('renders Free API Key section', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Free API Key')
+    expect(wrapper.text()).toContain('t0-free-rpdb')
+  })
+
+  it('shows toggle as disabled by default', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.find('button[role="switch"]')
+    expect(toggle.exists()).toBe(true)
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(wrapper.text()).toContain('Disabled')
+  })
+
+  it('shows toggle as enabled when settings say so', async () => {
+    mockAdminApi.getSettings.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...defaultSettings,
+          free_api_key_enabled: true,
+        }),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.find('button[role="switch"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(wrapper.text()).toContain('Enabled')
+  })
+
+  it('toggles free API key and calls updateSettings', async () => {
+    mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.find('button[role="switch"]')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        free_api_key_enabled: true,
+      }),
+    )
+  })
+
+  it('save includes current free_api_key_enabled value', async () => {
+    mockAdminApi.getSettings.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...defaultSettings,
+          free_api_key_enabled: true,
+        }),
+    })
+    mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')!
+    await saveBtn.trigger('click')
+    await flushPromises()
+
+    expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        free_api_key_enabled: true,
+      }),
+    )
   })
 })

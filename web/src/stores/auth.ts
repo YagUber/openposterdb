@@ -5,6 +5,7 @@ import { authApi } from '@/lib/auth-api'
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const setupRequired = ref<boolean | null>(null)
+  const freeApiKeyEnabled = ref(false)
 
   // API key session state (sessionStorage so it clears on tab close)
   const apiKeyToken = ref<string | null>(sessionStorage.getItem('apiKeyToken'))
@@ -30,6 +31,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!res.ok) throw new Error(`status check failed: ${res.status}`)
     const data = await res.json()
     setupRequired.value = data.setup_required
+    freeApiKeyEnabled.value = !!data.free_api_key_enabled
     return data.setup_required
   }
 
@@ -88,6 +90,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAdminSession,
     isApiKeySession,
     setupRequired,
+    freeApiKeyEnabled,
     checkSetupRequired,
     setup,
     login,

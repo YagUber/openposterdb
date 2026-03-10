@@ -79,6 +79,7 @@ export const adminApi = {
     fanart_textless: boolean
     ratings_limit: number
     ratings_order: string
+    free_api_key_enabled?: boolean
   }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),

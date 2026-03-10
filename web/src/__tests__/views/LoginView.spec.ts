@@ -13,6 +13,7 @@ const mockAuthStore = {
   login: vi.fn(),
   loginWithApiKey: vi.fn(),
   isAuthenticated: false,
+  freeApiKeyEnabled: false,
 }
 
 vi.mock('vue-router', () => ({
@@ -44,6 +45,7 @@ describe('LoginView', () => {
     mockAuthStore.checkSetupRequired.mockResolvedValue(false)
     mockAuthStore.login.mockReset()
     mockAuthStore.loginWithApiKey.mockReset()
+    mockAuthStore.freeApiKeyEnabled = false
   })
 
   it('renders admin login form by default', async () => {
@@ -127,6 +129,24 @@ describe('LoginView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Invalid API key')
+  })
+
+  it('shows free API key card when freeApiKeyEnabled is true', async () => {
+    mockAuthStore.freeApiKeyEnabled = true
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Free API Key Available')
+    expect(wrapper.text()).toContain('t0-free-rpdb')
+  })
+
+  it('hides free API key card when freeApiKeyEnabled is false', async () => {
+    mockAuthStore.freeApiKeyEnabled = false
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Free API Key Available')
+    expect(wrapper.text()).not.toContain('t0-free-rpdb')
   })
 
   it('toggles back to admin mode from apikey mode', async () => {

@@ -196,6 +196,11 @@ async fn main() {
         .time_to_live(Duration::from_secs(3600))
         .build();
 
+    let free_api_key_cache = moka::future::Cache::builder()
+        .max_capacity(1)
+        .time_to_live(Duration::from_secs(60))
+        .build();
+
     let pending_last_used: Arc<DashMap<i32, ()>> = Arc::new(DashMap::new());
 
     let state = Arc::new(AppState {
@@ -220,6 +225,7 @@ async fn main() {
         settings_cache,
         global_settings_cache,
         preview_cache,
+        free_api_key_cache,
         config: config.clone(),
     });
 

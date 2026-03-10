@@ -148,6 +148,7 @@ pub struct GlobalSettingsResponse {
     pub fanart_available: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
+    pub free_api_key_enabled: bool,
 }
 
 pub async fn get_settings(
@@ -162,6 +163,7 @@ pub async fn get_settings(
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
+    let free_api_key_enabled = state.is_free_api_key_enabled().await;
     Ok(Json(GlobalSettingsResponse {
         poster_source: settings.poster_source.clone(),
         fanart_lang: settings.fanart_lang.clone(),
@@ -169,6 +171,7 @@ pub async fn get_settings(
         fanart_available: state.fanart.is_some(),
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.clone(),
+        free_api_key_enabled,
     }))
 }
 
@@ -183,6 +186,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
+    #[serde(default)]
+    pub free_api_key_enabled: bool,
 }
 
 pub async fn update_settings(
@@ -194,6 +199,7 @@ pub async fn update_settings(
     validate_ratings_limit(req.ratings_limit)?;
     validate_ratings_order(&req.ratings_order)?;
     let textless_str = if req.fanart_textless { "true" } else { "false" };
+    let free_key_str = if req.free_api_key_enabled { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     db::set_global_settings_batch(
         &state.db,
@@ -203,12 +209,14 @@ pub async fn update_settings(
             ("fanart_textless", textless_str),
             ("ratings_limit", &limit_str),
             ("ratings_order", &req.ratings_order),
+            ("free_api_key_enabled", free_key_str),
         ],
     )
     .await?;
     // Invalidate caches (preview_cache needs no invalidation — keys encode the config)
     state.global_settings_cache.invalidate(&()).await;
     state.settings_cache.invalidate_all();
+    state.free_api_key_cache.invalidate(&()).await;
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 

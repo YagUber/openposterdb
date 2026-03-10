@@ -10,6 +10,8 @@ use crate::poster::serve;
 use crate::services::db;
 use crate::AppState;
 
+pub const FREE_API_KEY: &str = "t0-free-rpdb";
+
 #[derive(Debug, Deserialize)]
 pub struct PosterQuery {
     #[serde(default)]
@@ -22,6 +24,11 @@ pub async fn handler(
     Query(query): Query<PosterQuery>,
 ) -> Response {
     let use_fallback = query.fallback.as_deref() == Some("true");
+
+    // Free API key short-circuit: no DB lookup, use global defaults
+    if api_key == FREE_API_KEY {
+        return handle_free_key(&state, &id_type_str, &id_value_jpg, use_fallback).await;
+    }
 
     // Validate API key (cached, including negative results to prevent DB hammering)
     let key_hash = hash_api_key(&api_key);
@@ -74,7 +81,41 @@ pub async fn handler(
         .await
         .unwrap_or_else(|_| Arc::new(db::PosterSettings::default()));
 
-    match serve::handle_inner(&state, &id_type_str, &id_value_jpg, &settings).await {
+    serve_poster(&state, &id_type_str, &id_value_jpg, &settings, use_fallback).await
+}
+
+async fn handle_free_key(
+    state: &Arc<AppState>,
+    id_type_str: &str,
+    id_value_jpg: &str,
+    use_fallback: bool,
+) -> Response {
+    if !state.is_free_api_key_enabled().await {
+        return AppError::Unauthorized.into_response();
+    }
+
+    // Load global poster settings (cached)
+    let db_ref = state.db.clone();
+    let settings = state
+        .global_settings_cache
+        .try_get_with((), async move {
+            let g = db::get_global_settings(&db_ref).await?;
+            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&g)))
+        })
+        .await
+        .unwrap_or_else(|_| Arc::new(db::PosterSettings::default()));
+
+    serve_poster(state, id_type_str, id_value_jpg, &settings, use_fallback).await
+}
+
+async fn serve_poster(
+    state: &Arc<AppState>,
+    id_type_str: &str,
+    id_value_jpg: &str,
+    settings: &db::PosterSettings,
+    use_fallback: bool,
+) -> Response {
+    match serve::handle_inner(state, id_type_str, id_value_jpg, settings).await {
         Ok(bytes) => serve::jpeg_response(bytes),
         Err(e) => {
             if use_fallback {

@@ -310,4 +310,29 @@ describe('auth store', () => {
     expect(auth.apiKeyToken).toBe('persisted-jwt')
     expect(auth.isApiKeySession).toBe(true)
   })
+
+  it('freeApiKeyEnabled defaults to false', () => {
+    const auth = useAuthStore()
+    expect(auth.freeApiKeyEnabled).toBe(false)
+  })
+
+  it('checkSetupRequired populates freeApiKeyEnabled from response', async () => {
+    const fetchMock = mockFetchSuccess({ setup_required: false, free_api_key_enabled: true })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.checkSetupRequired()
+
+    expect(auth.freeApiKeyEnabled).toBe(true)
+  })
+
+  it('checkSetupRequired sets freeApiKeyEnabled false when not in response', async () => {
+    const fetchMock = mockFetchSuccess({ setup_required: false })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.checkSetupRequired()
+
+    expect(auth.freeApiKeyEnabled).toBe(false)
+  })
 })

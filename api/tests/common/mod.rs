@@ -85,6 +85,7 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool) -> (
             tmdb_api_key: "test".into(),
             omdb_api_key: None,
             cache_dir: "/tmp/openposterdb-test".into(),
+            db_dir: "/tmp/openposterdb-test".into(),
             listen_addr: "127.0.0.1:0".into(),
             ratings_min_stale_secs: 86400,
             ratings_max_age_secs: 31_536_000,

@@ -305,7 +305,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
       <h3 class="text-sm font-semibold">Preview</h3>
       <div class="relative max-w-[250px]" :style="previewSize ? { aspectRatio: `${previewSize.w} / ${previewSize.h}` } : undefined">
         <img
-          v-show="previewSrc && !previewLoading && !previewError"
+          v-show="previewSrc && !previewError"
           :src="previewSrc"
           alt="Poster preview"
           class="rounded border w-full"
@@ -315,9 +315,9 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
         <p v-if="previewError && !previewLoading" class="text-sm text-muted-foreground py-4">Failed to load preview</p>
         <div
           v-if="previewLoading"
-          class="absolute inset-0 flex items-center justify-center bg-muted rounded border"
+          class="absolute inset-0 flex items-center justify-center rounded"
         >
-          <Loader2 class="size-6 animate-spin text-muted-foreground" />
+          <Loader2 class="size-6 animate-spin text-white drop-shadow-md" />
         </div>
       </div>
     </div>

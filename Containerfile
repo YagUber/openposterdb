@@ -18,7 +18,8 @@ COPY --from=api-builder /app/target/release/openposterdb-api /usr/local/bin/open
 COPY --from=web-builder /app/dist /app/dist
 
 RUN mkdir -p /data/cache /data/db && chown -R opdb:opdb /data
-USER opdb
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV STATIC_DIR=/app/dist
 ENV CACHE_DIR=/data/cache
@@ -26,4 +27,5 @@ ENV DB_DIR=/data/db
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
     CMD curl -sf http://localhost:3000/api/auth/status || exit 1
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["openposterdb"]

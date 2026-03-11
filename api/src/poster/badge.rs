@@ -12,17 +12,77 @@ const FONT_SIZE: f32 = 28.0;
 const LABEL_FONT_SIZE: f32 = 21.0;
 
 pub fn render_badge(badge: &RatingBadge, font: &FontArc) -> RgbaImage {
-    let scale = PxScale::from(FONT_SIZE);
-    let label_scale = PxScale::from(LABEL_FONT_SIZE);
-    let scaled_font = font.as_scaled(scale);
-    let label_scaled_font = font.as_scaled(label_scale);
+    render_badge_with_widths(badge, font, None, None)
+}
+
+/// Pre-compute scaled fonts for badge rendering (avoids redundant work).
+struct BadgeFonts<'a> {
+    font: &'a FontArc,
+    scale: PxScale,
+    label_scale: PxScale,
+    scaled: ab_glyph::PxScaleFont<&'a FontArc>,
+    label_scaled: ab_glyph::PxScaleFont<&'a FontArc>,
+}
+
+impl<'a> BadgeFonts<'a> {
+    fn new(font: &'a FontArc) -> Self {
+        let scale = PxScale::from(FONT_SIZE);
+        let label_scale = PxScale::from(LABEL_FONT_SIZE);
+        Self {
+            font,
+            scale,
+            label_scale,
+            scaled: font.as_scaled(scale),
+            label_scaled: font.as_scaled(label_scale),
+        }
+    }
+}
+
+/// Render all badges with uniform label and value section widths.
+pub fn render_badges_uniform(badges: &[RatingBadge], font: &FontArc) -> Vec<RgbaImage> {
+    if badges.is_empty() {
+        return vec![];
+    }
+
+    let fonts = BadgeFonts::new(font);
+
+    let max_label_width = badges.iter()
+        .map(|b| text_width(b.source.label(), &fonts.label_scaled))
+        .max()
+        .unwrap_or(0);
+    let max_value_width = badges.iter()
+        .map(|b| text_width(&b.value, &fonts.scaled))
+        .max()
+        .unwrap_or(0);
+
+    badges.iter()
+        .map(|b| render_badge_inner(b, &fonts, Some(max_label_width), Some(max_value_width)))
+        .collect()
+}
+
+fn render_badge_with_widths(
+    badge: &RatingBadge,
+    font: &FontArc,
+    uniform_label_width: Option<u32>,
+    uniform_value_width: Option<u32>,
+) -> RgbaImage {
+    let fonts = BadgeFonts::new(font);
+    render_badge_inner(badge, &fonts, uniform_label_width, uniform_value_width)
+}
+
+fn render_badge_inner(
+    badge: &RatingBadge,
+    fonts: &BadgeFonts<'_>,
+    uniform_label_width: Option<u32>,
+    uniform_value_width: Option<u32>,
+) -> RgbaImage {
 
     let label = badge.source.label();
     let value = &badge.value;
 
-    let label_width = text_width(label, &label_scaled_font);
-    let value_width = text_width(value, &scaled_font);
-    let total_width = label_width + value_width + BADGE_PADDING_H * 3 + BADGE_PADDING_H / 2 + 2; // extra half-padding on right
+    let label_width = uniform_label_width.unwrap_or_else(|| text_width(label, &fonts.label_scaled));
+    let value_width = uniform_value_width.unwrap_or_else(|| text_width(value, &fonts.scaled));
+    let total_width = label_width + value_width + BADGE_PADDING_H * 3 + BADGE_PADDING_H / 2 + 2;
 
     let mut img = RgbaImage::new(total_width, BADGE_HEIGHT);
 
@@ -35,39 +95,118 @@ pub fn render_badge(badge: &RatingBadge, font: &FontArc) -> RgbaImage {
     draw_rounded_rect(&mut img, value_x, 0, total_width - value_x, BADGE_HEIGHT, BADGE_RADIUS, dark_bg);
 
     // Overdraw the inner corners to make a clean join
-    // Right side of label section
     draw_filled_rect_mut(
         &mut img,
         Rect::at((label_width + BADGE_PADDING_H) as i32, 0).of_size(BADGE_PADDING_H, BADGE_HEIGHT),
         badge.source.color(),
     );
-    // Left side of value section
     draw_filled_rect_mut(
         &mut img,
         Rect::at(value_x as i32, 0).of_size(BADGE_PADDING_H, BADGE_HEIGHT),
         dark_bg,
     );
 
-    // Draw label text
+    // Draw label text (centered within uniform label area)
+    let actual_label_width = text_width(label, &fonts.label_scaled);
+    let label_x = BADGE_PADDING_H + (label_width.saturating_sub(actual_label_width)) / 2;
     let label_y = (BADGE_HEIGHT as i32 - LABEL_FONT_SIZE as i32) / 2;
     draw_text_mut(
         &mut img,
         Rgba([255, 255, 255, 255]),
-        BADGE_PADDING_H as i32,
+        label_x as i32,
+        label_y,
+        fonts.label_scale,
+        fonts.font,
+        label,
+    );
+
+    // Draw value text (centered within uniform value area)
+    let actual_value_width = text_width(value, &fonts.scaled);
+    let value_text_x = value_x + BADGE_PADDING_H + (value_width.saturating_sub(actual_value_width)) / 2;
+    let value_y = (BADGE_HEIGHT as i32 - FONT_SIZE as i32) / 2;
+    draw_text_mut(
+        &mut img,
+        Rgba([255, 255, 255, 255]),
+        value_text_x as i32,
+        value_y,
+        fonts.scale,
+        fonts.font,
+        value,
+    );
+
+    img
+}
+
+const VERT_BADGE_WIDTH: u32 = 76;
+const VERT_BADGE_PADDING_V: u32 = 8;
+const VERT_LABEL_FONT_SIZE: f32 = 21.0;
+const VERT_VALUE_FONT_SIZE: f32 = 28.0;
+
+/// Render a vertical badge: source label on top, rating value below.
+/// Used for left/right poster positions.
+pub fn render_vertical_badge(badge: &RatingBadge, font: &FontArc) -> RgbaImage {
+    let label_scale = PxScale::from(VERT_LABEL_FONT_SIZE);
+    let value_scale = PxScale::from(VERT_VALUE_FONT_SIZE);
+
+    let label = badge.source.label();
+    let value = &badge.value;
+
+    let total_height = VERT_BADGE_PADDING_V
+        + VERT_LABEL_FONT_SIZE as u32
+        + 4 // gap between label and value
+        + VERT_VALUE_FONT_SIZE as u32
+        + VERT_BADGE_PADDING_V;
+
+    let mut img = RgbaImage::new(VERT_BADGE_WIDTH, total_height);
+
+    // Draw full background with source color
+    draw_rounded_rect(&mut img, 0, 0, VERT_BADGE_WIDTH, total_height, BADGE_RADIUS, badge.source.color());
+
+    // Draw a dark rect for the value area (bottom half)
+    let value_area_y = VERT_BADGE_PADDING_V + VERT_LABEL_FONT_SIZE as u32 + 2;
+    let value_area_h = total_height - value_area_y;
+    draw_rounded_rect(
+        &mut img,
+        0,
+        value_area_y,
+        VERT_BADGE_WIDTH,
+        value_area_h,
+        BADGE_RADIUS,
+        Rgba([0, 0, 0, 200]),
+    );
+    // Overdraw the top corners of the dark area to clean the join
+    draw_filled_rect_mut(
+        &mut img,
+        Rect::at(0, value_area_y as i32).of_size(VERT_BADGE_WIDTH, BADGE_RADIUS.min(value_area_h)),
+        Rgba([0, 0, 0, 200]),
+    );
+
+    // Center label text
+    let label_scaled = font.as_scaled(label_scale);
+    let lw = text_width(label, &label_scaled);
+    let label_x = (VERT_BADGE_WIDTH.saturating_sub(lw)) / 2;
+    let label_y = VERT_BADGE_PADDING_V as i32;
+    draw_text_mut(
+        &mut img,
+        Rgba([255, 255, 255, 255]),
+        label_x as i32,
         label_y,
         label_scale,
         font,
         label,
     );
 
-    // Draw value text
-    let value_y = (BADGE_HEIGHT as i32 - FONT_SIZE as i32) / 2;
+    // Center value text
+    let value_scaled = font.as_scaled(value_scale);
+    let vw = text_width(value, &value_scaled);
+    let value_x = (VERT_BADGE_WIDTH.saturating_sub(vw)) / 2;
+    let value_y = (value_area_y + VERT_BADGE_PADDING_V / 2) as i32;
     draw_text_mut(
         &mut img,
         Rgba([255, 255, 255, 255]),
-        (value_x + BADGE_PADDING_H) as i32,
+        value_x as i32,
         value_y,
-        scale,
+        value_scale,
         font,
         value,
     );
@@ -147,6 +286,42 @@ mod tests {
             long_img.width() > short_img.width(),
             "longer value should produce wider badge"
         );
+    }
+
+    #[test]
+    fn render_vertical_badge_correct_dimensions() {
+        let badge = RatingBadge {
+            source: RatingSource::Imdb,
+            value: "8.5".to_string(),
+        };
+        let img = render_vertical_badge(&badge, &test_font());
+        assert_eq!(img.width(), VERT_BADGE_WIDTH);
+        assert!(img.height() > 0);
+    }
+
+    #[test]
+    fn render_vertical_badge_all_sources() {
+        let font = test_font();
+        let sources = [
+            RatingSource::Imdb,
+            RatingSource::Tmdb,
+            RatingSource::Rt,
+            RatingSource::RtAudience,
+            RatingSource::Metacritic,
+            RatingSource::Trakt,
+            RatingSource::Letterboxd,
+            RatingSource::Mal,
+        ];
+
+        for source in sources {
+            let badge = RatingBadge {
+                source,
+                value: "75%".to_string(),
+            };
+            let img = render_vertical_badge(&badge, &font);
+            assert_eq!(img.width(), VERT_BADGE_WIDTH, "wrong width for {:?}", source);
+            assert!(img.height() > 0, "zero height for {:?}", source);
+        }
     }
 
     #[test]

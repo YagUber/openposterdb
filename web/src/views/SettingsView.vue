@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import { adminApi } from '@/lib/api'
+import { adminApi, type SaveSettingsPayload } from '@/lib/api'
 import { FREE_API_KEY } from '@/lib/constants'
 import RefreshButton from '@/components/RefreshButton.vue'
 import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
@@ -36,13 +36,7 @@ async function loadSettings(): Promise<PosterSettings | null> {
   return res.json()
 }
 
-async function saveSettings(s: {
-  poster_source: string
-  fanart_lang: string
-  fanart_textless: boolean
-  ratings_limit: number
-  ratings_order: string
-}): Promise<string | null> {
+async function saveSettings(s: SaveSettingsPayload): Promise<string | null> {
   const res = await adminApi.updateSettings(s)
   if (res.ok) return null
   const data = await res.json().catch(() => null)
@@ -60,6 +54,12 @@ async function toggleFreeApiKey() {
     fanart_textless: settings.value.fanart_textless,
     ratings_limit: settings.value.ratings_limit,
     ratings_order: settings.value.ratings_order,
+    poster_position: settings.value.poster_position,
+    logo_ratings_limit: settings.value.logo_ratings_limit,
+    backdrop_ratings_limit: settings.value.backdrop_ratings_limit,
+    poster_badge_style: settings.value.poster_badge_style,
+    logo_badge_style: settings.value.logo_badge_style,
+    backdrop_badge_style: settings.value.backdrop_badge_style,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {

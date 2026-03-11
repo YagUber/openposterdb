@@ -10,6 +10,12 @@ pub struct Model {
     pub fanart_textless: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
+    pub poster_position: String,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: String,
+    pub logo_badge_style: String,
+    pub backdrop_badge_style: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

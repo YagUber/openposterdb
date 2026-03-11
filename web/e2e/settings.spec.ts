@@ -35,7 +35,7 @@ test.describe('settings', () => {
   })
 
   test('displays poster source dropdown defaulting to TMDB', async ({ page }) => {
-    const select = page.locator('select')
+    const select = page.getByTestId('poster-source-select')
     await expect(select).toBeVisible()
     await expect(select).toHaveValue('tmdb')
   })
@@ -52,7 +52,7 @@ test.describe('settings', () => {
     await expect(page.locator('label:has-text("Prefer textless")')).not.toBeVisible()
 
     // Select fanart
-    await page.locator('select').selectOption('fanart')
+    await page.getByTestId('poster-source-select').selectOption('fanart')
 
     // Now language and textless should appear
     await expect(page.locator('label:has-text("Language")')).toBeVisible()
@@ -61,7 +61,7 @@ test.describe('settings', () => {
 
   test('auto-saves and shows confirmation', async ({ page }) => {
     // Change a setting to trigger auto-save
-    await page.locator('select').selectOption('fanart')
+    await page.getByTestId('poster-source-select').selectOption('fanart')
 
     // Wait for debounced auto-save + confirmation
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
@@ -69,7 +69,7 @@ test.describe('settings', () => {
 
   test('settings persist after auto-save and reload', async ({ page }) => {
     // Select fanart and configure
-    await page.locator('select').selectOption('fanart')
+    await page.getByTestId('poster-source-select').selectOption('fanart')
 
     // Wait for auto-save confirmation
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
@@ -79,7 +79,7 @@ test.describe('settings', () => {
     await expect(page.locator('h1')).toContainText('Settings')
 
     // Settings should be preserved
-    await expect(page.locator('select')).toHaveValue('fanart')
+    await expect(page.getByTestId('poster-source-select')).toHaveValue('fanart')
   })
 
   test('refresh button is visible and clickable', async ({ page }) => {
@@ -92,12 +92,11 @@ test.describe('settings', () => {
 
   test('rating display section is visible', async ({ page }) => {
     await expect(page.locator('text=Rating Display')).toBeVisible()
-    await expect(page.locator('text=Max ratings to show')).toBeVisible()
     await expect(page.locator('text=Rating order')).toBeVisible()
   })
 
   test('rating limit input defaults to 3', async ({ page }) => {
-    const limitInput = page.locator('input[type="number"]')
+    const limitInput = page.locator('#ratings-limit-global')
     await expect(limitInput).toBeVisible()
     await expect(limitInput).toHaveValue('3')
   })
@@ -111,7 +110,7 @@ test.describe('settings', () => {
 
   test('rating settings persist after auto-save and reload', async ({ page }) => {
     // Change limit to a non-default value
-    const limitInput = page.locator('input[type="number"]')
+    const limitInput = page.locator('#ratings-limit-global')
     await limitInput.fill('5')
 
     // Wait for auto-save confirmation
@@ -122,7 +121,7 @@ test.describe('settings', () => {
     await expect(page.locator('h1')).toContainText('Settings')
 
     // Limit should be preserved
-    await expect(page.locator('input[type="number"]')).toHaveValue('5')
+    await expect(page.locator('#ratings-limit-global')).toHaveValue('5')
   })
 
   test('sidebar navigation to settings works', async ({ page }) => {
@@ -136,7 +135,6 @@ test.describe('settings', () => {
   })
 
   test('preview section is visible', async ({ page }) => {
-    await expect(page.locator('text=Preview').first()).toBeVisible()
     const previewImg = page.locator('img[alt="Poster preview"]')
     await expect(previewImg).toBeVisible()
   })
@@ -166,7 +164,7 @@ test.describe('settings', () => {
     const initialSrc = await previewImg.getAttribute('src')
 
     // Read the current limit and change to a different value
-    const limitInput = page.locator('input[type="number"]')
+    const limitInput = page.locator('#ratings-limit-global')
     const currentValue = await limitInput.inputValue()
     const newValue = currentValue === '7' ? '2' : '7'
     await limitInput.fill(newValue)
@@ -177,5 +175,22 @@ test.describe('settings', () => {
     const newSrc = await previewImg.getAttribute('src')
     // Blob URL should change when preview is re-fetched
     expect(newSrc).not.toBe(initialSrc)
+  })
+
+  test('poster position dropdown is visible with default', async ({ page }) => {
+    await expect(page.locator('text=Badge position')).toBeVisible()
+    const posSelect = page.getByTestId('poster-position-select')
+    await expect(posSelect).toHaveValue('bottom-center')
+  })
+
+  test('poster position persists after change and reload', async ({ page }) => {
+    const posSelect = page.getByTestId('poster-position-select')
+    await posSelect.selectOption('left')
+
+    await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
+
+    await page.reload()
+    await expect(page.locator('h1')).toContainText('Settings')
+    await expect(page.getByTestId('poster-position-select')).toHaveValue('left')
   })
 })

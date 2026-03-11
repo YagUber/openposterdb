@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order};
+use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_poster_position, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, validate_badge_style};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -101,6 +101,12 @@ pub struct PosterSettingsResponse {
     pub is_default: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
+    pub poster_position: String,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: String,
+    pub logo_badge_style: String,
+    pub backdrop_badge_style: String,
 }
 
 pub async fn get_settings(
@@ -119,6 +125,12 @@ pub async fn get_settings(
         is_default: settings.is_default,
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order,
+        poster_position: settings.poster_position,
+        logo_ratings_limit: settings.logo_ratings_limit,
+        backdrop_ratings_limit: settings.backdrop_ratings_limit,
+        poster_badge_style: settings.poster_badge_style,
+        logo_badge_style: settings.logo_badge_style,
+        backdrop_badge_style: settings.backdrop_badge_style,
     }))
 }
 
@@ -133,6 +145,18 @@ pub struct UpdateSettingsRequest {
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
+    #[serde(default = "default_poster_position")]
+    pub poster_position: String,
+    #[serde(default = "default_ratings_limit")]
+    pub logo_ratings_limit: i32,
+    #[serde(default = "default_ratings_limit")]
+    pub backdrop_ratings_limit: i32,
+    #[serde(default = "default_poster_badge_style")]
+    pub poster_badge_style: String,
+    #[serde(default = "default_logo_badge_style")]
+    pub logo_badge_style: String,
+    #[serde(default = "default_backdrop_badge_style")]
+    pub backdrop_badge_style: String,
 }
 
 pub async fn update_settings(
@@ -147,7 +171,26 @@ pub async fn update_settings(
     validate_fanart_lang(&req.fanart_lang)?;
     validate_ratings_limit(req.ratings_limit)?;
     validate_ratings_order(&req.ratings_order)?;
-    db::upsert_api_key_settings(&state.db, id, &req.poster_source, &req.fanart_lang, req.fanart_textless, req.ratings_limit, &req.ratings_order).await?;
+    validate_poster_position(&req.poster_position)?;
+    validate_ratings_limit(req.logo_ratings_limit)?;
+    validate_ratings_limit(req.backdrop_ratings_limit)?;
+    validate_badge_style(&req.poster_badge_style)?;
+    validate_badge_style(&req.logo_badge_style)?;
+    validate_badge_style(&req.backdrop_badge_style)?;
+    db::upsert_api_key_settings(&state.db, db::UpsertApiKeySettings {
+        api_key_id: id,
+        poster_source: &req.poster_source,
+        fanart_lang: &req.fanart_lang,
+        fanart_textless: req.fanart_textless,
+        ratings_limit: req.ratings_limit,
+        ratings_order: &req.ratings_order,
+        poster_position: &req.poster_position,
+        logo_ratings_limit: req.logo_ratings_limit,
+        backdrop_ratings_limit: req.backdrop_ratings_limit,
+        poster_badge_style: &req.poster_badge_style,
+        logo_badge_style: &req.logo_badge_style,
+        backdrop_badge_style: &req.backdrop_badge_style,
+    }).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
 }
@@ -193,6 +236,12 @@ pub async fn get_own_settings(
         is_default: settings.is_default,
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order,
+        poster_position: settings.poster_position,
+        logo_ratings_limit: settings.logo_ratings_limit,
+        backdrop_ratings_limit: settings.backdrop_ratings_limit,
+        poster_badge_style: settings.poster_badge_style,
+        logo_badge_style: settings.logo_badge_style,
+        backdrop_badge_style: settings.backdrop_badge_style,
     }))
 }
 
@@ -206,7 +255,26 @@ pub async fn update_own_settings(
     validate_fanart_lang(&req.fanart_lang)?;
     validate_ratings_limit(req.ratings_limit)?;
     validate_ratings_order(&req.ratings_order)?;
-    db::upsert_api_key_settings(&state.db, id, &req.poster_source, &req.fanart_lang, req.fanart_textless, req.ratings_limit, &req.ratings_order).await?;
+    validate_poster_position(&req.poster_position)?;
+    validate_ratings_limit(req.logo_ratings_limit)?;
+    validate_ratings_limit(req.backdrop_ratings_limit)?;
+    validate_badge_style(&req.poster_badge_style)?;
+    validate_badge_style(&req.logo_badge_style)?;
+    validate_badge_style(&req.backdrop_badge_style)?;
+    db::upsert_api_key_settings(&state.db, db::UpsertApiKeySettings {
+        api_key_id: id,
+        poster_source: &req.poster_source,
+        fanart_lang: &req.fanart_lang,
+        fanart_textless: req.fanart_textless,
+        ratings_limit: req.ratings_limit,
+        ratings_order: &req.ratings_order,
+        poster_position: &req.poster_position,
+        logo_ratings_limit: req.logo_ratings_limit,
+        backdrop_ratings_limit: req.backdrop_ratings_limit,
+        poster_badge_style: &req.poster_badge_style,
+        logo_badge_style: &req.logo_badge_style,
+        backdrop_badge_style: &req.backdrop_badge_style,
+    }).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
 }

@@ -87,6 +87,17 @@ impl ImageKind {
     }
 }
 
+/// Returns a cache key suffix for poster position.
+pub fn poster_position_cache_suffix(position: &str) -> String {
+    let pos = if position.is_empty() { "bottom-center" } else { position };
+    format!("_pos-{pos}")
+}
+
+/// Returns a cache key suffix for badge style.
+pub fn badge_style_cache_suffix(style: &str) -> String {
+    format!("_bs-{style}")
+}
+
 pub async fn handle_inner(
     state: &AppState,
     id_type_str: &str,
@@ -112,9 +123,11 @@ pub async fn handle_inner(
         settings
     };
     let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
-    let cache_value = format!("{id_value}{ratings_suffix}");
+    let pos_suffix = poster_position_cache_suffix(&settings.poster_position);
+    let bs_suffix = badge_style_cache_suffix(&settings.poster_badge_style);
+    let cache_value = format!("{id_value}{ratings_suffix}{pos_suffix}{bs_suffix}");
     let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
-    let cache_key = format!("{id_type_str}/{id_value}{ratings_suffix}");
+    let cache_key = format!("{id_type_str}/{id_value}{ratings_suffix}{pos_suffix}{bs_suffix}");
 
     // Check in-memory poster cache first
     if let Some(entry) = state.poster_mem_cache.get(&cache_key).await {
@@ -279,10 +292,12 @@ fn fanart_variant_paths(
     id_value: &str,
     variant: &str,
     ratings_suffix: &str,
+    pos_suffix: &str,
+    bs_suffix: &str,
 ) -> Result<(String, std::path::PathBuf), AppError> {
-    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
+    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}{pos_suffix}{bs_suffix}");
     let path_variant = variant.replace(':', "_");
-    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
+    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}{pos_suffix}{bs_suffix}");
     let cache_path = cache::typed_cache_path(cache_dir, cache::ImageType::Poster, id_type_str, &cache_path_base)?;
     Ok((cache_key, cache_path))
 }
@@ -314,6 +329,8 @@ async fn try_fanart_path(
 
     // Compute ratings suffix once for all fanart variants
     let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
+    let pos_suffix = poster_position_cache_suffix(&settings.poster_position);
+    let bs_suffix = badge_style_cache_suffix(&settings.poster_badge_style);
 
     // Check cached variants (textless first if requested, then language)
     let mut variants_to_check: Vec<String> = Vec::new();
@@ -326,7 +343,7 @@ async fn try_fanart_path(
 
     for variant in &variants_to_check {
         let (cache_key, cache_path) =
-            fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, variant, &ratings_suffix)?;
+            fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, variant, &ratings_suffix, &pos_suffix, &bs_suffix)?;
         if let Some(bytes) =
             check_fanart_cache_variant(state, &cache_key, &cache_path, id_type, id_value, settings).await?
         {
@@ -349,7 +366,7 @@ async fn try_fanart_path(
                 PosterMatch::Language => format!(":fanart:{}", settings.fanart_lang),
             };
             let (cache_key, cache_path) =
-                fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &ratings_suffix)?;
+                fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &ratings_suffix, &pos_suffix, &bs_suffix)?;
             let _ = cache::write(&cache_path, &bytes).await;
             let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), cache::ImageType::Poster).await;
             let bytes = Bytes::from(bytes);
@@ -483,7 +500,11 @@ fn trigger_fanart_background_refresh(
             &state2.ratings_cache,
         )
         .await;
-        let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, settings.ratings_limit);
+        let type_ratings_limit = match fanart_kind {
+            FanartImageKind::Logo => settings.logo_ratings_limit,
+            FanartImageKind::Backdrop => settings.backdrop_ratings_limit,
+        };
+        let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, type_ratings_limit);
 
         let fanart_result = fetch_fanart_image(
             fanart,
@@ -503,9 +524,14 @@ fn trigger_fanart_background_refresh(
 
         let image_type: cache::ImageType = fanart_kind.into();
 
+        let type_badge_style = match fanart_kind {
+            FanartImageKind::Logo => settings.logo_badge_style.clone(),
+            FanartImageKind::Backdrop => settings.backdrop_badge_style.clone(),
+        };
+
         let bytes = match fanart_kind {
-            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone()).await?,
-            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality).await?,
+            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style).await?,
+            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality, type_badge_style).await?,
         };
 
         Ok((bytes, resolved.release_date, image_type))
@@ -571,6 +597,8 @@ async fn generate_poster_with_source(
         poster_stale_secs: state.config.poster_stale_secs,
         poster_bytes_override: fanart_bytes,
         normalize_width: has_fanart,
+        poster_position: settings.poster_position.clone(),
+        badge_style: settings.poster_badge_style.clone(),
     })
     .await?;
 
@@ -745,7 +773,17 @@ pub async fn handle_fanart_image_inner(
     let kind_prefix = kind.kind_prefix();
     let label = kind.label();
 
-    let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
+    // Use per-type rating limit for logos/backdrops
+    let type_ratings_limit = match fanart_kind {
+        FanartImageKind::Logo => settings.logo_ratings_limit,
+        FanartImageKind::Backdrop => settings.backdrop_ratings_limit,
+    };
+    let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, type_ratings_limit);
+    let type_badge_style = match fanart_kind {
+        FanartImageKind::Logo => &settings.logo_badge_style,
+        FanartImageKind::Backdrop => &settings.backdrop_badge_style,
+    };
+    let bs_suffix = badge_style_cache_suffix(type_badge_style);
 
     // Backdrops are language-agnostic (no text) — skip lang/textless entirely.
     // Logos ARE the text — textless makes no sense, only lang matters.
@@ -776,9 +814,9 @@ pub async fn handle_fanart_image_inner(
         FanartImageKind::Logo => cache::ImageType::Logo,
         FanartImageKind::Backdrop => cache::ImageType::Backdrop,
     };
-    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}");
+    let cache_key = format!("{id_type_str}/{id_value}{variant}{ratings_suffix}{bs_suffix}");
     let path_variant = variant.replace(':', "_");
-    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}");
+    let cache_path_base = format!("{id_value}{path_variant}{ratings_suffix}{bs_suffix}");
     let cache_path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type_str, &cache_path_base)?;
 
     // Check in-memory cache with staleness
@@ -847,7 +885,7 @@ pub async fn handle_fanart_image_inner(
         &state.ratings_cache,
     )
     .await;
-    let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, settings.ratings_limit);
+    let badges = ratings::apply_rating_preferences(badges, &settings.ratings_order, type_ratings_limit);
 
     let fanart_result = fetch_fanart_image(
         fanart,
@@ -880,8 +918,8 @@ pub async fn handle_fanart_image_inner(
     };
 
     let bytes = match fanart_kind {
-        FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state.font.clone()).await?,
-        FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state.font.clone(), state.config.poster_quality).await?,
+        FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state.font.clone(), type_badge_style.clone()).await?,
+        FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state.font.clone(), state.config.poster_quality, type_badge_style.clone()).await?,
     };
 
     let _ = cache::write(&cache_path, &bytes).await;
@@ -930,5 +968,20 @@ mod tests {
         assert_eq!(ImageKind::Poster.label(), "poster");
         assert_eq!(ImageKind::Logo.label(), "logo");
         assert_eq!(ImageKind::Backdrop.label(), "backdrop");
+    }
+
+    #[test]
+    fn poster_position_cache_suffix_all_positions() {
+        assert_eq!(poster_position_cache_suffix("bottom-center"), "_pos-bottom-center");
+        assert_eq!(poster_position_cache_suffix(""), "_pos-bottom-center");
+        assert_eq!(poster_position_cache_suffix("top-center"), "_pos-top-center");
+        assert_eq!(poster_position_cache_suffix("left"), "_pos-left");
+        assert_eq!(poster_position_cache_suffix("right"), "_pos-right");
+    }
+
+    #[test]
+    fn badge_style_cache_suffix_values() {
+        assert_eq!(badge_style_cache_suffix("horizontal"), "_bs-horizontal");
+        assert_eq!(badge_style_cache_suffix("vertical"), "_bs-vertical");
     }
 }

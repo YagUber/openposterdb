@@ -62,6 +62,12 @@ describe('selfApi', () => {
       fanart_textless: true,
       ratings_limit: 3,
       ratings_order: 'mal,imdb,trakt',
+      poster_position: 'bottom-center',
+      logo_ratings_limit: 3,
+      backdrop_ratings_limit: 3,
+      poster_badge_style: 'horizontal',
+      logo_badge_style: 'horizontal',
+      backdrop_badge_style: 'vertical',
     })
 
     const [url, options] = fetchMock.mock.calls[0]
@@ -74,6 +80,12 @@ describe('selfApi', () => {
       fanart_textless: true,
       ratings_limit: 3,
       ratings_order: 'mal,imdb,trakt',
+      poster_position: 'bottom-center',
+      logo_ratings_limit: 3,
+      backdrop_ratings_limit: 3,
+      poster_badge_style: 'horizontal',
+      logo_badge_style: 'horizontal',
+      backdrop_badge_style: 'vertical',
     })
   })
 
@@ -108,5 +120,15 @@ describe('selfApi', () => {
     const [, options] = fetchMock.mock.calls[0]
     // keyRequest does not set credentials: 'include'
     expect(options.credentials).toBeUndefined()
+  })
+
+  it('previewPoster includes poster_position when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewPoster(3, 'imdb,rt', 'right')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('poster_position=right')
   })
 })

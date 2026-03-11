@@ -1,6 +1,6 @@
 mod common;
 
-use openposterdb_api::services::db;
+use openposterdb_api::services::db::{self, UpsertApiKeySettings};
 
 // --- Batch last_used_at updates ---
 
@@ -422,7 +422,11 @@ async fn upsert_and_get_api_key_settings() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let key_id = json["id"].as_i64().unwrap() as i32;
 
-    db::upsert_api_key_settings(&state.db, key_id, "fanart", "ja", true, 0, "").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "fanart", fanart_lang: "ja", fanart_textless: true,
+        ratings_limit: 0, ratings_order: "", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
 
     let settings = db::get_api_key_settings(&state.db, key_id).await.unwrap();
     assert!(settings.is_some());
@@ -456,7 +460,11 @@ async fn upsert_api_key_settings_with_ratings() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let key_id = json["id"].as_i64().unwrap() as i32;
 
-    db::upsert_api_key_settings(&state.db, key_id, "tmdb", "en", false, 3, "mal,imdb,trakt").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 3, ratings_order: "mal,imdb,trakt", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
 
     let s = db::get_api_key_settings(&state.db, key_id).await.unwrap().unwrap();
     assert_eq!(s.ratings_limit, 3);
@@ -511,7 +519,11 @@ async fn effective_settings_per_key_ratings_override_global() {
     .await
     .unwrap();
 
-    db::upsert_api_key_settings(&state.db, key_id, "tmdb", "en", false, 5, "mal,lb").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 5, ratings_order: "mal,lb", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
 
     let s = db::get_effective_poster_settings(&state.db, key_id, None).await;
     assert_eq!(s.ratings_limit, 5);
@@ -541,8 +553,16 @@ async fn upsert_api_key_settings_overwrites() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let key_id = json["id"].as_i64().unwrap() as i32;
 
-    db::upsert_api_key_settings(&state.db, key_id, "tmdb", "en", false, 0, "").await.unwrap();
-    db::upsert_api_key_settings(&state.db, key_id, "fanart", "de", true, 0, "").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 0, ratings_order: "", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "fanart", fanart_lang: "de", fanart_textless: true,
+        ratings_limit: 0, ratings_order: "", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
 
     let s = db::get_api_key_settings(&state.db, key_id).await.unwrap().unwrap();
     assert_eq!(s.poster_source, "fanart");
@@ -572,7 +592,11 @@ async fn delete_api_key_settings_removes() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     let key_id = json["id"].as_i64().unwrap() as i32;
 
-    db::upsert_api_key_settings(&state.db, key_id, "fanart", "en", false, 0, "").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "fanart", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 0, ratings_order: "", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
     db::delete_api_key_settings(&state.db, key_id).await.unwrap();
 
     let s = db::get_api_key_settings(&state.db, key_id).await.unwrap();
@@ -643,11 +667,95 @@ async fn effective_settings_per_key_overrides_global() {
     .unwrap();
 
     // Set per-key to tmdb/ja
-    db::upsert_api_key_settings(&state.db, key_id, "tmdb", "ja", true, 0, "").await.unwrap();
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "ja", fanart_textless: true,
+        ratings_limit: 0, ratings_order: "", poster_position: "bottom-center", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
 
     let s = db::get_effective_poster_settings(&state.db, key_id, None).await;
     assert_eq!(s.poster_source, "tmdb");
     assert_eq!(s.fanart_lang, "ja");
     assert!(s.fanart_textless);
     assert!(!s.is_default); // per-key override
+}
+
+#[tokio::test]
+async fn upsert_api_key_settings_with_poster_position() {
+    let (app, state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/keys")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({"name": "pos-test"}).to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let key_id = json["id"].as_i64().unwrap() as i32;
+
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 3, ratings_order: "imdb,rt", poster_position: "left", logo_ratings_limit: 5, backdrop_ratings_limit: 1,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
+
+    let settings = db::get_api_key_settings(&state.db, key_id).await.unwrap();
+    let s = settings.unwrap();
+    assert_eq!(s.poster_position, "left");
+    assert_eq!(s.logo_ratings_limit, 5);
+    assert_eq!(s.backdrop_ratings_limit, 1);
+}
+
+#[tokio::test]
+async fn effective_settings_include_new_fields() {
+    let (app, state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    use axum::body::Body;
+    use axum::http::Request;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/keys")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({"name": "eff-test"}).to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let key_id = json["id"].as_i64().unwrap() as i32;
+
+    // Without per-key settings, effective should have defaults
+    let s = db::get_effective_poster_settings(&state.db, key_id, None).await;
+    assert_eq!(s.poster_position, "bottom-center");
+    assert_eq!(s.logo_ratings_limit, 3);
+    assert_eq!(s.backdrop_ratings_limit, 3);
+
+    // Set per-key with custom values
+    db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
+        api_key_id: key_id, poster_source: "tmdb", fanart_lang: "en", fanart_textless: false,
+        ratings_limit: 3, ratings_order: "", poster_position: "right", logo_ratings_limit: 2, backdrop_ratings_limit: 0,
+        poster_badge_style: "horizontal", logo_badge_style: "horizontal", backdrop_badge_style: "vertical",
+    }).await.unwrap();
+
+    let s = db::get_effective_poster_settings(&state.db, key_id, None).await;
+    assert_eq!(s.poster_position, "right");
+    assert_eq!(s.logo_ratings_limit, 2);
+    assert_eq!(s.backdrop_ratings_limit, 0);
 }

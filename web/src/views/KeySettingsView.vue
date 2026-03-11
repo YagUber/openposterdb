@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { selfApi } from '@/lib/api'
+import { selfApi, type SaveSettingsPayload } from '@/lib/api'
 import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
 import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
 import { Button } from '@/components/ui/button'
@@ -56,7 +56,7 @@ async function loadSettings(): Promise<PosterSettings | null> {
   return null
 }
 
-async function saveSettings(s: { poster_source: string; fanart_lang: string; fanart_textless: boolean; ratings_limit: number; ratings_order: string }): Promise<string | null> {
+async function saveSettings(s: SaveSettingsPayload): Promise<string | null> {
   const res = await selfApi.updateSettings(s)
   if (res.ok) return null
   const data = await res.json().catch(() => null)

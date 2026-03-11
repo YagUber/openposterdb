@@ -112,12 +112,18 @@ pub const SCHEMA_SQL: &[&str] = &[
         value TEXT NOT NULL
     )",
     "CREATE TABLE IF NOT EXISTS api_key_settings (
-        api_key_id      INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
-        poster_source   TEXT NOT NULL DEFAULT 'tmdb',
-        fanart_lang     TEXT NOT NULL DEFAULT 'en',
-        fanart_textless INTEGER NOT NULL DEFAULT 0,
-        ratings_limit   INTEGER NOT NULL DEFAULT 3,
-        ratings_order   TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,rta,mc,tmdb,trakt'
+        api_key_id             INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
+        poster_source          TEXT NOT NULL DEFAULT 'tmdb',
+        fanart_lang            TEXT NOT NULL DEFAULT 'en',
+        fanart_textless        INTEGER NOT NULL DEFAULT 0,
+        ratings_limit          INTEGER NOT NULL DEFAULT 3,
+        ratings_order          TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+        poster_position        TEXT NOT NULL DEFAULT 'bottom-center',
+        logo_ratings_limit     INTEGER NOT NULL DEFAULT 3,
+        backdrop_ratings_limit INTEGER NOT NULL DEFAULT 3,
+        poster_badge_style     TEXT NOT NULL DEFAULT 'horizontal',
+        logo_badge_style       TEXT NOT NULL DEFAULT 'horizontal',
+        backdrop_badge_style   TEXT NOT NULL DEFAULT 'vertical'
     )",
 ];
 
@@ -135,6 +141,30 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ),
     (
         "ALTER TABLE poster_meta ADD COLUMN image_type TEXT NOT NULL DEFAULT 'poster'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_position TEXT NOT NULL DEFAULT 'bottom-center'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_ratings_limit INTEGER NOT NULL DEFAULT 3",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_ratings_limit INTEGER NOT NULL DEFAULT 3",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_style TEXT NOT NULL DEFAULT 'horizontal'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_badge_style TEXT NOT NULL DEFAULT 'horizontal'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_style TEXT NOT NULL DEFAULT 'vertical'",
         "duplicate column",
     ),
 ];

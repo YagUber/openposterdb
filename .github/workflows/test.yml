@@ -82,11 +82,12 @@ jobs:
 
       - name: Start backend
         env:
-          TMDB_API_KEY: test
-          MDBLIST_API_KEY: test
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY || 'test' }}
+          MDBLIST_API_KEY: ${{ secrets.MDBLIST_API_KEY || 'test' }}
+          FANART_API_KEY: ${{ secrets.FANART_API_KEY || 'test' }}
+          OMDB_API_KEY: ${{ secrets.OMDB_API_KEY || '' }}
           JWT_SECRET: abababababababababababababababababababababababababababababababab
           LISTEN_ADDR: 0.0.0.0:3333
-          FANART_API_KEY: test
           COOKIE_SECURE: "false"
           CACHE_DIR: /tmp/openposterdb-e2e
           DB_DIR: /tmp/openposterdb-e2e
@@ -106,7 +107,7 @@ jobs:
         working-directory: web
         env:
           CI: true
-        run: npx playwright test --project=setup --project=chromium
+        run: npx playwright test --project=setup --project=chromium --project=live
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

@@ -64,6 +64,32 @@ export async function del(path: string): Promise<Response> {
   return request(path, { method: 'DELETE' })
 }
 
+export interface SaveSettingsPayload {
+  poster_source: string
+  fanart_lang: string
+  fanart_textless: boolean
+  ratings_limit: number
+  ratings_order: string
+  poster_position: string
+  logo_ratings_limit: number
+  backdrop_ratings_limit: number
+  poster_badge_style: string
+  logo_badge_style: string
+  backdrop_badge_style: string
+}
+
+/** Build a URL path with query parameters, omitting entries with nullish values. */
+function buildUrl(path: string, params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') {
+      qs.set(key, String(value))
+    }
+  }
+  const query = qs.toString()
+  return query ? `${path}?${query}` : path
+}
+
 // --- Typed API service layer ---
 
 export const adminApi = {
@@ -73,14 +99,7 @@ export const adminApi = {
   getPosterImage: (key: string): Promise<Response> =>
     get(`/api/admin/posters/${key}/image`),
   getSettings: (): Promise<Response> => get('/api/admin/settings'),
-  updateSettings: (settings: {
-    poster_source: string
-    fanart_lang?: string
-    fanart_textless?: boolean
-    ratings_limit?: number
-    ratings_order?: string
-    free_api_key_enabled?: boolean
-  }): Promise<Response> => put('/api/admin/settings', settings),
+  updateSettings: (settings: Partial<SaveSettingsPayload> & { poster_source: string; free_api_key_enabled?: boolean }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),
   getLogos: (page: number, pageSize: number): Promise<Response> =>
@@ -95,12 +114,12 @@ export const adminApi = {
     get(`/api/admin/backdrops/${key}`),
   fetchBackdrop: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/backdrops/${idType}/${idValue}/fetch`),
-  previewPoster: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    get(`/api/admin/preview/poster?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
-  previewLogo: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    get(`/api/admin/preview/logo?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
-  previewBackdrop: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    get(`/api/admin/preview/backdrop?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewPoster: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string): Promise<Response> =>
+    get(buildUrl('/api/admin/preview/poster', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, poster_position: posterPosition, badge_style: badgeStyle })),
+  previewLogo: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string): Promise<Response> =>
+    get(buildUrl('/api/admin/preview/logo', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle })),
+  previewBackdrop: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string): Promise<Response> =>
+    get(buildUrl('/api/admin/preview/backdrop', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle })),
 }
 
 // --- Self-service API (API key session JWT auth) ---
@@ -125,25 +144,19 @@ function keyRequest(path: string, options: RequestInit = {}): Promise<Response> 
 export const selfApi = {
   getInfo: (): Promise<Response> => keyRequest('/api/key/me'),
   getSettings: (): Promise<Response> => keyRequest('/api/key/me/settings'),
-  updateSettings: (settings: {
-    poster_source: string
-    fanart_lang: string
-    fanart_textless: boolean
-    ratings_limit: number
-    ratings_order: string
-  }): Promise<Response> =>
+  updateSettings: (settings: SaveSettingsPayload): Promise<Response> =>
     keyRequest('/api/key/me/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
     }),
   resetSettings: (): Promise<Response> =>
     keyRequest('/api/key/me/settings', { method: 'DELETE' }),
-  previewPoster: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    keyRequest(`/api/key/me/preview/poster?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
-  previewLogo: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    keyRequest(`/api/key/me/preview/logo?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
-  previewBackdrop: (ratingsLimit: number, ratingsOrder: string): Promise<Response> =>
-    keyRequest(`/api/key/me/preview/backdrop?ratings_limit=${ratingsLimit}&ratings_order=${encodeURIComponent(ratingsOrder)}`),
+  previewPoster: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string): Promise<Response> =>
+    keyRequest(buildUrl('/api/key/me/preview/poster', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, poster_position: posterPosition, badge_style: badgeStyle })),
+  previewLogo: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string): Promise<Response> =>
+    keyRequest(buildUrl('/api/key/me/preview/logo', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle })),
+  previewBackdrop: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string): Promise<Response> =>
+    keyRequest(buildUrl('/api/key/me/preview/backdrop', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle })),
 }
 
 export const keysApi = {
@@ -151,15 +164,6 @@ export const keysApi = {
   create: (name: string): Promise<Response> => post('/api/keys', { name }),
   delete: (id: number): Promise<Response> => del(`/api/keys/${id}`),
   getSettings: (id: number): Promise<Response> => get(`/api/keys/${id}/settings`),
-  updateSettings: (
-    id: number,
-    settings: {
-      poster_source: string
-      fanart_lang: string
-      fanart_textless: boolean
-      ratings_limit: number
-      ratings_order: string
-    },
-  ): Promise<Response> => put(`/api/keys/${id}/settings`, settings),
+  updateSettings: (id: number, settings: SaveSettingsPayload): Promise<Response> => put(`/api/keys/${id}/settings`, settings),
   deleteSettings: (id: number): Promise<Response> => del(`/api/keys/${id}/settings`),
 }

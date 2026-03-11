@@ -64,6 +64,12 @@ const sampleSettings = {
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
   is_default: true,
+  poster_position: 'bottom-center',
+  logo_ratings_limit: 3,
+  backdrop_ratings_limit: 3,
+  poster_badge_style: 'horizontal',
+  logo_badge_style: 'horizontal',
+  backdrop_badge_style: 'vertical',
 }
 
 describe('KeySettingsView', () => {

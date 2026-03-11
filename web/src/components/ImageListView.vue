@@ -121,10 +121,16 @@ async function fetchImage() {
       return
     }
     const fetchedKey = `${fetchIdType.value}/${idValue}`
+    // Use the image bytes from the fetch response directly for preview,
+    // since the cache key used by imageFn may not match the full variant key.
+    const blob = await res.blob()
     fetchIdValue.value = ''
     fetchModalOpen.value = false
-    await refetch()
-    openPreview(fetchedKey)
+    previewKey.value = fetchedKey
+    previewOpen.value = true
+    previewLoading.value = false
+    previewUrl.value = URL.createObjectURL(blob)
+    refetch()
   } catch (e) {
     fetchError.value = e instanceof Error ? e.message : 'Fetch failed'
   } finally {

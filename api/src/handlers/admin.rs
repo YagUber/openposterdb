@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::poster::serve::{self, FanartImageKind};
-use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order};
+use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_poster_position, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, validate_badge_style};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -114,6 +114,12 @@ pub struct GlobalSettingsResponse {
     pub ratings_limit: i32,
     pub ratings_order: String,
     pub free_api_key_enabled: bool,
+    pub poster_position: String,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: String,
+    pub logo_badge_style: String,
+    pub backdrop_badge_style: String,
 }
 
 pub async fn get_settings(
@@ -137,6 +143,12 @@ pub async fn get_settings(
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.clone(),
         free_api_key_enabled,
+        poster_position: settings.poster_position.clone(),
+        logo_ratings_limit: settings.logo_ratings_limit,
+        backdrop_ratings_limit: settings.backdrop_ratings_limit,
+        poster_badge_style: settings.poster_badge_style.clone(),
+        logo_badge_style: settings.logo_badge_style.clone(),
+        backdrop_badge_style: settings.backdrop_badge_style.clone(),
     }))
 }
 
@@ -152,6 +164,18 @@ pub struct UpdateGlobalSettingsRequest {
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
     pub free_api_key_enabled: Option<bool>,
+    #[serde(default = "default_poster_position")]
+    pub poster_position: String,
+    #[serde(default = "default_ratings_limit")]
+    pub logo_ratings_limit: i32,
+    #[serde(default = "default_ratings_limit")]
+    pub backdrop_ratings_limit: i32,
+    #[serde(default = "default_poster_badge_style")]
+    pub poster_badge_style: String,
+    #[serde(default = "default_logo_badge_style")]
+    pub logo_badge_style: String,
+    #[serde(default = "default_backdrop_badge_style")]
+    pub backdrop_badge_style: String,
 }
 
 pub async fn update_settings(
@@ -162,14 +186,28 @@ pub async fn update_settings(
     validate_fanart_lang(&req.fanart_lang)?;
     validate_ratings_limit(req.ratings_limit)?;
     validate_ratings_order(&req.ratings_order)?;
+    validate_poster_position(&req.poster_position)?;
+    validate_ratings_limit(req.logo_ratings_limit)?;
+    validate_ratings_limit(req.backdrop_ratings_limit)?;
+    validate_badge_style(&req.poster_badge_style)?;
+    validate_badge_style(&req.logo_badge_style)?;
+    validate_badge_style(&req.backdrop_badge_style)?;
     let textless_str = if req.fanart_textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
+    let logo_limit_str = req.logo_ratings_limit.to_string();
+    let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
     let mut batch: Vec<(&str, &str)> = vec![
         ("poster_source", &req.poster_source),
         ("fanart_lang", &req.fanart_lang),
         ("fanart_textless", textless_str),
         ("ratings_limit", &limit_str),
         ("ratings_order", &req.ratings_order),
+        ("poster_position", &req.poster_position),
+        ("logo_ratings_limit", &logo_limit_str),
+        ("backdrop_ratings_limit", &backdrop_limit_str),
+        ("poster_badge_style", &req.poster_badge_style),
+        ("logo_badge_style", &req.logo_badge_style),
+        ("backdrop_badge_style", &req.backdrop_badge_style),
     ];
     let free_key_str;
     if let Some(enabled) = req.free_api_key_enabled {

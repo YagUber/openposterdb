@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import { keysApi, adminApi } from '@/lib/api'
+import { keysApi, adminApi, type SaveSettingsPayload } from '@/lib/api'
 import RefreshButton from '@/components/RefreshButton.vue'
 import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
 import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
@@ -75,7 +75,7 @@ function makeLoadSettings(id: number) {
 }
 
 function makeSaveSettings(id: number) {
-  return async (s: { poster_source: string; fanart_lang: string; fanart_textless: boolean; ratings_limit: number; ratings_order: string }): Promise<string | null> => {
+  return async (s: SaveSettingsPayload): Promise<string | null> => {
     const res = await keysApi.updateSettings(id, s)
     if (res.ok) return null
     const data = await res.json().catch(() => null)

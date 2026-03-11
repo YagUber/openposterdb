@@ -19,6 +19,22 @@ pub fn default_ratings_order() -> String {
     "mal,imdb,lb,rt,rta,mc,tmdb,trakt".to_string()
 }
 
+pub fn default_poster_position() -> String {
+    "bottom-center".to_string()
+}
+
+pub fn default_poster_badge_style() -> String {
+    "horizontal".to_string()
+}
+
+pub fn default_logo_badge_style() -> String {
+    "horizontal".to_string()
+}
+
+pub fn default_backdrop_badge_style() -> String {
+    "vertical".to_string()
+}
+
 /// Validate that poster_source is a known value.
 pub fn validate_poster_source(source: &str) -> Result<(), AppError> {
     if source == "tmdb" || source == "fanart" {
@@ -62,6 +78,25 @@ pub fn validate_ratings_order(order: &str) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+pub fn validate_badge_style(style: &str) -> Result<(), AppError> {
+    match style {
+        "horizontal" | "vertical" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "badge_style must be 'horizontal' or 'vertical'".into(),
+        )),
+    }
+}
+
+/// Validate that poster_position is a known value.
+pub fn validate_poster_position(pos: &str) -> Result<(), AppError> {
+    match pos {
+        "bottom-center" | "top-center" | "left" | "right" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "poster_position must be 'bottom-center', 'top-center', 'left', or 'right'".into(),
+        )),
+    }
 }
 
 /// Validate a fanart language code: 2–5 ASCII alphanumeric chars or hyphens (e.g. "en", "pt-BR").
@@ -265,6 +300,49 @@ mod tests {
         assert!(validate_fanart_lang("en\0").is_err());
         assert!(validate_fanart_lang("a b").is_err());
         assert!(validate_fanart_lang("en/de").is_err());
+    }
+
+    #[test]
+    fn validate_poster_position_accepts_valid() {
+        assert!(validate_poster_position("bottom-center").is_ok());
+        assert!(validate_poster_position("top-center").is_ok());
+        assert!(validate_poster_position("left").is_ok());
+        assert!(validate_poster_position("right").is_ok());
+    }
+
+    #[test]
+    fn validate_poster_position_rejects_invalid() {
+        assert!(validate_poster_position("center").is_err());
+        assert!(validate_poster_position("").is_err());
+        assert!(validate_poster_position("bottom").is_err());
+        assert!(validate_poster_position("top-left").is_err());
+    }
+
+    #[test]
+    fn default_poster_position_returns_bottom_center() {
+        assert_eq!(default_poster_position(), "bottom-center");
+    }
+
+    #[test]
+    fn default_poster_badge_style_returns_horizontal() {
+        assert_eq!(default_poster_badge_style(), "horizontal");
+    }
+
+    #[test]
+    fn default_backdrop_badge_style_returns_vertical() {
+        assert_eq!(default_backdrop_badge_style(), "vertical");
+    }
+
+    #[test]
+    fn validate_badge_style_accepts_valid() {
+        assert!(validate_badge_style("horizontal").is_ok());
+        assert!(validate_badge_style("vertical").is_ok());
+    }
+
+    #[test]
+    fn validate_badge_style_rejects_invalid() {
+        assert!(validate_badge_style("diagonal").is_err());
+        assert!(validate_badge_style("").is_err());
     }
 }
 
@@ -625,22 +703,38 @@ pub async fn get_api_key_settings(
         .map_err(|e| AppError::DbError(e.to_string()))
 }
 
+pub struct UpsertApiKeySettings<'a> {
+    pub api_key_id: i32,
+    pub poster_source: &'a str,
+    pub fanart_lang: &'a str,
+    pub fanart_textless: bool,
+    pub ratings_limit: i32,
+    pub ratings_order: &'a str,
+    pub poster_position: &'a str,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: &'a str,
+    pub logo_badge_style: &'a str,
+    pub backdrop_badge_style: &'a str,
+}
+
 pub async fn upsert_api_key_settings(
     db: &impl ConnectionTrait,
-    api_key_id: i32,
-    source: &str,
-    lang: &str,
-    textless: bool,
-    ratings_limit: i32,
-    ratings_order: &str,
+    params: UpsertApiKeySettings<'_>,
 ) -> Result<(), AppError> {
     let model = api_key_settings::ActiveModel {
-        api_key_id: Set(api_key_id),
-        poster_source: Set(source.to_string()),
-        fanart_lang: Set(lang.to_string()),
-        fanart_textless: Set(textless),
-        ratings_limit: Set(ratings_limit),
-        ratings_order: Set(ratings_order.to_string()),
+        api_key_id: Set(params.api_key_id),
+        poster_source: Set(params.poster_source.to_string()),
+        fanart_lang: Set(params.fanart_lang.to_string()),
+        fanart_textless: Set(params.fanart_textless),
+        ratings_limit: Set(params.ratings_limit),
+        ratings_order: Set(params.ratings_order.to_string()),
+        poster_position: Set(params.poster_position.to_string()),
+        logo_ratings_limit: Set(params.logo_ratings_limit),
+        backdrop_ratings_limit: Set(params.backdrop_ratings_limit),
+        poster_badge_style: Set(params.poster_badge_style.to_string()),
+        logo_badge_style: Set(params.logo_badge_style.to_string()),
+        backdrop_badge_style: Set(params.backdrop_badge_style.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -651,6 +745,12 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::FanartTextless,
                     api_key_settings::Column::RatingsLimit,
                     api_key_settings::Column::RatingsOrder,
+                    api_key_settings::Column::PosterPosition,
+                    api_key_settings::Column::LogoRatingsLimit,
+                    api_key_settings::Column::BackdropRatingsLimit,
+                    api_key_settings::Column::PosterBadgeStyle,
+                    api_key_settings::Column::LogoBadgeStyle,
+                    api_key_settings::Column::BackdropBadgeStyle,
                 ])
                 .to_owned(),
         )
@@ -681,6 +781,12 @@ pub struct PosterSettings {
     pub ratings_limit: i32,
     pub ratings_order: String,
     pub is_default: bool,
+    pub poster_position: String,
+    pub logo_ratings_limit: i32,
+    pub backdrop_ratings_limit: i32,
+    pub poster_badge_style: String,
+    pub logo_badge_style: String,
+    pub backdrop_badge_style: String,
 }
 
 impl Default for PosterSettings {
@@ -692,6 +798,12 @@ impl Default for PosterSettings {
             ratings_limit: 3,
             ratings_order: "mal,imdb,lb,rt,rta,mc,tmdb,trakt".to_string(),
             is_default: true,
+            poster_position: "bottom-center".to_string(),
+            logo_ratings_limit: 3,
+            backdrop_ratings_limit: 3,
+            poster_badge_style: "horizontal".to_string(),
+            logo_badge_style: "horizontal".to_string(),
+            backdrop_badge_style: "vertical".to_string(),
         }
     }
 }
@@ -724,6 +836,30 @@ pub fn parse_global_poster_settings(globals: &HashMap<String, String>) -> Poster
             .cloned()
             .unwrap_or(defaults.ratings_order),
         is_default: true,
+        poster_position: globals
+            .get("poster_position")
+            .cloned()
+            .unwrap_or(defaults.poster_position),
+        logo_ratings_limit: globals
+            .get("logo_ratings_limit")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(defaults.logo_ratings_limit),
+        backdrop_ratings_limit: globals
+            .get("backdrop_ratings_limit")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(defaults.backdrop_ratings_limit),
+        poster_badge_style: globals
+            .get("poster_badge_style")
+            .cloned()
+            .unwrap_or(defaults.poster_badge_style),
+        logo_badge_style: globals
+            .get("logo_badge_style")
+            .cloned()
+            .unwrap_or(defaults.logo_badge_style),
+        backdrop_badge_style: globals
+            .get("backdrop_badge_style")
+            .cloned()
+            .unwrap_or(defaults.backdrop_badge_style),
     }
 }
 
@@ -742,6 +878,12 @@ pub async fn get_effective_poster_settings(
                 ratings_limit: s.ratings_limit,
                 ratings_order: s.ratings_order,
                 is_default: false,
+                poster_position: s.poster_position,
+                logo_ratings_limit: s.logo_ratings_limit,
+                backdrop_ratings_limit: s.backdrop_ratings_limit,
+                poster_badge_style: s.poster_badge_style,
+                logo_badge_style: s.logo_badge_style,
+                backdrop_badge_style: s.backdrop_badge_style,
             };
         }
         Ok(None) => {} // no per-key override, fall through

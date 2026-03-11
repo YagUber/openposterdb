@@ -79,14 +79,15 @@ test.describe('api keys', () => {
   test('per-key settings panel shows rating display section', async ({ page }) => {
     await createKeyAndOpenSettings(page)
 
-    await expect(page.locator('text=Max ratings to show')).toBeVisible()
+    await expect(page.locator('text=Max ratings').first()).toBeVisible()
     await expect(page.locator('text=Rating order')).toBeVisible()
   })
 
   test('per-key rating limit defaults to 3', async ({ page }) => {
     await createKeyAndOpenSettings(page)
 
-    const limitInput = page.locator('input[type="number"]')
+    // Target the poster max ratings input (first number input in the settings panel)
+    const limitInput = page.locator('input[type="number"]').first()
     await expect(limitInput).toBeVisible()
     await expect(limitInput).toHaveValue('3')
   })
@@ -94,8 +95,8 @@ test.describe('api keys', () => {
   test('per-key rating settings persist after auto-save', async ({ page }) => {
     const keyName = await createKeyAndOpenSettings(page)
 
-    // Change limit to a non-default value
-    const limitInput = page.locator('input[type="number"]')
+    // Change limit to a non-default value (first number input = poster max ratings)
+    const limitInput = page.locator('input[type="number"]').first()
     await limitInput.fill('5')
 
     // Wait for auto-save confirmation
@@ -109,7 +110,7 @@ test.describe('api keys', () => {
     await keyRow.locator('button:not(:has-text("Delete"))').first().click()
     await expect(page.locator('text=Rating Display')).toBeVisible()
 
-    await expect(page.locator('input[type="number"]')).toHaveValue('5')
+    await expect(page.locator('input[type="number"]').first()).toHaveValue('5')
   })
 
   test('delete a key removes it from list', async ({ page }) => {

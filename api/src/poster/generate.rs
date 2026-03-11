@@ -9,7 +9,10 @@ use crate::services::tmdb::TmdbClient;
 
 const BADGE_SPACING: u32 = 10;
 const BADGE_BOTTOM_MARGIN: u32 = 20;
+const BADGE_TOP_MARGIN: u32 = 20;
+const BADGE_SIDE_MARGIN: u32 = 15;
 const BADGE_ROW_SPACING: u32 = 7;
+const BADGE_VERT_SPACING: u32 = 7;
 const MAX_BADGES_PER_ROW: usize = 3;
 
 pub struct PosterParams<'a> {
@@ -24,6 +27,9 @@ pub struct PosterParams<'a> {
     pub poster_bytes_override: Option<Vec<u8>>,
     /// Whether to normalize the poster width (e.g. for fanart sources with larger images).
     pub normalize_width: bool,
+    /// Badge position: "bottom-center" (default), "top-center", "left", "right"
+    pub poster_position: String,
+    pub badge_style: String,
 }
 
 pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppError> {
@@ -37,6 +43,8 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
         poster_stale_secs,
         poster_bytes_override,
         normalize_width,
+        poster_position,
+        badge_style,
     } = params;
 
     let poster_bytes = if let Some(bytes) = poster_bytes_override {
@@ -63,12 +71,37 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
     let badges = badges.to_vec();
     let font = font.clone();
     let buf = tokio::task::spawn_blocking(move || {
-        render_poster_sync(&poster_bytes, &badges, &font, quality, normalize_width)
+        render_poster_sync(&poster_bytes, &badges, &font, quality, normalize_width, &poster_position, &badge_style)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
 
     Ok(buf)
+}
+
+/// Overlay badges in a vertical column along the left or right edge of the canvas, vertically centered.
+fn overlay_side_column(canvas: &mut RgbaImage, badge_images: &[RgbaImage], is_left: bool) {
+    let total_badge_height: u32 = badge_images.iter().map(|b| b.height()).sum::<u32>()
+        + BADGE_VERT_SPACING * (badge_images.len() as u32).saturating_sub(1);
+    let max_badge_width: u32 = badge_images.iter().map(|b| b.width()).max().unwrap_or(0);
+
+    let x = if is_left {
+        BADGE_SIDE_MARGIN
+    } else {
+        canvas.width().saturating_sub(max_badge_width + BADGE_SIDE_MARGIN)
+    };
+    let start_y = (canvas.height().saturating_sub(total_badge_height)) / 2;
+
+    let mut y = start_y;
+    for badge_img in badge_images {
+        let bx = if is_left {
+            x
+        } else {
+            x + max_badge_width.saturating_sub(badge_img.width())
+        };
+        imageops::overlay(canvas, badge_img, bx as i64, y as i64);
+        y += badge_img.height() + BADGE_VERT_SPACING;
+    }
 }
 
 pub fn render_poster_sync(
@@ -77,6 +110,8 @@ pub fn render_poster_sync(
     font: &FontArc,
     quality: u8,
     normalize_width: bool,
+    poster_position: &str,
+    badge_style: &str,
 ) -> Result<Vec<u8>, AppError> {
     let base = image::load_from_memory(poster_bytes)
         .map_err(AppError::Image)?;
@@ -93,34 +128,65 @@ pub fn render_poster_sync(
     let mut canvas: RgbaImage = base.to_rgba8();
 
     if !badges.is_empty() {
-        // Render all badge images
-        let badge_images: Vec<RgbaImage> = badges
-            .iter()
-            .map(|b| badge::render_badge(b, font))
-            .collect();
+        let badge_images: Vec<RgbaImage> = match badge_style {
+            "vertical" => badges.iter().map(|b| badge::render_vertical_badge(b, font)).collect(),
+            _ => badge::render_badges_uniform(badges, font),
+        };
 
-        // Split into rows of MAX_BADGES_PER_ROW
-        let rows: Vec<&[RgbaImage]> = badge_images
-            .chunks(MAX_BADGES_PER_ROW)
-            .collect();
+        match poster_position {
+            "left" | "right" => {
+                overlay_side_column(&mut canvas, &badge_images, poster_position == "left");
+            }
+            _ => {
+                let is_top = poster_position == "top-center";
+                if badge_style == "vertical" || badge_images.len() <= MAX_BADGES_PER_ROW {
+                    // Single row layout
+                    let total_width: u32 = badge_images.iter().map(|b| b.width()).sum::<u32>()
+                        + BADGE_SPACING * (badge_images.len() as u32).saturating_sub(1);
+                    let max_badge_height: u32 = badge_images.iter().map(|b| b.height()).max().unwrap_or(0);
 
-        let badge_height = badge_images[0].height();
-        let total_height = badge_height * rows.len() as u32
-            + BADGE_ROW_SPACING * (rows.len() as u32).saturating_sub(1);
+                    let start_x = (canvas.width().saturating_sub(total_width)) / 2;
+                    let y = if is_top {
+                        BADGE_TOP_MARGIN
+                    } else {
+                        canvas.height().saturating_sub(max_badge_height + BADGE_BOTTOM_MARGIN)
+                    };
 
-        let base_y = canvas.height() - BADGE_BOTTOM_MARGIN - total_height;
+                    let mut x = start_x;
+                    for badge_img in &badge_images {
+                        let by = y + (max_badge_height.saturating_sub(badge_img.height())) / 2;
+                        imageops::overlay(&mut canvas, badge_img, x as i64, by as i64);
+                        x += badge_img.width() + BADGE_SPACING;
+                    }
+                } else {
+                    // Multi-row layout for horizontal badges
+                    let rows: Vec<&[RgbaImage]> = badge_images
+                        .chunks(MAX_BADGES_PER_ROW)
+                        .collect();
 
-        for (row_idx, row) in rows.iter().enumerate() {
-            let row_width: u32 = row.iter().map(|b| b.width()).sum::<u32>()
-                + BADGE_SPACING * (row.len() as u32).saturating_sub(1);
+                    let badge_height = badge_images[0].height();
+                    let total_height = badge_height * rows.len() as u32
+                        + BADGE_ROW_SPACING * (rows.len() as u32).saturating_sub(1);
 
-            let start_x = (canvas.width().saturating_sub(row_width)) / 2;
-            let y = base_y + row_idx as u32 * (badge_height + BADGE_ROW_SPACING);
+                    let base_y = if is_top {
+                        BADGE_TOP_MARGIN
+                    } else {
+                        canvas.height() - BADGE_BOTTOM_MARGIN - total_height
+                    };
 
-            let mut x = start_x;
-            for badge_img in *row {
-                imageops::overlay(&mut canvas, badge_img, x as i64, y as i64);
-                x += badge_img.width() + BADGE_SPACING;
+                    for (row_idx, row) in rows.iter().enumerate() {
+                        let row_width: u32 = row.iter().map(|b| b.width()).sum::<u32>()
+                            + BADGE_SPACING * (row.len() as u32).saturating_sub(1);
+                        let start_x = (canvas.width().saturating_sub(row_width)) / 2;
+                        let y = base_y + row_idx as u32 * (badge_height + BADGE_ROW_SPACING);
+
+                        let mut x = start_x;
+                        for badge_img in *row {
+                            imageops::overlay(&mut canvas, badge_img, x as i64, y as i64);
+                            x += badge_img.width() + BADGE_SPACING;
+                        }
+                    }
+                }
             }
         }
     }
@@ -169,6 +235,7 @@ pub fn render_logo_sync(
     logo_bytes: &[u8],
     badges: &[RatingBadge],
     font: &FontArc,
+    badge_style: &str,
 ) -> Result<Vec<u8>, AppError> {
     let base = image::load_from_memory(logo_bytes).map_err(AppError::Image)?;
 
@@ -197,70 +264,112 @@ pub fn render_logo_sync(
         return Ok(buf);
     }
 
-    // Render badge images
-    let badge_images: Vec<RgbaImage> = badges
-        .iter()
-        .map(|b| badge::render_badge(b, font))
-        .collect();
+    match badge_style {
+        "vertical" => {
+            // Vertical badge shapes arranged in a horizontal row below the logo
+            let badge_images: Vec<RgbaImage> = badges
+                .iter()
+                .map(|b| badge::render_vertical_badge(b, font))
+                .collect();
 
-    let rows: Vec<&[RgbaImage]> = badge_images.chunks(LOGO_MAX_BADGES_PER_ROW).collect();
-    let badge_height = badge_images[0].height();
-    let total_badge_height =
-        badge_height * rows.len() as u32 + LOGO_BADGE_ROW_SPACING * (rows.len() as u32).saturating_sub(1);
+            let total_width: u32 = badge_images.iter().map(|b| b.width()).sum::<u32>()
+                + LOGO_BADGE_SPACING * (badge_images.len() as u32).saturating_sub(1);
+            let max_badge_height: u32 = badge_images.iter().map(|b| b.height()).max().unwrap_or(0);
 
-    // Compute row widths to determine canvas width
-    let max_row_width: u32 = rows
-        .iter()
-        .map(|row| {
-            row.iter().map(|b| b.width()).sum::<u32>()
-                + LOGO_BADGE_SPACING * (row.len() as u32).saturating_sub(1)
-        })
-        .max()
-        .unwrap_or(0);
+            let canvas_width = logo_img.width().max(total_width);
+            let canvas_height = logo_img.height() + LOGO_SPACING_BELOW + max_badge_height;
 
-    let canvas_width = logo_img.width().max(max_row_width);
-    let canvas_height = logo_img.height() + LOGO_SPACING_BELOW + total_badge_height;
+            let mut canvas = RgbaImage::new(canvas_width, canvas_height);
 
-    let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+            let logo_x = (canvas_width.saturating_sub(logo_img.width())) / 2;
+            imageops::overlay(&mut canvas, &logo_img, logo_x as i64, 0);
 
-    // Center logo at top
-    let logo_x = (canvas_width.saturating_sub(logo_img.width())) / 2;
-    imageops::overlay(&mut canvas, &logo_img, logo_x as i64, 0);
+            let badges_start_y = logo_img.height() + LOGO_SPACING_BELOW;
+            let start_x = (canvas_width.saturating_sub(total_width)) / 2;
+            let mut x = start_x;
+            for badge_img in &badge_images {
+                let by = badges_start_y + (max_badge_height.saturating_sub(badge_img.height())) / 2;
+                imageops::overlay(&mut canvas, badge_img, x as i64, by as i64);
+                x += badge_img.width() + LOGO_BADGE_SPACING;
+            }
 
-    // Center badge rows below logo
-    let badges_start_y = logo_img.height() + LOGO_SPACING_BELOW;
-    for (row_idx, row) in rows.iter().enumerate() {
-        let row_width: u32 = row.iter().map(|b| b.width()).sum::<u32>()
-            + LOGO_BADGE_SPACING * (row.len() as u32).saturating_sub(1);
-        let start_x = (canvas_width.saturating_sub(row_width)) / 2;
-        let y = badges_start_y + row_idx as u32 * (badge_height + LOGO_BADGE_ROW_SPACING);
+            // Encode as PNG
+            let mut buf = Vec::new();
+            let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+            image::ImageEncoder::write_image(
+                encoder,
+                canvas.as_raw(),
+                canvas.width(),
+                canvas.height(),
+                image::ExtendedColorType::Rgba8,
+            )?;
+            Ok(buf)
+        }
+        _ => {
+            // Horizontal badge images (default) — uniform widths, arranged in rows below the logo
+            let badge_images = badge::render_badges_uniform(badges, font);
 
-        let mut x = start_x;
-        for badge_img in *row {
-            imageops::overlay(&mut canvas, badge_img, x as i64, y as i64);
-            x += badge_img.width() + LOGO_BADGE_SPACING;
+            let rows: Vec<&[RgbaImage]> = badge_images.chunks(LOGO_MAX_BADGES_PER_ROW).collect();
+            let badge_height = badge_images[0].height();
+            let total_badge_height =
+                badge_height * rows.len() as u32 + LOGO_BADGE_ROW_SPACING * (rows.len() as u32).saturating_sub(1);
+
+            // Compute row widths to determine canvas width
+            let max_row_width: u32 = rows
+                .iter()
+                .map(|row| {
+                    row.iter().map(|b| b.width()).sum::<u32>()
+                        + LOGO_BADGE_SPACING * (row.len() as u32).saturating_sub(1)
+                })
+                .max()
+                .unwrap_or(0);
+
+            let canvas_width = logo_img.width().max(max_row_width);
+            let canvas_height = logo_img.height() + LOGO_SPACING_BELOW + total_badge_height;
+
+            let mut canvas = RgbaImage::new(canvas_width, canvas_height);
+
+            // Center logo at top
+            let logo_x = (canvas_width.saturating_sub(logo_img.width())) / 2;
+            imageops::overlay(&mut canvas, &logo_img, logo_x as i64, 0);
+
+            // Center badge rows below logo
+            let badges_start_y = logo_img.height() + LOGO_SPACING_BELOW;
+            for (row_idx, row) in rows.iter().enumerate() {
+                let row_width: u32 = row.iter().map(|b| b.width()).sum::<u32>()
+                    + LOGO_BADGE_SPACING * (row.len() as u32).saturating_sub(1);
+                let start_x = (canvas_width.saturating_sub(row_width)) / 2;
+                let y = badges_start_y + row_idx as u32 * (badge_height + LOGO_BADGE_ROW_SPACING);
+
+                let mut x = start_x;
+                for badge_img in *row {
+                    imageops::overlay(&mut canvas, badge_img, x as i64, y as i64);
+                    x += badge_img.width() + LOGO_BADGE_SPACING;
+                }
+            }
+
+            // Encode as PNG (preserves transparency)
+            let mut buf = Vec::new();
+            let encoder = image::codecs::png::PngEncoder::new(&mut buf);
+            image::ImageEncoder::write_image(
+                encoder,
+                canvas.as_raw(),
+                canvas.width(),
+                canvas.height(),
+                image::ExtendedColorType::Rgba8,
+            )?;
+            Ok(buf)
         }
     }
-
-    // Encode as PNG (preserves transparency)
-    let mut buf = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
-    image::ImageEncoder::write_image(
-        encoder,
-        canvas.as_raw(),
-        canvas.width(),
-        canvas.height(),
-        image::ExtendedColorType::Rgba8,
-    )?;
-    Ok(buf)
 }
 
 pub async fn generate_logo(
     logo_bytes: Vec<u8>,
     badges: Vec<RatingBadge>,
     font: FontArc,
+    badge_style: String,
 ) -> Result<Vec<u8>, AppError> {
-    tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font))
+    tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, &badge_style))
         .await
         .map_err(|e| AppError::Other(e.to_string()))?
 }
@@ -273,6 +382,7 @@ pub fn render_backdrop_sync(
     badges: &[RatingBadge],
     font: &FontArc,
     quality: u8,
+    badge_style: &str,
 ) -> Result<Vec<u8>, AppError> {
     let base = image::load_from_memory(backdrop_bytes).map_err(AppError::Image)?;
 
@@ -288,19 +398,16 @@ pub fn render_backdrop_sync(
     let mut canvas: RgbaImage = base.to_rgba8();
 
     if !badges.is_empty() {
-        // Render badge images
-        let badge_images: Vec<RgbaImage> = badges
-            .iter()
-            .map(|b| badge::render_badge(b, font))
-            .collect();
+        let badge_images: Vec<RgbaImage> = match badge_style {
+            "horizontal" => badge::render_badges_uniform(badges, font),
+            _ => badges.iter().map(|b| badge::render_vertical_badge(b, font)).collect(),
+        };
 
-        // Stack badges vertically in a single column, top-right corner
         let max_badge_width: u32 = badge_images.iter().map(|b| b.width()).max().unwrap_or(0);
         let x = canvas.width().saturating_sub(max_badge_width + BACKDROP_MARGIN);
         let mut y = BACKDROP_MARGIN;
 
         for badge_img in &badge_images {
-            // Right-align each badge within the column
             let bx = x + max_badge_width.saturating_sub(badge_img.width());
             imageops::overlay(&mut canvas, badge_img, bx as i64, y as i64);
             y += badge_img.height() + BACKDROP_BADGE_SPACING;
@@ -321,8 +428,9 @@ pub async fn generate_backdrop(
     badges: Vec<RatingBadge>,
     font: FontArc,
     quality: u8,
+    badge_style: String,
 ) -> Result<Vec<u8>, AppError> {
-    tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality))
+    tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, &badge_style))
         .await
         .map_err(|e| AppError::Other(e.to_string()))?
 }
@@ -356,7 +464,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = render_poster_sync(&png_bytes, &[], &font, 85, false).unwrap();
+        let result = render_poster_sync(&png_bytes, &[], &font, 85, false, "bottom-center", "horizontal").unwrap();
         assert!(!result.is_empty());
         // Should be valid JPEG
         assert_eq!(result[0], 0xFF);
@@ -399,7 +507,7 @@ mod tests {
             },
         ];
 
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, false).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, false, "bottom-center", "horizontal").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -408,7 +516,7 @@ mod tests {
     #[test]
     fn render_poster_invalid_image_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(b"not an image", &[], &font, 85, false);
+        let result = render_poster_sync(b"not an image", &[], &font, 85, false, "bottom-center", "horizontal");
         assert!(result.is_err());
     }
 
@@ -440,7 +548,7 @@ mod tests {
     fn render_logo_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(200, 80);
-        let result = render_logo_sync(&png, &[], &font).unwrap();
+        let result = render_logo_sync(&png, &[], &font, "horizontal").unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -455,7 +563,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font).unwrap();
+        let result = render_logo_sync(&png, &badges, &font, "horizontal").unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -465,7 +573,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a logo wider than TARGET_WIDTH (500)
         let png = test_png(1000, 200);
-        let result = render_logo_sync(&png, &[], &font).unwrap();
+        let result = render_logo_sync(&png, &[], &font, "horizontal").unwrap();
         assert!(!result.is_empty());
         // Verify the output is valid PNG and was produced (implicitly downscaled)
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
@@ -474,7 +582,7 @@ mod tests {
     #[test]
     fn render_logo_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_logo_sync(b"not an image", &[], &font);
+        let result = render_logo_sync(b"not an image", &[], &font, "horizontal");
         assert!(result.is_err());
     }
 
@@ -482,7 +590,7 @@ mod tests {
     fn render_backdrop_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, "vertical").unwrap();
         assert!(!result.is_empty());
         // Backdrop outputs JPEG
         assert_eq!(result[0], 0xFF);
@@ -499,7 +607,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, "vertical").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -510,7 +618,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a backdrop wider than TARGET_WIDTH (1280)
         let png = test_png(2560, 1440);
-        let result = render_backdrop_sync(&png, &[], &font, 85).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, "vertical").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -519,7 +627,58 @@ mod tests {
     #[test]
     fn render_backdrop_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_backdrop_sync(b"not an image", &[], &font, 85);
+        let result = render_backdrop_sync(b"not an image", &[], &font, 85, "vertical");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn render_poster_top_center_produces_valid_jpeg() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png_bytes = test_png(500, 750);
+        let badges = vec![
+            RatingBadge {
+                source: RatingSource::Imdb,
+                value: "8.5".to_string(),
+            },
+        ];
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, false, "top-center", "horizontal").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_left_position_produces_valid_jpeg() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png_bytes = test_png(500, 750);
+        let badges = vec![
+            RatingBadge {
+                source: RatingSource::Imdb,
+                value: "8.5".to_string(),
+            },
+        ];
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, false, "left", "horizontal").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_right_position_produces_valid_jpeg() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png_bytes = test_png(500, 750);
+        let badges = vec![
+            RatingBadge {
+                source: RatingSource::Imdb,
+                value: "8.5".to_string(),
+            },
+        ];
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, false, "right", "horizontal").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
     }
 }

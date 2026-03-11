@@ -563,3 +563,86 @@ async fn fetch_backdrop_rejects_invalid_id_type() {
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn get_settings_returns_new_field_defaults() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let req = Request::builder()
+        .uri("/api/admin/settings")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["poster_position"], "bottom-center");
+    assert_eq!(json["logo_ratings_limit"], 3);
+    assert_eq!(json["backdrop_ratings_limit"], 3);
+    assert_eq!(json["poster_badge_style"], "horizontal");
+    assert_eq!(json["logo_badge_style"], "horizontal");
+    assert_eq!(json["backdrop_badge_style"], "vertical");
+}
+
+#[tokio::test]
+async fn update_settings_with_poster_position_and_read_back() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({
+                "poster_source": "tmdb",
+                "poster_position": "left",
+                "logo_ratings_limit": 5,
+                "backdrop_ratings_limit": 2
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let req = Request::builder()
+        .uri("/api/admin/settings")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["poster_position"], "left");
+    assert_eq!(json["logo_ratings_limit"], 5);
+    assert_eq!(json["backdrop_ratings_limit"], 2);
+}
+
+#[tokio::test]
+async fn update_settings_rejects_invalid_poster_position() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::json!({
+                "poster_source": "tmdb",
+                "poster_position": "invalid"
+            })
+            .to_string(),
+        ))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}

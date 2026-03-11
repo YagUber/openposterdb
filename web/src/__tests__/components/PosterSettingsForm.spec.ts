@@ -13,6 +13,12 @@ const defaultSettings: PosterSettings = {
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
+  poster_position: 'bottom-center',
+  logo_ratings_limit: 3,
+  backdrop_ratings_limit: 3,
+  poster_badge_style: 'horizontal',
+  logo_badge_style: 'horizontal',
+  backdrop_badge_style: 'vertical',
 }
 
 function makeFetchPreview() {
@@ -55,7 +61,7 @@ describe('PosterSettingsForm', () => {
 
   it('renders preview section', () => {
     const wrapper = mountForm()
-    expect(wrapper.text()).toContain('Preview')
+    expect(wrapper.text()).toContain('Poster')
     expect(wrapper.find('img[alt="Poster preview"]').exists()).toBe(true)
   })
 
@@ -64,7 +70,7 @@ describe('PosterSettingsForm', () => {
     mountForm({}, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt')
+    expect(fetchPreview).toHaveBeenCalledWith(3, 'mal,imdb,lb,rt,rta,mc,tmdb,trakt', 'bottom-center', 'horizontal')
   })
 
   it('calls fetchPreview with correct params for custom settings', async () => {
@@ -72,7 +78,7 @@ describe('PosterSettingsForm', () => {
     mountForm({ ratings_limit: 5, ratings_order: 'imdb,rt,tmdb' }, fetchPreview)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'))
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.stringContaining('imdb'), expect.any(String), expect.any(String))
   })
 
   it('sets preview src from blob after fetch', async () => {
@@ -103,7 +109,7 @@ describe('PosterSettingsForm', () => {
     vi.advanceTimersByTime(600)
     await flushPromises()
 
-    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String))
+    expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String))
   })
 
   it('debounces rapid changes — only last value triggers fetch', async () => {
@@ -127,7 +133,7 @@ describe('PosterSettingsForm', () => {
 
     // Should only have been called once with the final value
     expect(fetchPreview).toHaveBeenCalledTimes(1)
-    expect(fetchPreview).toHaveBeenCalledWith(7, expect.any(String))
+    expect(fetchPreview).toHaveBeenCalledWith(7, expect.any(String), expect.any(String), expect.any(String))
   })
 
   it('shows loading state while preview loads', async () => {
@@ -171,5 +177,23 @@ describe('PosterSettingsForm', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Failed')
+  })
+
+  it('renders poster position dropdown', () => {
+    const wrapper = mountForm()
+    const select = wrapper.findAll('select')
+    const positionSelect = select.find(s => {
+      const options = s.findAll('option')
+      return options.some(o => o.attributes('value') === 'left')
+    })
+    expect(positionSelect).toBeDefined()
+  })
+
+  it('calls fetchPreview with posterPosition', async () => {
+    const fetchPreview = makeFetchPreview()
+    mountForm({ poster_position: 'left' }, fetchPreview)
+    await flushPromises()
+
+    expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'left', 'horizontal')
   })
 })

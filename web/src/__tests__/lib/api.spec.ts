@@ -204,6 +204,26 @@ describe('api', () => {
     expect(url).toContain('ratings_order=imdb%2Crt%2Ctmdb')
   })
 
+  it('adminApi.previewPoster includes poster_position when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewPoster(3, 'imdb,rt', 'left')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('poster_position=left')
+  })
+
+  it('adminApi.previewPoster omits poster_position when not provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewPoster(3, 'imdb,rt')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).not.toContain('poster_position')
+  })
+
   it('adminApi.getLogos calls GET with correct URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
     vi.stubGlobal('fetch', fetchMock)

@@ -58,7 +58,16 @@ export default defineConfig({
     {
       name: 'chromium',
       dependencies: ['setup'],
-      testIgnore: /setup-flow\.spec\.ts/,
+      testIgnore: [/setup-flow\.spec\.ts/, /live-api\.spec\.ts/],
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
+      name: 'live',
+      dependencies: ['setup'],
+      testMatch: /live-api\.spec\.ts/,
+      timeout: 120 * 1000,
       use: {
         ...devices['Desktop Chrome'],
       },

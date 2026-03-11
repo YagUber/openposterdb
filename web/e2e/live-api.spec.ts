@@ -313,8 +313,14 @@ test.describe('live API - UI poster fetch', () => {
     await expect(submitButton).toBeEnabled()
     await submitButton.click()
 
+    // After fetch, a preview dialog opens — wait for it then close it
+    const previewDialog = page.getByRole('dialog')
+    await expect(previewDialog).toBeVisible({ timeout: 60_000 })
+    await page.keyboard.press('Escape')
+    await expect(previewDialog).not.toBeVisible()
+
     // Wait for poster to appear in table
-    await expect(page.getByRole('cell', { name: 'tt0468569' })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('tt0468569')).toBeVisible({ timeout: 15_000 })
   })
 })
 

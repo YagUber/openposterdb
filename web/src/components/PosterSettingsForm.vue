@@ -258,30 +258,71 @@ async function fetchPreviewImage(
   }
 }
 
-let previewTimer: ReturnType<typeof setTimeout> | null = null
+let posterPreviewTimer: ReturnType<typeof setTimeout> | null = null
+let logoPreviewTimer: ReturnType<typeof setTimeout> | null = null
+let backdropPreviewTimer: ReturnType<typeof setTimeout> | null = null
 
-function updateAllPreviews() {
+function updatePosterPreview() {
   fetchPreviewImage(posterPreview.value, props.fetchPreview, { posterPosition: editPosterPosition.value, badgeStyle: editPosterBadgeStyle.value })
+}
+
+function updateLogoPreview() {
   if (props.fetchLogoPreview) {
     fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value))
   }
+}
+
+function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
     fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value))
   }
 }
 
-// Debounced watcher on rating settings
-watch([editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle], () => {
+function updateAllPreviews() {
+  updatePosterPreview()
+  updateLogoPreview()
+  updateBackdropPreview()
+}
+
+// Global settings: refresh all previews
+watch([editRatingsOrder], () => {
   if (syncing) return
-  if (previewTimer) clearTimeout(previewTimer)
-  previewTimer = setTimeout(updateAllPreviews, 500)
+  if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
+  if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
+  if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
+  posterPreviewTimer = setTimeout(updatePosterPreview, 500)
+  logoPreviewTimer = setTimeout(updateLogoPreview, 500)
+  backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
 }, { deep: true })
+
+// Poster-only settings
+watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle], () => {
+  if (syncing) return
+  if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
+  posterPreviewTimer = setTimeout(updatePosterPreview, 500)
+})
+
+// Logo-only settings
+watch([editLogoRatingsLimit, editLogoBadgeStyle], () => {
+  if (syncing) return
+  if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
+  logoPreviewTimer = setTimeout(updateLogoPreview, 500)
+})
+
+// Backdrop-only settings
+watch([editBackdropRatingsLimit, editBackdropBadgeStyle], () => {
+  if (syncing) return
+  if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
+  backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
+})
 
 // Initial preview on mount
 updateAllPreviews()
 
 onBeforeUnmount(() => {
-  if (previewTimer) clearTimeout(previewTimer)
+  if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
+  if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
+  if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   if (saveTimer) clearTimeout(saveTimer)
   if (posterPreview.value.src) URL.revokeObjectURL(posterPreview.value.src)
   if (logoPreview.value.src) URL.revokeObjectURL(logoPreview.value.src)

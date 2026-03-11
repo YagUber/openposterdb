@@ -2,11 +2,22 @@ use crate::error::AppError;
 
 pub fn validate_username(username: &str) -> Result<(), AppError> {
     if username.is_empty()
+        || username.len() > 128
         || username.chars().any(char::is_whitespace)
         || username.chars().any(char::is_control)
     {
         return Err(AppError::BadRequest(
-            "Invalid username: must not be empty or contain whitespace/control characters".into(),
+            "Invalid username: must be 1-128 characters and not contain whitespace/control characters".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_api_key_name(name: &str) -> Result<(), AppError> {
+    if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+        return Err(AppError::BadRequest(
+            "Invalid API key name: must be 1-128 characters and not contain control characters"
+                .into(),
         ));
     }
     Ok(())
@@ -47,6 +58,18 @@ mod tests {
     #[test]
     fn validate_username_control_chars() {
         assert!(validate_username("hello\x00world").is_err());
+    }
+
+    #[test]
+    fn validate_username_too_long() {
+        let name = "a".repeat(129);
+        assert!(validate_username(&name).is_err());
+    }
+
+    #[test]
+    fn validate_username_exactly_128() {
+        let name = "a".repeat(128);
+        assert!(validate_username(&name).is_ok());
     }
 
     #[test]
@@ -99,5 +122,39 @@ mod tests {
     fn validate_password_257_chars_rejected() {
         let pw = "a".repeat(257);
         assert!(validate_password(&pw).is_err());
+    }
+
+    // --- API key name validation ---
+
+    #[test]
+    fn validate_api_key_name_empty() {
+        assert!(validate_api_key_name("").is_err());
+    }
+
+    #[test]
+    fn validate_api_key_name_valid() {
+        assert!(validate_api_key_name("my-key").is_ok());
+    }
+
+    #[test]
+    fn validate_api_key_name_with_spaces() {
+        assert!(validate_api_key_name("my key name").is_ok());
+    }
+
+    #[test]
+    fn validate_api_key_name_control_chars() {
+        assert!(validate_api_key_name("key\x00name").is_err());
+    }
+
+    #[test]
+    fn validate_api_key_name_exactly_128() {
+        let name = "a".repeat(128);
+        assert!(validate_api_key_name(&name).is_ok());
+    }
+
+    #[test]
+    fn validate_api_key_name_too_long() {
+        let name = "a".repeat(129);
+        assert!(validate_api_key_name(&name).is_err());
     }
 }

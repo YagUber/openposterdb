@@ -386,6 +386,17 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         ));
     }
 
+    // Security headers — always present regardless of HTTPS mode
+    app = app
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ));
+
     app.layer(cors_layer).with_state(state)
 }
 

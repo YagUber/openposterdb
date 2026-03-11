@@ -2405,6 +2405,7 @@ dependencies = [
  "ab_glyph",
  "argon2",
  "axum",
+ "base64",
  "bytes",
  "chrono",
  "dashmap",

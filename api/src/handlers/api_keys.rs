@@ -11,6 +11,7 @@ use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
 use crate::services::db::{self, validate_fanart_lang, validate_poster_source, validate_poster_position, validate_ratings_limit, validate_ratings_order, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, validate_badge_style, default_label_style, validate_label_style, default_poster_badge_direction, validate_badge_direction};
+use crate::services::validation;
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -49,9 +50,7 @@ pub async fn create(
     Extension(auth_user): Extension<AuthUser>,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<Json<Value>, AppError> {
-    if req.name.is_empty() {
-        return Err(AppError::BadRequest("Name must not be empty".into()));
-    }
+    validation::validate_api_key_name(&req.name)?;
 
     // Look up the admin user to get their id
     let user = db::find_admin_user_by_username(&state.db, &auth_user.username)

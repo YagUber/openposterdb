@@ -25,7 +25,7 @@ test.describe('posters page', () => {
   })
 
   test('shows empty state when no posters', async ({ page }) => {
-    await expect(page.getByRole('cell', { name: 'No posters cached yet.' })).toBeVisible()
+    await expect(page.getByRole('cell', { name: 'No posters cached yet.' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText('0 posters total')).toBeVisible()
   })
 

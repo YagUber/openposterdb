@@ -136,8 +136,8 @@ test.describe('live API - poster generation', () => {
 
     const body = await res.json()
     expect(body.total).toBeGreaterThan(0)
-    const found = body.posters.some(
-      (p: any) => p.id_type === 'imdb' && p.id_value === TEST_IMDB_ID,
+    const found = body.items.some(
+      (p: any) => p.cache_key.includes('imdb') && p.cache_key.includes(TEST_IMDB_ID),
     )
     expect(found).toBe(true)
   })

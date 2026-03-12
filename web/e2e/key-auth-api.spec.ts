@@ -154,6 +154,22 @@ test.describe('API key auth - API level security', () => {
     }
   })
 
+  test('GET /{api_key}/isValid returns 200 for valid key', async ({ request }) => {
+    const { apiKey } = await setupKeyAndAdmin(request)
+
+    const res = await request.get(`/${apiKey}/isValid`)
+    expect(res.status()).toBe(200)
+  })
+
+  test('GET /{api_key}/isValid returns 401 for invalid key', async ({ request }) => {
+    await request.post('/api/auth/setup', {
+      data: { username: 'admin', password: 'testpassword123' },
+    })
+
+    const res = await request.get('/bogus-key/isValid')
+    expect(res.status()).toBe(401)
+  })
+
   test('Admin JWT cannot access self-service endpoints', async ({ request }) => {
     const { jwt } = await setupKeyAndAdmin(request)
 

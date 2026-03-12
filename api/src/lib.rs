@@ -341,7 +341,35 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         router
     };
 
-    let mut app = Router::new().merge(poster_route).merge(compressed_routes);
+    // isValid is lightweight (no image generation) so it has its own, more
+    // generous rate limiter to avoid eating into poster request budget.
+    let is_valid_route = {
+        let router = Router::new().route(
+            "/{api_key}/isValid",
+            axum::routing::get(routes::poster::is_valid_handler),
+        );
+
+        #[cfg(not(any(test, feature = "test-support")))]
+        let router = {
+            use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+
+            let governor_conf = GovernorConfigBuilder::default()
+                .per_millisecond(100) // 10 req/s
+                .burst_size(30)
+                .key_extractor(PosterKeyExtractor)
+                .finish()
+                .expect("valid governor config");
+
+            router.layer(GovernorLayer::new(governor_conf))
+        };
+
+        router
+    };
+
+    let mut app = Router::new()
+        .merge(poster_route)
+        .merge(is_valid_route)
+        .merge(compressed_routes);
 
     // Serve static frontend files when STATIC_DIR is set.
     // Falls back to index.html for SPA client-side routing, but returns

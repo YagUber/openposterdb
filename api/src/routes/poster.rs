@@ -1,4 +1,5 @@
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -16,6 +17,8 @@ pub const FREE_API_KEY: &str = "t0-free-rpdb";
 pub struct PosterQuery {
     #[serde(default)]
     pub fallback: Option<String>,
+    #[serde(default)]
+    pub lang: Option<String>,
 }
 
 /// Resolve settings for a free API key (global defaults, no per-key DB lookup).
@@ -96,6 +99,32 @@ async fn resolve_settings(
     Ok(settings)
 }
 
+pub async fn is_valid_handler(
+    State(state): State<Arc<AppState>>,
+    Path(api_key): Path<String>,
+) -> Response {
+    match resolve_settings(&state, &api_key).await {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(resp) => resp,
+    }
+}
+
+/// If `?lang=` was provided, validate it and override `fanart_lang` in settings.
+fn apply_lang_override(
+    settings: Arc<db::PosterSettings>,
+    lang: &Option<String>,
+) -> Result<Arc<db::PosterSettings>, Response> {
+    if let Some(lang) = lang {
+        db::validate_fanart_lang(lang).map_err(|e| e.into_response())?;
+        let mut s = (*settings).clone();
+        s.fanart_lang = lang.clone();
+        s.lang_override = true;
+        Ok(Arc::new(s))
+    } else {
+        Ok(settings)
+    }
+}
+
 pub async fn handler(
     State(state): State<Arc<AppState>>,
     Path((api_key, id_type_str, id_value_jpg)): Path<(String, String, String)>,
@@ -104,6 +133,10 @@ pub async fn handler(
     let use_fallback = query.fallback.as_deref() == Some("true");
 
     let settings = match resolve_settings(&state, &api_key).await {
+        Ok(s) => s,
+        Err(resp) => return resp,
+    };
+    let settings = match apply_lang_override(settings, &query.lang) {
         Ok(s) => s,
         Err(resp) => return resp,
     };
@@ -157,6 +190,10 @@ pub async fn logo_handler(
         Ok(s) => s,
         Err(resp) => return resp,
     };
+    let settings = match apply_lang_override(settings, &query.lang) {
+        Ok(s) => s,
+        Err(resp) => return resp,
+    };
 
     serve_fanart_image(&state, &id_type_str, &id_value_png, &settings, use_fallback, serve::FanartImageKind::Logo).await
 }
@@ -173,6 +210,10 @@ pub async fn backdrop_handler(
     }
 
     let settings = match resolve_settings(&state, &api_key).await {
+        Ok(s) => s,
+        Err(resp) => return resp,
+    };
+    let settings = match apply_lang_override(settings, &query.lang) {
         Ok(s) => s,
         Err(resp) => return resp,
     };

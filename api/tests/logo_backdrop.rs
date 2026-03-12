@@ -376,6 +376,79 @@ async fn logo_negative_cache_with_fallback_returns_placeholder() {
     assert_eq!(res.headers().get("content-type").unwrap(), "image/png");
 }
 
+// --- Language override on logo/backdrop ---
+
+#[tokio::test]
+async fn logo_with_valid_lang_param_accepted() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "logo-lang").await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/logo-default/tt0000001.png?lang=de"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    // Should not be 400 (bad request) — the lang param is valid.
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn logo_with_invalid_lang_param_rejected() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "logo-lang-bad").await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/logo-default/tt0000001.png?lang=toolongvalue"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn backdrop_with_valid_lang_param_accepted() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "backdrop-lang").await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/backdrop-default/tt0000001.jpg?lang=de"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn backdrop_with_invalid_lang_param_rejected() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "backdrop-lang-bad").await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/backdrop-default/tt0000001.jpg?lang=toolongvalue"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
 // --- Invalid id_type returns 400 ---
 
 #[tokio::test]

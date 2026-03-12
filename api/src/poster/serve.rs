@@ -287,9 +287,20 @@ pub async fn handle_inner(
     settings.poster_badge_direction = resolve_badge_direction(&settings.poster_badge_direction, &settings.poster_position);
     settings.poster_badge_style = resolve_badge_style(&settings.poster_badge_style, &settings.poster_badge_direction);
 
-    let use_fanart = settings.poster_source == SOURCE_FANART;
+    let use_fanart = settings.poster_source == SOURCE_FANART || settings.lang_override;
 
-    // Try the fanart path first; falls through to TMDB on miss
+    // Fanart → TMDB fallback strategy:
+    //
+    // 1. If the user's source is fanart, or `?lang=` was provided, try the fanart
+    //    path first. On hit, return immediately.
+    //
+    // 2. On fanart miss, fall through to TMDB. The settings used for TMDB depend
+    //    on *why* we tried fanart:
+    //    a. `?lang=` on a TMDB user — preserve the user's original settings
+    //       (badge style, position, etc.) for the TMDB fallback; just clear
+    //       the lang_override flag so we don't re-enter the fanart path.
+    //    b. Fanart-source user — reset to defaults, since their per-key settings
+    //       (e.g. fanart-specific lang/textless) don't apply to TMDB posters.
     if use_fanart {
         if let Some(bytes) = try_fanart_path(state, id_type_str, id_value, id_type, &settings).await? {
             return Ok(bytes);
@@ -298,10 +309,14 @@ pub async fn handle_inner(
 
     // TMDB path (default, or fanart fallback)
     if use_fanart {
-        let mut defaults = PosterSettings::default();
-        defaults.poster_badge_direction = resolve_badge_direction(&defaults.poster_badge_direction, &defaults.poster_position);
-        defaults.poster_badge_style = resolve_badge_style(&defaults.poster_badge_style, &defaults.poster_badge_direction);
-        settings = defaults;
+        if settings.lang_override && settings.poster_source != SOURCE_FANART {
+            settings.lang_override = false;
+        } else {
+            let mut defaults = PosterSettings::default();
+            defaults.poster_badge_direction = resolve_badge_direction(&defaults.poster_badge_direction, &defaults.poster_position);
+            defaults.poster_badge_style = resolve_badge_style(&defaults.poster_badge_style, &defaults.poster_badge_direction);
+            settings = defaults;
+        }
     }
     let settings = &settings;
     let ratings_suffix = ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit);
@@ -682,7 +697,7 @@ async fn generate_poster_with_source(
     let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
 
     // Try to fetch poster bytes from fanart.tv if configured
-    let fanart_result = if settings.poster_source == SOURCE_FANART {
+    let fanart_result = if settings.poster_source == SOURCE_FANART || settings.lang_override {
         if let Some(ref fanart) = state.fanart {
             fetch_fanart_image(
                 fanart,

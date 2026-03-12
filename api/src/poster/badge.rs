@@ -9,6 +9,7 @@ use crate::services::ratings::RatingBadge;
 
 const BADGE_HEIGHT: u32 = 50;
 const BADGE_PADDING_H: u32 = 14;
+const BADGE_VALUE_PADDING_H: u32 = 10;
 const BADGE_RADIUS: u32 = 10;
 const FONT_SIZE: f32 = 28.0;
 const LABEL_FONT_SIZE: f32 = 21.0;
@@ -112,7 +113,7 @@ fn render_badge_inner(
         uniform_label_width.unwrap_or_else(|| text_width(label, &fonts.label_scaled))
     };
     let value_width = uniform_value_width.unwrap_or_else(|| text_width(value, &fonts.scaled));
-    let total_width = label_width + value_width + BADGE_PADDING_H * 3 + BADGE_PADDING_H / 2 + 2;
+    let total_width = label_width + value_width + BADGE_PADDING_H * 2 + BADGE_VALUE_PADDING_H + BADGE_VALUE_PADDING_H / 2 + 2;
 
     let mut img = RgbaImage::new(total_width, BADGE_HEIGHT);
 
@@ -165,7 +166,7 @@ fn render_badge_inner(
 
     // Draw value text (centered within uniform value area)
     let actual_value_width = text_width(value, &fonts.scaled);
-    let value_text_x = value_x + BADGE_PADDING_H + (value_width.saturating_sub(actual_value_width)) / 2;
+    let value_text_x = value_x + BADGE_VALUE_PADDING_H + (value_width.saturating_sub(actual_value_width)) / 2;
     let value_y = (BADGE_HEIGHT as i32 - FONT_SIZE as i32) / 2;
     draw_text_mut(
         &mut img,

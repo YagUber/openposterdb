@@ -988,6 +988,9 @@ pub struct PosterSettings {
     pub logo_label_style: String,
     pub backdrop_label_style: String,
     pub poster_badge_direction: String,
+    /// Set when `?lang=` query param overrides the stored fanart_lang at request time.
+    #[serde(skip)]
+    pub lang_override: bool,
 }
 
 impl Default for PosterSettings {
@@ -1009,6 +1012,7 @@ impl Default for PosterSettings {
             logo_label_style: default_label_style(),
             backdrop_label_style: default_label_style(),
             poster_badge_direction: default_poster_badge_direction(),
+            lang_override: false,
         }
     }
 }
@@ -1081,6 +1085,7 @@ pub fn parse_global_poster_settings(globals: &HashMap<String, String>) -> Poster
             .get("poster_badge_direction")
             .cloned()
             .unwrap_or(defaults.poster_badge_direction),
+        lang_override: false,
     }
 }
 
@@ -1109,6 +1114,7 @@ pub async fn get_effective_poster_settings(
                 logo_label_style: s.logo_label_style,
                 backdrop_label_style: s.backdrop_label_style,
                 poster_badge_direction: s.poster_badge_direction,
+                lang_override: false,
             };
         }
         Ok(None) => {} // no per-key override, fall through

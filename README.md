@@ -34,11 +34,21 @@ GET /{api_key}/{id_type}/backdrop-default/{id_value}.jpg
 - Returns JPEG with rating badges stacked vertically in the top-right corner
 - Requires `FANART_API_KEY` (returns 501 if not configured)
 
+### Key Validation
+
+```
+GET /{api_key}/isValid
+```
+
+- Returns `200 OK` if the API key is valid, `401 Unauthorized` otherwise
+- Compatible with RPDB integrations that validate keys before use
+
 **Common parameters:**
 
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
 - `?fallback=true`: return a placeholder image instead of an error on failure
+- `?lang={code}`: override the Fanart.tv language for this request (e.g. `?lang=de` for German posters). Automatically switches the poster source to Fanart.tv even if TMDB is configured
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.

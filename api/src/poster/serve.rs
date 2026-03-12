@@ -527,8 +527,8 @@ fn trigger_fanart_background_refresh(
         };
 
         let bytes = match fanart_kind {
-            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style, type_label_style).await?,
-            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality, type_badge_style, type_label_style).await?,
+            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style, type_label_style, state2.render_semaphore.clone()).await?,
+            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality, type_badge_style, type_label_style, state2.render_semaphore.clone()).await?,
         };
 
         Ok((bytes, resolved.release_date, image_type))
@@ -598,6 +598,7 @@ async fn generate_poster_with_source(
         badge_style: settings.poster_badge_style.clone(),
         label_style: settings.poster_label_style.clone(),
         badge_direction: settings.poster_badge_direction.clone(),
+        render_semaphore: state.render_semaphore.clone(),
     })
     .await?;
 
@@ -890,8 +891,8 @@ pub async fn handle_fanart_image_inner(
             };
 
             let bytes = match fanart_kind {
-                FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style2, type_label_style2).await?,
-                FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality, type_badge_style2, type_label_style2).await?,
+                FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style2, type_label_style2, state2.render_semaphore.clone()).await?,
+                FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.poster_quality, type_badge_style2, type_label_style2, state2.render_semaphore.clone()).await?,
             };
 
             let _ = cache::write(&cache_path2, &bytes).await;

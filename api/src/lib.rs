@@ -60,6 +60,7 @@ pub struct AppState {
     pub global_settings_cache: moka::future::Cache<(), Arc<PosterSettings>>,
     pub preview_cache: moka::future::Cache<String, bytes::Bytes>,
     pub free_api_key_cache: moka::future::Cache<(), bool>,
+    pub render_semaphore: Arc<tokio::sync::Semaphore>,
 }
 
 impl AppState {

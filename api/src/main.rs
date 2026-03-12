@@ -205,6 +205,17 @@ async fn main() {
         .time_to_live(Duration::from_secs(60))
         .build();
 
+    let render_concurrency: usize = std::env::var("RENDER_CONCURRENCY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map(|n| n.get() * 2)
+                .unwrap_or(4)
+        });
+    let render_semaphore = Arc::new(tokio::sync::Semaphore::new(render_concurrency));
+    tracing::info!(permits = render_concurrency, "render semaphore initialized");
+
     let pending_last_used: Arc<DashMap<i32, ()>> = Arc::new(DashMap::new());
 
     let state = Arc::new(AppState {
@@ -230,6 +241,7 @@ async fn main() {
         global_settings_cache,
         preview_cache,
         free_api_key_cache,
+        render_semaphore,
         config: config.clone(),
     });
 

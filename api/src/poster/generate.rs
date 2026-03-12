@@ -1,6 +1,10 @@
+use std::sync::Arc;
+
 use ab_glyph::FontArc;
 use image::codecs::jpeg::JpegEncoder;
 use image::{imageops, DynamicImage, RgbaImage};
+use tokio::sync::Semaphore;
+
 use crate::cache;
 use crate::error::AppError;
 use crate::poster::badge;
@@ -34,6 +38,7 @@ pub struct PosterParams<'a> {
     pub badge_style: String,
     pub label_style: String,
     pub badge_direction: String,
+    pub render_semaphore: Arc<Semaphore>,
 }
 
 pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppError> {
@@ -51,6 +56,7 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
         badge_style,
         label_style,
         badge_direction,
+        render_semaphore,
     } = params;
 
     let poster_bytes = if let Some(bytes) = poster_bytes_override {
@@ -73,6 +79,16 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
         }
     };
 
+    // Acquire render permit before CPU-bound work — also bounds queue depth
+    // so tasks waiting for a blocking thread still count against the limit.
+    if render_semaphore.available_permits() == 0 {
+        tracing::debug!("render queue full, waiting for permit");
+    }
+    let _permit = render_semaphore.acquire().await
+        .map_err(|_| AppError::Other("render queue closed".into()))?;
+    tracing::debug!("poster render started");
+    let start = std::time::Instant::now();
+
     // Move CPU-bound image processing to a blocking thread
     let badges = badges.to_vec();
     let font = font.clone();
@@ -82,6 +98,7 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
 
+    tracing::debug!(elapsed_ms = start.elapsed().as_millis() as u64, "poster render complete");
     Ok(buf)
 }
 
@@ -405,10 +422,22 @@ pub async fn generate_logo(
     font: FontArc,
     badge_style: String,
     label_style: String,
+    render_semaphore: Arc<Semaphore>,
 ) -> Result<Vec<u8>, AppError> {
-    tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, &badge_style, &label_style))
+    if render_semaphore.available_permits() == 0 {
+        tracing::debug!("render queue full, waiting for permit");
+    }
+    let _permit = render_semaphore.acquire().await
+        .map_err(|_| AppError::Other("render queue closed".into()))?;
+    tracing::debug!("logo render started");
+    let start = std::time::Instant::now();
+
+    let buf = tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, &badge_style, &label_style))
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(|e| AppError::Other(e.to_string()))??;
+
+    tracing::debug!(elapsed_ms = start.elapsed().as_millis() as u64, "logo render complete");
+    Ok(buf)
 }
 
 const BACKDROP_MARGIN: u32 = 20;
@@ -468,10 +497,22 @@ pub async fn generate_backdrop(
     quality: u8,
     badge_style: String,
     label_style: String,
+    render_semaphore: Arc<Semaphore>,
 ) -> Result<Vec<u8>, AppError> {
-    tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, &badge_style, &label_style))
+    if render_semaphore.available_permits() == 0 {
+        tracing::debug!("render queue full, waiting for permit");
+    }
+    let _permit = render_semaphore.acquire().await
+        .map_err(|_| AppError::Other("render queue closed".into()))?;
+    tracing::debug!("backdrop render started");
+    let start = std::time::Instant::now();
+
+    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, &badge_style, &label_style))
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?
+        .map_err(|e| AppError::Other(e.to_string()))??;
+
+    tracing::debug!(elapsed_ms = start.elapsed().as_millis() as u64, "backdrop render complete");
+    Ok(buf)
 }
 
 #[cfg(test)]
@@ -791,5 +832,142 @@ mod tests {
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
+    }
+
+    fn dummy_tmdb() -> crate::services::tmdb::TmdbClient {
+        crate::services::tmdb::TmdbClient::new("test".to_string(), reqwest::Client::new())
+    }
+
+    #[tokio::test]
+    async fn generate_poster_acquires_semaphore() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(100, 150);
+        let sem = Arc::new(Semaphore::new(2));
+        let tmdb = dummy_tmdb();
+
+        let result = generate_poster(PosterParams {
+            poster_bytes_override: Some(png),
+            poster_path: "",
+            badges: &[],
+            tmdb: &tmdb,
+            font: &font,
+            quality: 85,
+            cache_dir: "/tmp",
+            poster_stale_secs: 3600,
+            normalize_width: false,
+            poster_position: "bc".to_string(),
+            badge_style: "h".to_string(),
+            label_style: "t".to_string(),
+            badge_direction: "h".to_string(),
+            render_semaphore: sem.clone(),
+        })
+        .await;
+
+        assert!(result.is_ok());
+        // Permit should be released after render
+        assert_eq!(sem.available_permits(), 2);
+    }
+
+    #[tokio::test]
+    async fn generate_poster_closed_semaphore_returns_error() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(100, 150);
+        let sem = Arc::new(Semaphore::new(1));
+        sem.close();
+        let tmdb = dummy_tmdb();
+
+        let result = generate_poster(PosterParams {
+            poster_bytes_override: Some(png),
+            poster_path: "",
+            badges: &[],
+            tmdb: &tmdb,
+            font: &font,
+            quality: 85,
+            cache_dir: "/tmp",
+            poster_stale_secs: 3600,
+            normalize_width: false,
+            poster_position: "bc".to_string(),
+            badge_style: "h".to_string(),
+            label_style: "t".to_string(),
+            badge_direction: "h".to_string(),
+            render_semaphore: sem,
+        })
+        .await;
+
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("render queue closed"), "expected 'render queue closed', got: {err_msg}");
+    }
+
+    #[tokio::test]
+    async fn generate_logo_acquires_and_releases_semaphore() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(200, 80);
+        let sem = Arc::new(Semaphore::new(1));
+
+        let result = generate_logo(png, vec![], font, "h".to_string(), "t".to_string(), sem.clone()).await;
+        assert!(result.is_ok());
+        assert_eq!(sem.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn generate_logo_closed_semaphore_returns_error() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(200, 80);
+        let sem = Arc::new(Semaphore::new(1));
+        sem.close();
+
+        let result = generate_logo(png, vec![], font, "h".to_string(), "t".to_string(), sem).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn generate_backdrop_acquires_and_releases_semaphore() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(640, 360);
+        let sem = Arc::new(Semaphore::new(1));
+
+        let result = generate_backdrop(png, vec![], font, 85, "h".to_string(), "t".to_string(), sem.clone()).await;
+        assert!(result.is_ok());
+        assert_eq!(sem.available_permits(), 1);
+    }
+
+    #[tokio::test]
+    async fn generate_backdrop_closed_semaphore_returns_error() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(640, 360);
+        let sem = Arc::new(Semaphore::new(1));
+        sem.close();
+
+        let result = generate_backdrop(png, vec![], font, 85, "h".to_string(), "t".to_string(), sem).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn semaphore_bounds_concurrent_logo_renders() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let sem = Arc::new(Semaphore::new(1));
+
+        // Acquire the only permit
+        let permit = sem.clone().acquire_owned().await.unwrap();
+
+        let png = test_png(200, 80);
+        let sem2 = sem.clone();
+        let font2 = font.clone();
+
+        // Spawn a render that should block waiting for the permit
+        let handle = tokio::spawn(async move {
+            generate_logo(png, vec![], font2, "h".to_string(), "t".to_string(), sem2).await
+        });
+
+        // Give the task a moment to start and block
+        tokio::task::yield_now().await;
+        assert_eq!(sem.available_permits(), 0, "permit should still be held");
+
+        // Release the permit so the render can proceed
+        drop(permit);
+        let result = handle.await.unwrap();
+        assert!(result.is_ok());
+        assert_eq!(sem.available_permits(), 1);
     }
 }

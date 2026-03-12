@@ -139,6 +139,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `CROSS_ID_CONCURRENCY` | `CPUs` | Max concurrent cross-ID cache write tasks |
 | `ADMIN_USERNAME` | — | Seed admin username on first run |
 | `ADMIN_PASSWORD` | — | Seed admin password on first run |
+| `ENABLE_CDN_REDIRECTS` | `false` | Enable content-addressed CDN redirects (see [CDN Caching](#cdn-caching)) |
 
 ## Cache Architecture
 
@@ -262,3 +263,20 @@ Cache entries are checked for staleness based on the film's release date:
 - **Old films** (age > `RATINGS_MAX_AGE_SECS`): never stale (ratings are stable)
 
 When a stale entry is served, a background refresh is spawned to regenerate it without blocking the response. Request coalescing ensures concurrent requests for the same image share a single generation task.
+
+### CDN Caching
+
+When `ENABLE_CDN_REDIRECTS=true`, authenticated poster requests (`/{api_key}/...`) return a **302 redirect** to a content-addressed URL (`/c/{settings_hash}/...`) instead of serving the image directly. This is designed for deployments behind Cloudflare or another CDN:
+
+1. The app computes a 12-character hash from the user's effective settings (ratings order, badge style, position, etc.)
+2. The original endpoint validates the API key, then redirects to `/c/{hash}/{id_type}/poster-default/{id_value}.jpg`
+3. The `/c/` endpoint serves the image with a long public cache TTL (`max-age=86400`)
+4. The CDN caches by the `/c/` URL — all users with identical settings share one cache entry
+
+**Why this helps:** Without redirects, the CDN caches by the full URL including the API key, so two users requesting the same poster with the same settings produce two separate cache entries. With redirects, they share one.
+
+**When to enable:** Only when a CDN sits in front of the origin. Without a CDN, the redirect is an extra round-trip to the same server for no benefit.
+
+The redirect response uses `Cache-Control: private, max-age=300` so the CDN does not cache the redirect itself (it contains the API key path). The `/c/` image response uses `Cache-Control: public, max-age=86400, stale-while-revalidate=604800` for long CDN caching. The `/c/` routes are rate-limited by IP.
+
+**Important:** The origin keeps the settings hash → settings mapping in memory with a 5-minute TTL. The CDN must cache the image on the first request to the `/c/` URL; if it doesn't, subsequent requests after the TTL expires will 404 at origin until the next authenticated request re-populates the mapping. Cloudflare and most production CDNs cache on first hit, so this is not an issue in practice.

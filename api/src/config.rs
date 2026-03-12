@@ -16,6 +16,7 @@ pub struct Config {
     pub static_dir: Option<String>,
     pub cors_origin: Option<String>,
     pub fanart_api_key: Option<String>,
+    pub enable_cdn_redirects: bool,
 }
 
 impl Config {
@@ -50,6 +51,9 @@ impl Config {
             static_dir: env::var("STATIC_DIR").ok(),
             cors_origin: env::var("CORS_ORIGIN").ok(),
             fanart_api_key: env::var("FANART_API_KEY").ok(),
+            enable_cdn_redirects: env::var("ENABLE_CDN_REDIRECTS")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         };
 
         if config.omdb_api_key.is_none() && config.mdblist_api_key.is_none() {

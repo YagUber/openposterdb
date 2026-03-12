@@ -14,6 +14,7 @@ use openposterdb_api::{build_app, AppState, FONT_BYTES, MIGRATIONS, SCHEMA_SQL};
 pub struct TestAppOptions {
     pub cors_origin: Option<String>,
     pub secure_cookies: bool,
+    pub enable_cdn_redirects: bool,
 }
 
 impl Default for TestAppOptions {
@@ -21,6 +22,7 @@ impl Default for TestAppOptions {
         Self {
             cors_origin: None,
             secure_cookies: false,
+            enable_cdn_redirects: false,
         }
     }
 }
@@ -28,14 +30,15 @@ impl Default for TestAppOptions {
 pub async fn setup_test_app_with_options(opts: TestAppOptions) -> (axum::Router, Arc<AppState>) {
     let cors_origin = opts.cors_origin;
     let secure_cookies = opts.secure_cookies;
-    _setup_test_app(cors_origin, secure_cookies).await
+    let enable_cdn_redirects = opts.enable_cdn_redirects;
+    _setup_test_app(cors_origin, secure_cookies, enable_cdn_redirects).await
 }
 
 pub async fn setup_test_app_with_cors(cors_origin: Option<String>) -> (axum::Router, Arc<AppState>) {
-    _setup_test_app(cors_origin, false).await
+    _setup_test_app(cors_origin, false, false).await
 }
 
-async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool) -> (axum::Router, Arc<AppState>) {
+async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enable_cdn_redirects: bool) -> (axum::Router, Arc<AppState>) {
     let sqlite_opts = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(":memory:")
         .create_if_missing(true)
@@ -105,6 +108,7 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool) -> (
             static_dir: None,
             cors_origin,
             fanart_api_key: Some("test".into()),
+            enable_cdn_redirects,
         },
         tmdb: TmdbClient::new("test".into(), http.clone()),
         omdb: None,
@@ -148,6 +152,10 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool) -> (
             .build(),
         render_semaphore: Arc::new(tokio::sync::Semaphore::new(4)),
         cross_id_semaphore: Arc::new(tokio::sync::Semaphore::new(8)),
+        settings_hash_registry: moka::future::Cache::builder()
+            .max_capacity(100)
+            .time_to_live(Duration::from_secs(300))
+            .build(),
     });
 
     let app = build_app(state.clone());

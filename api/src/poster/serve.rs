@@ -1,6 +1,8 @@
 use axum::http::header;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
+use sha2::{Sha256, Digest};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -106,6 +108,107 @@ pub fn label_style_cache_suffix(style: &str) -> String {
 /// Returns a cache key suffix for badge direction.
 pub fn badge_direction_cache_suffix(dir: &str) -> String {
     format!(".d{dir}")
+}
+
+/// Compute a stable 12-hex-char settings hash for CDN content-addressed URLs.
+/// Two users with identical effective settings for the same image type produce
+/// the same hash, enabling Cloudflare cache deduplication.
+pub fn settings_hash(settings: &PosterSettings, kind: ImageKind) -> String {
+    let mut hasher = Sha256::new();
+
+    // Image variant tag
+    hasher.update(kind.label().as_bytes());
+    hasher.update(b"\0");
+
+    // Common settings
+    hasher.update(settings.ratings_order.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(settings.poster_source.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(settings.fanart_lang.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(if settings.fanart_textless { b"1" } else { b"0" });
+    hasher.update(b"\0");
+    hasher.update(if settings.lang_override { b"1" } else { b"0" });
+    hasher.update(b"\0");
+
+    // Variant-specific settings
+    match kind {
+        ImageKind::Poster => {
+            hasher.update(settings.ratings_limit.to_string().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.poster_position.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.poster_badge_style.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.poster_label_style.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.poster_badge_direction.as_bytes());
+        }
+        ImageKind::Logo => {
+            hasher.update(settings.logo_ratings_limit.to_string().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.logo_badge_style.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.logo_label_style.as_bytes());
+        }
+        ImageKind::Backdrop => {
+            hasher.update(settings.backdrop_ratings_limit.to_string().as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.backdrop_badge_style.as_bytes());
+            hasher.update(b"\0");
+            hasher.update(settings.backdrop_label_style.as_bytes());
+        }
+    }
+
+    let hash = hasher.finalize();
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5]
+    )
+}
+
+/// 302 redirect response for CDN content-addressed URLs.
+/// `private` prevents CF from caching the redirect itself; the client may cache for 300s.
+pub fn cdn_redirect_response(location: &str) -> Response {
+    (
+        StatusCode::FOUND,
+        [
+            (header::LOCATION, location),
+            (header::CACHE_CONTROL, "private, max-age=300"),
+        ],
+    )
+        .into_response()
+}
+
+/// JPEG response with long CDN cache TTL for content-addressed `/c/` routes.
+pub fn cdn_jpeg_response(bytes: Bytes) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/jpeg"),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=86400, stale-while-revalidate=604800",
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
+}
+
+/// PNG response with long CDN cache TTL for content-addressed `/c/` routes.
+pub fn cdn_png_response(bytes: Bytes) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (
+                header::CACHE_CONTROL,
+                "public, max-age=86400, stale-while-revalidate=604800",
+            ),
+        ],
+        bytes,
+    )
+        .into_response()
 }
 
 /// IDs available for cross-ID cache population, built from the resolved ID
@@ -1164,6 +1267,64 @@ mod tests {
         // Resolved values take precedence over ratings
         assert_eq!(info.imdb_id.as_deref(), Some("tt1111111"));
         assert_eq!(info.tvdb_id, Some(500));
+    }
+
+    #[test]
+    fn settings_hash_deterministic() {
+        let s = PosterSettings::default();
+        let h1 = settings_hash(&s, ImageKind::Poster);
+        let h2 = settings_hash(&s, ImageKind::Poster);
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 12); // 6 bytes = 12 hex chars
+    }
+
+    #[test]
+    fn settings_hash_differs_by_kind() {
+        let s = PosterSettings::default();
+        let poster = settings_hash(&s, ImageKind::Poster);
+        let logo = settings_hash(&s, ImageKind::Logo);
+        let backdrop = settings_hash(&s, ImageKind::Backdrop);
+        assert_ne!(poster, logo);
+        assert_ne!(poster, backdrop);
+        assert_ne!(logo, backdrop);
+    }
+
+    #[test]
+    fn settings_hash_differs_by_settings() {
+        let s1 = PosterSettings::default();
+        let mut s2 = PosterSettings::default();
+        s2.ratings_limit = 5;
+        assert_ne!(
+            settings_hash(&s1, ImageKind::Poster),
+            settings_hash(&s2, ImageKind::Poster)
+        );
+    }
+
+    #[test]
+    fn settings_hash_same_for_equivalent_settings() {
+        let mut s1 = PosterSettings::default();
+        let mut s2 = PosterSettings::default();
+        // Different is_default flag shouldn't affect hash (it's metadata)
+        s1.is_default = true;
+        s2.is_default = false;
+        assert_eq!(
+            settings_hash(&s1, ImageKind::Poster),
+            settings_hash(&s2, ImageKind::Poster)
+        );
+    }
+
+    #[test]
+    fn settings_hash_includes_lang_override() {
+        let mut s1 = PosterSettings::default();
+        let mut s2 = PosterSettings::default();
+        s1.fanart_lang = "de".into();
+        s1.lang_override = false;
+        s2.fanart_lang = "de".into();
+        s2.lang_override = true;
+        assert_ne!(
+            settings_hash(&s1, ImageKind::Poster),
+            settings_hash(&s2, ImageKind::Poster)
+        );
     }
 
     #[test]

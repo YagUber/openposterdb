@@ -29,6 +29,7 @@ services:
       POSTER_STALE_SECS: ${POSTER_STALE_SECS:-0}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ENABLE_CDN_REDIRECTS: ${ENABLE_CDN_REDIRECTS:-false}
     volumes:
       - openposterdb-data:/data
     restart: unless-stopped

@@ -74,6 +74,7 @@ async fn main() {
         poster_quality = config.poster_quality,
         mem_cache_mb = config.poster_mem_cache_mb,
         secure_cookies,
+        cdn_redirects = config.enable_cdn_redirects,
         "server configuration"
     );
 
@@ -221,6 +222,11 @@ async fn main() {
         .time_to_live(Duration::from_secs(60))
         .build();
 
+    let settings_hash_registry = moka::future::Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(300))
+        .build();
+
     let available_cpus = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(2);
@@ -267,6 +273,7 @@ async fn main() {
         free_api_key_cache,
         render_semaphore,
         cross_id_semaphore,
+        settings_hash_registry,
         config: config.clone(),
     });
 

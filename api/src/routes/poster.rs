@@ -9,6 +9,7 @@ use crate::handlers::auth::hash_api_key;
 use crate::poster::generate;
 use crate::poster::serve;
 use crate::services::db;
+use crate::services::db::PosterSettings;
 use crate::AppState;
 
 pub const FREE_API_KEY: &str = "t0-free-rpdb";
@@ -125,6 +126,32 @@ fn apply_lang_override(
     }
 }
 
+/// If CDN redirects are enabled, compute a settings hash, register it, and return
+/// a 302 redirect to the content-addressed `/c/` URL. Returns `None` if disabled.
+async fn try_cdn_redirect(
+    state: &Arc<AppState>,
+    settings: &Arc<PosterSettings>,
+    kind: serve::ImageKind,
+    id_type_str: &str,
+    image_type_path: &str,
+    id_value: &str,
+    fallback: Option<&str>,
+) -> Option<Response> {
+    if !state.config.enable_cdn_redirects {
+        return None;
+    }
+    let hash = serve::settings_hash(settings, kind);
+    state
+        .settings_hash_registry
+        .insert(hash.clone(), settings.clone())
+        .await;
+    let mut url = format!("/c/{hash}/{id_type_str}/{image_type_path}/{id_value}");
+    if fallback == Some("true") {
+        url.push_str("?fallback=true");
+    }
+    Some(serve::cdn_redirect_response(&url))
+}
+
 pub async fn handler(
     State(state): State<Arc<AppState>>,
     Path((api_key, id_type_str, id_value_jpg)): Path<(String, String, String)>,
@@ -140,6 +167,20 @@ pub async fn handler(
         Ok(s) => s,
         Err(resp) => return resp,
     };
+
+    if let Some(redirect) = try_cdn_redirect(
+        &state,
+        &settings,
+        serve::ImageKind::Poster,
+        &id_type_str,
+        "poster-default",
+        &id_value_jpg,
+        query.fallback.as_deref(),
+    )
+    .await
+    {
+        return redirect;
+    }
 
     serve_poster(&state, &id_type_str, &id_value_jpg, &settings, use_fallback).await
 }
@@ -195,6 +236,20 @@ pub async fn logo_handler(
         Err(resp) => return resp,
     };
 
+    if let Some(redirect) = try_cdn_redirect(
+        &state,
+        &settings,
+        serve::ImageKind::Logo,
+        &id_type_str,
+        "logo-default",
+        &id_value_png,
+        query.fallback.as_deref(),
+    )
+    .await
+    {
+        return redirect;
+    }
+
     serve_fanart_image(&state, &id_type_str, &id_value_png, &settings, use_fallback, serve::FanartImageKind::Logo).await
 }
 
@@ -217,6 +272,20 @@ pub async fn backdrop_handler(
         Ok(s) => s,
         Err(resp) => return resp,
     };
+
+    if let Some(redirect) = try_cdn_redirect(
+        &state,
+        &settings,
+        serve::ImageKind::Backdrop,
+        &id_type_str,
+        "backdrop-default",
+        &id_value_jpg,
+        query.fallback.as_deref(),
+    )
+    .await
+    {
+        return redirect;
+    }
 
     serve_fanart_image(&state, &id_type_str, &id_value_jpg, &settings, use_fallback, serve::FanartImageKind::Backdrop).await
 }
@@ -241,6 +310,99 @@ async fn serve_fanart_image(
                     serve::FanartImageKind::Logo => serve::png_response(generate::placeholder_png().into()),
                     serve::FanartImageKind::Backdrop => serve::jpeg_response(generate::placeholder_jpeg().into()),
                 }
+            } else {
+                e.into_response()
+            }
+        }
+    }
+}
+
+// --- Content-addressed CDN handlers (`/c/{settings_hash}/...`) ---
+
+fn cdn_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        axum::Json(serde_json::json!({"error": "not found"})),
+    )
+        .into_response()
+}
+
+pub async fn cdn_poster_handler(
+    State(state): State<Arc<AppState>>,
+    Path((settings_hash, id_type_str, id_value_jpg)): Path<(String, String, String)>,
+    Query(query): Query<PosterQuery>,
+) -> Response {
+    let settings = match state.settings_hash_registry.get(&settings_hash).await {
+        Some(s) => s,
+        None => return cdn_not_found(),
+    };
+
+    let use_fallback = query.fallback.as_deref() == Some("true");
+
+    match serve::handle_inner(&state, &id_type_str, &id_value_jpg, (*settings).clone()).await {
+        Ok(bytes) => serve::cdn_jpeg_response(bytes),
+        Err(e) => {
+            if use_fallback {
+                tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
+                serve::cdn_jpeg_response(generate::placeholder_jpeg().into())
+            } else {
+                e.into_response()
+            }
+        }
+    }
+}
+
+pub async fn cdn_logo_handler(
+    State(state): State<Arc<AppState>>,
+    Path((settings_hash, id_type_str, id_value_png)): Path<(String, String, String)>,
+    Query(query): Query<PosterQuery>,
+) -> Response {
+    let settings = match state.settings_hash_registry.get(&settings_hash).await {
+        Some(s) => s,
+        None => return cdn_not_found(),
+    };
+
+    if let Err(resp) = require_fanart(&state) {
+        return resp;
+    }
+
+    let use_fallback = query.fallback.as_deref() == Some("true");
+
+    match serve::handle_fanart_image_inner(&state, &id_type_str, &id_value_png, &settings, serve::FanartImageKind::Logo).await {
+        Ok(bytes) => serve::cdn_png_response(bytes),
+        Err(e) => {
+            if use_fallback {
+                tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
+                serve::cdn_png_response(generate::placeholder_png().into())
+            } else {
+                e.into_response()
+            }
+        }
+    }
+}
+
+pub async fn cdn_backdrop_handler(
+    State(state): State<Arc<AppState>>,
+    Path((settings_hash, id_type_str, id_value_jpg)): Path<(String, String, String)>,
+    Query(query): Query<PosterQuery>,
+) -> Response {
+    let settings = match state.settings_hash_registry.get(&settings_hash).await {
+        Some(s) => s,
+        None => return cdn_not_found(),
+    };
+
+    if let Err(resp) = require_fanart(&state) {
+        return resp;
+    }
+
+    let use_fallback = query.fallback.as_deref() == Some("true");
+
+    match serve::handle_fanart_image_inner(&state, &id_type_str, &id_value_jpg, &settings, serve::FanartImageKind::Backdrop).await {
+        Ok(bytes) => serve::cdn_jpeg_response(bytes),
+        Err(e) => {
+            if use_fallback {
+                tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
+                serve::cdn_jpeg_response(generate::placeholder_jpeg().into())
             } else {
                 e.into_response()
             }

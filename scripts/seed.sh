@@ -211,7 +211,21 @@ echo "── Seeding ──"
 fetch_asset() {
   local base_url="$1" api_key="$2" id="$3" asset_type="$4" ext="$5"
   local url="${base_url}/${api_key}/imdb/${asset_type}-default/${id}.${ext}"
-  curl -sf --max-time 60 -o /dev/null -w '%{time_total}' "$url" 2>/dev/null
+  local output
+  output=$(curl -sL --max-time 60 -o /dev/null -w '%{http_code}\t%{time_total}\t%{content_type}' "$url" 2>/dev/null)
+  local http_code time_total content_type
+  http_code=$(echo "$output" | cut -f1)
+  time_total=$(echo "$output" | cut -f2)
+  content_type=$(echo "$output" | cut -f3)
+
+  # Must be 200 with an image content type — not a Cloudflare error page
+  if [[ "$http_code" == "200" ]] && [[ "$content_type" == image/* ]]; then
+    echo "$time_total"
+    return 0
+  else
+    echo "$time_total $http_code"
+    return 1
+  fi
 }
 
 COUNT=0
@@ -227,16 +241,16 @@ head -n "$SELECTED" "$TMPFILE" | while IFS=$'\t' read -r year id type title; do
 
   case "$ASSETS" in
     poster)
-      latency=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "poster" "jpg") || result="FAIL"
+      fetch_out=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "poster" "jpg") || result="FAIL"
       ;;
     logo)
-      latency=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "logo" "png") || result="SKIP"
+      fetch_out=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "logo" "png") || result="SKIP"
       ;;
     backdrop)
-      latency=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "backdrop" "jpg") || result="SKIP"
+      fetch_out=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "backdrop" "jpg") || result="SKIP"
       ;;
     all)
-      latency=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "poster" "jpg") || result="FAIL"
+      fetch_out=$(fetch_asset "$BASE_URL" "$API_KEY" "$id" "poster" "jpg") || result="FAIL"
       fetch_asset "$BASE_URL" "$API_KEY" "$id" "logo" "png" > /dev/null || true
       fetch_asset "$BASE_URL" "$API_KEY" "$id" "backdrop" "jpg" > /dev/null || true
       ;;
@@ -248,7 +262,10 @@ head -n "$SELECTED" "$TMPFILE" | while IFS=$'\t' read -r year id type title; do
     FAIL=$((FAIL + 1))
   fi
 
-  # Format latency as milliseconds
+  # Parse latency and optional HTTP status from fetch output
+  latency=$(echo "$fetch_out" | awk '{print $1}')
+  http_code=$(echo "$fetch_out" | awk '{print $2}')
+
   if [[ -n "$latency" ]]; then
     ms=$(awk "BEGIN {printf \"%.0f\", $latency * 1000}")
     latency_str="${ms}ms"
@@ -256,7 +273,11 @@ head -n "$SELECTED" "$TMPFILE" | while IFS=$'\t' read -r year id type title; do
     latency_str="-"
   fi
 
-  printf "[%d/%d] %-4s %6s  [%s] %-10s %s - %s\n" "$COUNT" "$SELECTED" "$result" "$latency_str" "$year" "$type" "$id" "$title"
+  if [[ "$result" == "OK" ]]; then
+    printf "[%d/%d] %-4s %6s  [%s] %-10s %s - %s\n" "$COUNT" "$SELECTED" "$result" "$latency_str" "$year" "$type" "$id" "$title"
+  else
+    printf "[%d/%d] %-4s %6s  [%s] %-10s %s - %s (HTTP %s)\n" "$COUNT" "$SELECTED" "$result" "$latency_str" "$year" "$type" "$id" "$title" "${http_code:-?}"
+  fi
 done
 
 echo ""

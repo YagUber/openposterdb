@@ -24,8 +24,8 @@ Seed an OpenPosterDB instance by requesting posters to warm the cache.
 Entries are processed newest-first (by year descending).
 Sort year uses endYear for series (if available), startYear otherwise.
 
-Required:
-  BASE_URL                 Server base URL (e.g. http://localhost:3000)
+Optional:
+  BASE_URL                 Server base URL (default: http://localhost:3000)
 
 Options:
   -n, --limit NUM          Total entries to seed (default: $LIMIT, 0 = unlimited)
@@ -51,12 +51,17 @@ EOF
 }
 
 # ── parse args ──
-if [[ $# -lt 1 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
   usage
 fi
 
-BASE_URL="${1%/}"
-shift
+# First arg is BASE_URL if it doesn't start with -
+if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+  BASE_URL="${1%/}"
+  shift
+else
+  BASE_URL="http://localhost:3000"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

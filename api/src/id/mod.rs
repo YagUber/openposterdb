@@ -41,6 +41,14 @@ impl IdType {
             other => Err(AppError::InvalidIdType(other.to_string())),
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Imdb => "imdb",
+            Self::Tmdb => "tmdb",
+            Self::Tvdb => "tvdb",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

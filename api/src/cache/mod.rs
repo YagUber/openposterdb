@@ -4,7 +4,7 @@ use std::time::{Instant, SystemTime};
 use sea_orm::*;
 use tokio::fs;
 
-use crate::entity::poster_meta;
+use crate::entity::{available_ratings, poster_meta};
 use crate::error::AppError;
 
 pub struct CacheEntry {
@@ -20,6 +20,16 @@ pub struct MemCacheEntry {
 
 fn is_safe_path_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && !s.contains('/') && !s.contains('\\') && !s.contains('\0')
+}
+
+/// Reject id values that contain path traversal or null bytes.
+/// Call this early — before any network calls — so malicious input
+/// is caught as 400 rather than causing a downstream 500.
+pub fn validate_id_value(id_value: &str) -> Result<(), AppError> {
+    if !is_safe_path_component(id_value) {
+        return Err(AppError::BadRequest("invalid id value".into()));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,34 +209,122 @@ pub async fn upsert_meta_db(
     Ok(())
 }
 
+/// Read the stored available rating sources for a movie (e.g. `"ilrt"`).
+///
+/// Returns `None` if no entry exists yet, or if the stored data is stale
+/// (using the same decay formula as poster/ratings caches: recent films
+/// refresh frequently, films older than `max_age` never go stale).
+pub async fn read_available_ratings(
+    db: &DatabaseConnection,
+    id_key: &str,
+    min_stale: u64,
+    max_age: u64,
+) -> Option<String> {
+    let model = available_ratings::Entity::find_by_id(id_key)
+        .one(db)
+        .await
+        .ok()
+        .flatten()?;
+
+    let stale_secs = compute_stale_secs(model.release_date.as_deref(), min_stale, max_age);
+    // stale_secs == 0 means "never stale" (old film), so always use the fast path
+    if stale_secs > 0 {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let age = now.saturating_sub(u64::try_from(model.updated_at).unwrap_or(0));
+        if age > stale_secs {
+            return None;
+        }
+    }
+
+    Some(model.sources)
+}
+
+/// Store which rating sources have data for a movie so the hot path can
+/// reconstruct the badges cache suffix without external API calls.
+pub async fn upsert_available_ratings(
+    db: &DatabaseConnection,
+    id_key: &str,
+    sources: &str,
+    release_date: Option<&str>,
+) -> Result<(), AppError> {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let model = available_ratings::ActiveModel {
+        id_key: Set(id_key.to_string()),
+        sources: Set(sources.to_string()),
+        updated_at: Set(now),
+        release_date: Set(release_date.map(|s| s.to_string())),
+    };
+
+    available_ratings::Entity::insert(model)
+        .on_conflict(
+            sea_orm::sea_query::OnConflict::column(available_ratings::Column::IdKey)
+                .update_columns([
+                    available_ratings::Column::Sources,
+                    available_ratings::Column::UpdatedAt,
+                    available_ratings::Column::ReleaseDate,
+                ])
+                .to_owned(),
+        )
+        .exec(db)
+        .await?;
+
+    Ok(())
+}
+
 /// Parse "YYYY-MM-DD" to Unix epoch seconds. Returns `None` for invalid input.
 fn date_str_to_epoch(s: &str) -> Option<u64> {
     let mut parts = s.split('-');
     let year: u64 = parts.next()?.parse().ok()?;
     let month: u64 = parts.next()?.parse().ok()?;
     let day: u64 = parts.next()?.parse().ok()?;
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || year < 1970 {
+    if !(1..=12).contains(&month) || year < 1970 {
+        return None;
+    }
+    let max_day = max_days_in_month(year, month);
+    if !(1..=max_day).contains(&day) {
         return None;
     }
 
-    // Days from epoch to start of year
-    let mut days: u64 = 0;
-    for y in 1970..year {
-        days += if is_leap(y) { 366 } else { 365 };
+    Some(days_from_epoch(year, month, day) * 86400)
+}
+
+fn max_days_in_month(year: u64, month: u64) -> u64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => if is_leap(year) { 29 } else { 28 },
+        _ => 0,
     }
+}
+
+/// Days from 1970-01-01 to the given date, using a closed-form leap year count.
+fn days_from_epoch(year: u64, month: u64, day: u64) -> u64 {
+    // Leap years in [1, y] = y/4 - y/100 + y/400
+    let leaps_before = |y: u64| y / 4 - y / 100 + y / 400;
+    let prev = year - 1;
+    let days_to_year = 365 * (year - 1970) + leaps_before(prev) - leaps_before(1969);
+
     let days_in_month = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month_days: u64 = 0;
     for m in 1..month {
-        days += days_in_month[m as usize] as u64;
-        if m == 2 && is_leap(year) {
-            days += 1;
-        }
+        month_days += days_in_month[m as usize] as u64;
     }
-    days += day - 1;
-    Some(days * 86400)
+    if month > 2 && is_leap(year) {
+        month_days += 1;
+    }
+
+    days_to_year + month_days + day - 1
 }
 
 fn is_leap(y: u64) -> bool {
-    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
 /// Compute dynamic stale_secs based on release date.
@@ -313,6 +411,26 @@ mod tests {
     #[test]
     fn date_str_to_epoch_pre_epoch() {
         assert_eq!(date_str_to_epoch("1969-01-01"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_feb_30_rejected() {
+        assert_eq!(date_str_to_epoch("2020-02-30"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_feb_29_leap_accepted() {
+        assert!(date_str_to_epoch("2020-02-29").is_some());
+    }
+
+    #[test]
+    fn date_str_to_epoch_feb_29_non_leap_rejected() {
+        assert_eq!(date_str_to_epoch("2023-02-29"), None);
+    }
+
+    #[test]
+    fn date_str_to_epoch_apr_31_rejected() {
+        assert_eq!(date_str_to_epoch("2020-04-31"), None);
     }
 
     #[test]

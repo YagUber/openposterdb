@@ -363,10 +363,11 @@ async fn fetch_poster_accepts_valid_id_types() {
 
     // These will fail at the generation stage (no real TMDB key) but should not
     // be rejected at the id_type validation stage (i.e. not 400).
-    for id_type in &["imdb", "tmdb", "tvdb"] {
+    // tmdb requires a "movie-" or "series-" prefix on the id value.
+    for (id_type, id_value) in &[("imdb", "tt0012345"), ("tmdb", "movie-12345"), ("tvdb", "12345")] {
         let req = Request::builder()
             .method("POST")
-            .uri(format!("/api/admin/posters/{id_type}/12345/fetch"))
+            .uri(format!("/api/admin/posters/{id_type}/{id_value}/fetch"))
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
             .unwrap();

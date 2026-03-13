@@ -7,6 +7,17 @@ test.describe('api keys', () => {
       data: { username: 'admin', password: 'testpassword123' },
     })
 
+    const loginRes = await request.post('/api/auth/login', {
+      data: { username: 'admin', password: 'testpassword123' },
+    })
+    const { token } = await loginRes.json()
+
+    // Reset global settings to defaults so tests start from a known state
+    await request.put('/api/admin/settings', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { poster_source: 't' },
+    })
+
     await page.goto('/login')
     await page.fill('#username', 'admin')
     await page.fill('#password', 'testpassword123')

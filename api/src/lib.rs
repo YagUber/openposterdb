@@ -64,6 +64,9 @@ pub struct AppState {
     /// Maps settings hash → PosterSettings for content-addressed `/c/` CDN routes.
     /// Populated lazily when API key requests produce redirects.
     pub settings_hash_registry: moka::future::Cache<String, Arc<PosterSettings>>,
+    /// In-memory cache for `available_ratings` SQLite lookups.
+    /// Avoids hitting the database on every poster request when the entry is already known.
+    pub available_ratings_cache: moka::future::Cache<String, Option<String>>,
 }
 
 impl AppState {
@@ -117,6 +120,12 @@ pub const SCHEMA_SQL: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS global_settings (
         key   TEXT PRIMARY KEY,
         value TEXT NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS available_ratings (
+        id_key       TEXT PRIMARY KEY,
+        sources      TEXT NOT NULL,
+        updated_at   INTEGER NOT NULL,
+        release_date TEXT
     )",
     "CREATE TABLE IF NOT EXISTS api_key_settings (
         api_key_id             INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
@@ -193,6 +202,14 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "ALTER TABLE api_key_settings ADD COLUMN poster_badge_direction TEXT NOT NULL DEFAULT 'd'",
         "duplicate column",
+    ),
+    (
+        "ALTER TABLE available_ratings ADD COLUMN release_date TEXT",
+        "duplicate column",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_available_ratings_updated_at ON available_ratings(updated_at)",
+        "already exists",
     ),
 ];
 

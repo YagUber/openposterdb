@@ -171,7 +171,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `ADMIN_USERNAME` | — | Seed admin username on first run |
 | `ADMIN_PASSWORD` | — | Seed admin password on first run |
 | `ENABLE_CDN_REDIRECTS` | `false` | Enable content-addressed CDN redirects (see [CDN Caching](#cdn-caching)) |
-| `EXTERNAL_CACHE_ONLY` | `false` | Skip all image file writes to disk; rely on a CDN for caching (see [External Cache Only](#external-cache-only)) |
+| `EXTERNAL_CACHE_ONLY` | `false` | Skip image file writes to disk; rely on a CDN for caching. SQLite metadata is still written (see [External Cache Only](#external-cache-only)) |
 | `FREE_KEY_ENABLED` | — | Force-enable (`true`) or force-disable (`false`) the free API key, overriding the admin UI toggle. When set, the UI toggle is locked. Omit to let admins control it from the settings page |
 
 ## Cache Architecture
@@ -328,13 +328,14 @@ The `stale-while-revalidate` directive is set to 7x the `max-age`, so CDN edge n
 
 ### External Cache Only
 
-When `EXTERNAL_CACHE_ONLY=true`, the server skips **all** image file writes to disk — both rendered posters and base source images from TMDB/Fanart.tv. The SQLite metadata writes (`poster_meta`) are also skipped. This makes the disk fully stateless, which is useful when deployed behind a CDN like Cloudflare that caches responses at the edge.
+When `EXTERNAL_CACHE_ONLY=true`, the server skips image file writes to disk (rendered posters and base source images from TMDB/Fanart.tv). This is useful when deployed behind a CDN like Cloudflare that caches responses at the edge.
 
 - The in-memory (moka) cache still handles short-term request deduplication
 - Request coalescing still prevents duplicate generation for concurrent requests
 - The cache directory is not created on startup
 - Filesystem reads naturally return misses (no files on disk), so every request either hits the in-memory cache or regenerates the image
 - Best used together with `ENABLE_CDN_REDIRECTS=true` so the CDN absorbs the vast majority of traffic
+- SQLite metadata is **always** written, even with this flag — `poster_meta` stores release dates (for CDN TTL computation) and `available_ratings` records which rating sources have data for each movie (so cache keys can be reconstructed without external API calls on cache hits)
 - The Docker volume is still required for the SQLite database (`DB_DIR`), even when image caching is fully external
 
 ## Deploying to the Public Internet
@@ -382,7 +383,7 @@ EXTERNAL_CACHE_ONLY=true
 ```
 
 - **`ENABLE_CDN_REDIRECTS`** makes poster requests redirect to content-addressed `/c/` URLs so Cloudflare deduplicates cache entries across users with identical settings (see [CDN Caching](#cdn-caching))
-- **`EXTERNAL_CACHE_ONLY`** skips all image writes to disk, relying on Cloudflare's edge cache for long-term storage and the in-memory cache for short-term deduplication
+- **`EXTERNAL_CACHE_ONLY`** skips image file writes to disk, relying on Cloudflare's edge cache for long-term storage and the in-memory cache for short-term deduplication. SQLite metadata (release dates, available rating sources) is still written so cache keys and CDN TTLs can be computed without external API calls
 
 Use the same Caddy + OpenPosterDB compose setup from the [reverse proxy section](#reverse-proxy-with-caddy), adding the two CDN flags and bumping the in-memory cache. The key changes to the `openposterdb` environment:
 

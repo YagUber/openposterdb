@@ -74,21 +74,44 @@ pub fn image_size_cache_suffix(size: Option<ImageSize>) -> &'static str {
 ///
 /// Exhaustively destructures `PosterSettings` so adding a field without
 /// handling it here produces a compile error.
+///
+/// Uses `ratings_cache_suffix()` to predict the ratings portion from user
+/// settings. For cache keys that reflect *actual* rendered badges, use
+/// `settings_cache_suffix_with_ratings()` with a pre-computed ratings suffix.
 pub fn settings_cache_suffix(
     settings: &PosterSettings,
     kind: ImageKind,
     image_size: Option<ImageSize>,
 ) -> String {
+    let ratings_suffix = match kind {
+        ImageKind::Poster => ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit),
+        ImageKind::Logo => ratings::ratings_cache_suffix(&settings.ratings_order, settings.logo_ratings_limit),
+        ImageKind::Backdrop => ratings::ratings_cache_suffix(&settings.ratings_order, settings.backdrop_ratings_limit),
+    };
+    settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix)
+}
+
+/// Build the cache suffix string using a pre-computed ratings suffix.
+///
+/// This variant accepts the `@xyz` ratings portion directly (e.g. from
+/// `badges_cache_suffix()`) so callers can use the *actual* badge sources
+/// rather than the predicted ones from user settings.
+pub fn settings_cache_suffix_with_ratings(
+    settings: &PosterSettings,
+    kind: ImageKind,
+    image_size: Option<ImageSize>,
+    ratings_suffix: &str,
+) -> String {
     let PosterSettings {
         poster_source: _,       // handled by code path selection, not suffix
         fanart_lang: _,         // handled by variant string, not suffix
         fanart_textless: _,     // handled by variant string, not suffix
-        ratings_limit,
-        ratings_order,
+        ratings_limit: _,
+        ratings_order: _,
         is_default: _,          // metadata, not a render setting
         poster_position,
-        logo_ratings_limit,
-        backdrop_ratings_limit,
+        logo_ratings_limit: _,
+        backdrop_ratings_limit: _,
         poster_badge_style,
         logo_badge_style,
         backdrop_badge_style,
@@ -101,10 +124,10 @@ pub fn settings_cache_suffix(
 
     let resolved_size = resolve_image_size(image_size);
     let is_suffix = resolved_size.cache_suffix();
+    let rs = ratings_suffix;
 
     match kind {
         ImageKind::Poster => {
-            let rs = ratings::ratings_cache_suffix(ratings_order, *ratings_limit);
             let ps = poster_position_cache_suffix(poster_position);
             let bs = badge_style_cache_suffix(poster_badge_style);
             let ls = label_style_cache_suffix(poster_label_style);
@@ -112,13 +135,11 @@ pub fn settings_cache_suffix(
             format!("{rs}{ps}{bs}{ls}{bd}{is_suffix}")
         }
         ImageKind::Logo => {
-            let rs = ratings::ratings_cache_suffix(ratings_order, *logo_ratings_limit);
             let bs = badge_style_cache_suffix(logo_badge_style);
             let ls = label_style_cache_suffix(logo_label_style);
             format!("{rs}{bs}{ls}{is_suffix}")
         }
         ImageKind::Backdrop => {
-            let rs = ratings::ratings_cache_suffix(ratings_order, *backdrop_ratings_limit);
             let bs = badge_style_cache_suffix(backdrop_badge_style);
             let ls = label_style_cache_suffix(backdrop_label_style);
             format!("{rs}{bs}{ls}{is_suffix}")
@@ -182,20 +203,6 @@ pub fn compute_cdn_max_age(release_date: Option<&str>, min_stale_secs: u64, max_
     }
 }
 
-/// Look up the release date for CDN TTL computation.
-///
-/// Uses `id::resolve` which is cache-first (hits `id_cache` on the hot path)
-/// and only falls back to TMDB on a miss.  This guarantees the release date
-/// is available even on cache-hit paths where `generate_poster_with_source`
-/// was never called (or the `id_cache` entry expired before the poster cache).
-async fn lookup_release_date(state: &AppState, id_type_str: &str, id_value: &str) -> Option<String> {
-    let id_type = IdType::parse(id_type_str).ok()?;
-    id::resolve(id_type, id_value, &state.tmdb, &state.id_cache)
-        .await
-        .ok()
-        .and_then(|r| r.release_date)
-}
-
 /// `private` prevents CF from caching the redirect itself; the client may cache for 300s.
 pub fn cdn_redirect_response(location: &str) -> Response {
     (
@@ -223,8 +230,65 @@ pub fn cdn_image_response(bytes: Bytes, max_age: u64, content_type: &'static str
         .into_response()
 }
 
+/// Read available rating sources for a movie, checking the in-memory cache
+/// before falling through to SQLite.
+async fn read_available_ratings_cached(state: &AppState, id_key: &str) -> Option<String> {
+    let db = state.db.clone();
+    let min_stale = state.config.ratings_min_stale_secs;
+    let max_age = state.config.ratings_max_age_secs;
+    let id_key_owned = id_key.to_owned();
+    state
+        .available_ratings_cache
+        .try_get_with(id_key.to_string(), async move {
+            Ok::<_, std::convert::Infallible>(
+                cache::read_available_ratings(&db, &id_key_owned, min_stale, max_age).await,
+            )
+        })
+        .await
+        .unwrap_or(None)
+}
+
+/// Persist available sources to SQLite and update the in-memory cache.
+async fn upsert_available_ratings_cached(
+    state: &AppState,
+    id_key: &str,
+    sources: &str,
+    release_date: Option<&str>,
+) {
+    if let Err(e) = cache::upsert_available_ratings(&state.db, id_key, sources, release_date).await {
+        tracing::warn!(error = %e, key = %id_key, "available_ratings upsert failed");
+    }
+    // Update the in-memory cache so subsequent requests don't hit SQLite
+    state
+        .available_ratings_cache
+        .insert(id_key.to_string(), Some(sources.to_string()))
+        .await;
+}
+
+/// Resolve an ID and fetch its ratings in one step. Returns the resolved ID,
+/// raw ratings result, and cross-ID info. Callers apply their own rating
+/// preferences via `ratings::apply_rating_preferences`.
+async fn resolve_with_ratings(
+    state: &AppState,
+    id_type: IdType,
+    id_value: &str,
+) -> Result<(id::ResolvedId, ratings::RatingsResult, CrossIdInfo), AppError> {
+    let resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
+    let ratings_result = ratings::fetch_ratings(
+        &resolved,
+        &state.tmdb,
+        state.omdb.as_ref(),
+        state.mdblist.as_ref(),
+        &state.ratings_cache,
+    )
+    .await;
+    let cross_ids = CrossIdInfo::from_resolved(&resolved, &ratings_result);
+    Ok((resolved, ratings_result, cross_ids))
+}
+
 /// IDs available for cross-ID cache population, built from the resolved ID
 /// with optional backfill from MDBList ratings response.
+#[derive(Clone)]
 struct CrossIdInfo {
     imdb_id: Option<String>,
     tmdb_id: u64,
@@ -258,9 +322,6 @@ fn spawn_cross_id_cache(
     image_type: cache::ImageType,
     bytes: Bytes,
 ) {
-    if state.config.external_cache_only {
-        return;
-    }
     let permit = match state.cross_id_semaphore.clone().try_acquire_owned() {
         Ok(p) => p,
         Err(_) => {
@@ -307,9 +368,12 @@ fn spawn_cross_id_cache(
             let state = state.clone();
             let bytes = bytes.clone();
             let release_date = cross_ids.release_date.clone();
+            let external_cache_only = state.config.external_cache_only;
             set.spawn(async move {
-                if let Err(e) = cache::write(&alt_cache_path, &bytes).await {
-                    tracing::warn!(error = %e, key = %alt_cache_key, "cross-id cache write failed");
+                if !external_cache_only {
+                    if let Err(e) = cache::write(&alt_cache_path, &bytes).await {
+                        tracing::warn!(error = %e, key = %alt_cache_key, "cross-id cache write failed");
+                    }
                 }
                 if let Err(e) = cache::upsert_meta_db(&state.db, &alt_cache_key, release_date.as_deref(), image_type).await {
                     tracing::warn!(error = %e, key = %alt_cache_key, "cross-id meta write failed");
@@ -409,11 +473,53 @@ pub async fn handle_inner(
     let id_type = IdType::parse(id_type_str)?;
     let id_value = id_value_jpg.strip_suffix(".jpg").unwrap_or(id_value_jpg);
 
+    // Reject path traversal, null bytes, etc. before any network calls
+    cache::validate_id_value(id_value)?;
+
     // Resolve "default" badge direction and style early, before cache key construction
     settings.poster_badge_direction = resolve_badge_direction(&settings.poster_badge_direction, &settings.poster_position);
     settings.poster_badge_style = resolve_badge_style(&settings.poster_badge_style, &settings.poster_badge_direction);
 
     let use_fanart = &*settings.poster_source == SOURCE_FANART || settings.lang_override;
+    let id_key = format!("{id_type_str}/{id_value}");
+
+    // Fast path (non-fanart): try to reconstruct the cache key from SQLite-stored
+    // available sources, avoiding external API calls entirely on cache hits.
+    if !use_fanart {
+        if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+            let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.ratings_limit);
+            let suffix = settings_cache_suffix_with_ratings(&settings, ImageKind::Poster, image_size, &ratings_suffix);
+            let cache_value = format!("{id_value}{suffix}");
+            let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
+            let cache_key = format!("{id_type_str}/{cache_value}");
+
+            let cache_suffix: Arc<str> = suffix.into();
+            {
+                let id_value = id_value.to_string();
+                let cache_suffix = cache_suffix.clone();
+                let settings = settings.clone();
+                if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
+                    trigger_background_refresh(s, k, p, id_type, &id_value, &cache_suffix, &settings, image_size);
+                }).await? {
+                    let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+                    return Ok((bytes, release_date));
+                }
+            }
+        }
+    }
+
+    // Slow path: resolve ID and fetch ratings (moka-cached, so still fast on
+    // repeat requests within the 30-min TTL).
+    let (resolved, ratings_result, cross_ids) =
+        resolve_with_ratings(state, id_type, id_value).await?;
+
+    // Persist available sources for future fast-path lookups (always write,
+    // even with external_cache_only — this is an optimization index, not a
+    // disk cache, and the fast path depends on it).
+    {
+        let sources = ratings::available_sources_string(&ratings_result.badges);
+        upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+    }
 
     // Fanart → TMDB fallback strategy:
     //
@@ -428,9 +534,8 @@ pub async fn handle_inner(
     //    b. Fanart-source user — reset to defaults, since their per-key settings
     //       (e.g. fanart-specific lang/textless) don't apply to TMDB posters.
     if use_fanart {
-        if let Some(bytes) = try_fanart_path(state, id_type_str, id_value, id_type, &settings, image_size).await? {
-            let release_date = lookup_release_date(state, id_type_str, id_value).await;
-            return Ok((bytes, release_date));
+        if let Some(bytes) = try_fanart_path(state, id_type_str, id_value, id_type, &resolved, &ratings_result, &cross_ids, &settings, image_size).await? {
+            return Ok((bytes, cross_ids.release_date));
         }
     }
 
@@ -446,13 +551,18 @@ pub async fn handle_inner(
         }
     }
     let settings = &settings;
-    let suffix = settings_cache_suffix(settings, ImageKind::Poster, image_size);
+
+    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
+    let ratings_suffix = ratings::badges_cache_suffix(&badges);
+
+    let suffix = settings_cache_suffix_with_ratings(settings, ImageKind::Poster, image_size, &ratings_suffix);
     let cache_value = format!("{id_value}{suffix}");
     let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
     let cache_key = format!("{id_type_str}/{cache_value}");
 
     // Check caches (memory → filesystem)
     let cache_suffix: Arc<str> = suffix.into();
+    let release_date = cross_ids.release_date.clone();
     {
         let id_type = id_type;
         let id_value = id_value.to_string();
@@ -461,7 +571,6 @@ pub async fn handle_inner(
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
             trigger_background_refresh(s, k, p, id_type, &id_value, &cache_suffix, &settings, image_size);
         }).await? {
-            let release_date = lookup_release_date(state, id_type_str, &id_value).await;
             return Ok((bytes, release_date));
         }
     }
@@ -469,20 +578,19 @@ pub async fn handle_inner(
     // Request coalescing — concurrent requests for the same poster share one generation
     let state2 = state.clone();
     let cache_key2 = cache_key.clone();
-    let id_value2 = id_value.to_owned();
     let cache_path2 = cache_path.clone();
     let settings2 = settings.clone();
     let bytes: Bytes = state
         .poster_inflight
         .try_get_with(cache_key.clone(), async move {
-            let (bytes, rd, _used_fanart, cross_ids) =
-                generate_poster_with_source(&state2, id_type, &id_value2, &settings2, image_size).await?;
+            let (bytes, rd, _used_fanart, gen_cross_ids) =
+                generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings2, image_size).await?;
             if !state2.config.external_cache_only {
                 cache::write(&cache_path2, &bytes).await?;
-                cache::upsert_meta_db(&state2.db, &cache_key2, rd.as_deref(), cache::ImageType::Poster).await?;
             }
+            cache::upsert_meta_db(&state2.db, &cache_key2, rd.as_deref(), cache::ImageType::Poster).await?;
             let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(&state2, cross_ids, id_type, cache_suffix.to_string(), cache::ImageType::Poster, bytes.clone());
+            spawn_cross_id_cache(&state2, gen_cross_ids, id_type, cache_suffix.to_string(), cache::ImageType::Poster, bytes.clone());
             Ok::<_, AppError>(bytes)
         })
         .await
@@ -499,7 +607,6 @@ pub async fn handle_inner(
             },
         )
         .await;
-    let release_date = lookup_release_date(state, id_type_str, id_value).await;
     Ok((bytes, release_date))
 }
 
@@ -539,11 +646,16 @@ fn fanart_variant_paths(
 
 /// Try to serve a poster from the fanart cache (memory → filesystem → fresh generation).
 /// Returns `Ok(Some(bytes))` on hit, `Ok(None)` to fall through to TMDB, or `Err` on hard failure.
+///
+/// Accepts pre-resolved data from the caller to avoid duplicate resolve+fetch work.
 async fn try_fanart_path(
     state: &AppState,
     id_type_str: &str,
     id_value: &str,
     id_type: IdType,
+    resolved: &id::ResolvedId,
+    ratings_result: &ratings::RatingsResult,
+    cross_ids: &CrossIdInfo,
     settings: &PosterSettings,
     image_size: Option<ImageSize>,
 ) -> Result<Option<Bytes>, AppError> {
@@ -563,8 +675,11 @@ async fn try_fanart_path(
         return Ok(None);
     }
 
+    let badges = ratings::apply_rating_preferences(ratings_result.badges.clone(), &settings.ratings_order, settings.ratings_limit);
+    let ratings_suffix = ratings::badges_cache_suffix(&badges);
+
     // Compute settings suffix once for all fanart variants
-    let suffix = settings_cache_suffix(settings, ImageKind::Poster, image_size);
+    let suffix = settings_cache_suffix_with_ratings(settings, ImageKind::Poster, image_size, &ratings_suffix);
 
     // Check cached variants (textless first if requested, then language)
     let mut variants_to_check: Vec<String> = Vec::new();
@@ -588,7 +703,7 @@ async fn try_fanart_path(
 
     // No cache hit — generate with fanart. Cache under the key matching the actual
     // tier used (textless vs language). If no fanart match, fall through to TMDB.
-    let result = generate_poster_with_source(state, id_type, id_value, settings, image_size).await;
+    let result = generate_poster_with_source(state, resolved, badges, cross_ids, settings, image_size).await;
 
     match result {
         Ok((bytes, rd, Some(tier), cross_ids)) => {
@@ -604,8 +719,8 @@ async fn try_fanart_path(
                 fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &suffix)?;
             if !state.config.external_cache_only {
                 let _ = cache::write(&cache_path, &bytes).await;
-                let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), cache::ImageType::Poster).await;
             }
+            let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), cache::ImageType::Poster).await;
             let fanart_cache_suffix = format!("{actual_variant}{suffix}");
             let bytes = Bytes::from(bytes);
             spawn_cross_id_cache(state, cross_ids, id_type, fanart_cache_suffix, cache::ImageType::Poster, bytes.clone());
@@ -665,11 +780,11 @@ where
                     if let Err(e) = cache::write(&cache_path, &bytes).await {
                         tracing::error!(error = %e, "failed to write cache");
                     }
-                    if let Err(e) =
-                        cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), image_type).await
-                    {
-                        tracing::error!(error = %e, "failed to write meta to db");
-                    }
+                }
+                if let Err(e) =
+                    cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), image_type).await
+                {
+                    tracing::error!(error = %e, "failed to write meta to db");
                 }
                 let bytes = Bytes::from(bytes);
                 if let Some((id_type, suffix)) = cross_id {
@@ -709,8 +824,16 @@ fn trigger_background_refresh(
     let settings = settings.clone();
     let cross_id = Some((id_type, cache_suffix.to_string()));
     spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
+        let (resolved, ratings_result, cross_ids) =
+            resolve_with_ratings(&state2, id_type, &id_value).await?;
+        {
+            let id_key = format!("{}/{id_value}", id_type.as_str());
+            let sources = ratings::available_sources_string(&ratings_result.badges);
+            upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+        }
+        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
         let (bytes, rd, _tier, cross_ids) =
-            generate_poster_with_source(&state2, id_type, &id_value, &settings, image_size).await?;
+            generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings, image_size).await?;
         Ok((bytes, rd, cache::ImageType::Poster, cross_ids))
     });
 }
@@ -743,17 +866,13 @@ fn trigger_fanart_background_refresh(
         };
         let fanart_textless = matches!(kind, ImageKind::Poster) && settings.fanart_textless;
 
-        let resolved = id::resolve(id_type, &id_value, &state2.tmdb, &state2.id_cache).await?;
-
-        let ratings_result = ratings::fetch_ratings(
-            &resolved,
-            &state2.tmdb,
-            state2.omdb.as_ref(),
-            state2.mdblist.as_ref(),
-            &state2.ratings_cache,
-        )
-        .await;
-        let cross_ids = CrossIdInfo::from_resolved(&resolved, &ratings_result);
+        let (resolved, ratings_result, cross_ids) =
+            resolve_with_ratings(&state2, id_type, &id_value).await?;
+        {
+            let id_key = format!("{}/{id_value}", id_type.as_str());
+            let sources = ratings::available_sources_string(&ratings_result.badges);
+            upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+        }
         let type_ratings_limit = match fanart_kind {
             FanartImageKind::Logo => settings.logo_ratings_limit,
             FanartImageKind::Backdrop => settings.backdrop_ratings_limit,
@@ -809,32 +928,22 @@ fn trigger_fanart_background_refresh(
 }
 
 /// Returns (poster_bytes, release_date, fanart_match_tier, cross_id_info)
+///
+/// Accepts pre-fetched `ResolvedId`, badges, and `CrossIdInfo` so that callers
+/// who already resolved/fetched ratings (for cache key construction) don't
+/// duplicate that work.
 async fn generate_poster_with_source(
     state: &AppState,
-    id_type: IdType,
-    id_value: &str,
+    resolved: &id::ResolvedId,
+    badges: Vec<ratings::RatingBadge>,
+    cross_ids: &CrossIdInfo,
     settings: &PosterSettings,
     image_size: Option<ImageSize>,
 ) -> Result<(Vec<u8>, Option<String>, Option<PosterMatch>, CrossIdInfo), AppError> {
-    let resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
-
     let poster_path = resolved
         .poster_path
         .as_deref()
         .ok_or_else(|| AppError::Other("no poster available".into()))?;
-
-    let ratings_result = ratings::fetch_ratings(
-        &resolved,
-        &state.tmdb,
-        state.omdb.as_ref(),
-        state.mdblist.as_ref(),
-        &state.ratings_cache,
-    )
-    .await;
-
-    let cross_ids = CrossIdInfo::from_resolved(&resolved, &ratings_result);
-
-    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
 
     // Try to fetch poster bytes from fanart.tv if configured
     let fanart_result = if &*settings.poster_source == SOURCE_FANART || settings.lang_override {
@@ -843,7 +952,7 @@ async fn generate_poster_with_source(
                 fanart,
                 &state.tmdb,
                 &state.fanart_cache,
-                &resolved,
+                resolved,
                 &settings.fanart_lang,
                 settings.fanart_textless,
                 ImageKind::Poster,
@@ -886,7 +995,7 @@ async fn generate_poster_with_source(
     })
     .await?;
 
-    Ok((bytes, cross_ids.release_date.clone(), match_tier, cross_ids))
+    Ok((bytes, cross_ids.release_date.clone(), match_tier, cross_ids.clone()))
 }
 
 /// Result of a fanart poster fetch, indicating what tier matched.
@@ -1058,6 +1167,7 @@ pub async fn handle_fanart_image_inner(
     let kind: ImageKind = fanart_kind.into();
     let id_type = IdType::parse(id_type_str)?;
     let id_value = kind.strip_ext(id_value_raw);
+    cache::validate_id_value(id_value)?;
     let kind_prefix = kind.kind_prefix();
     let label = kind.label();
 
@@ -1104,12 +1214,54 @@ pub async fn handle_fanart_image_inner(
         FanartImageKind::Logo => cache::ImageType::Logo,
         FanartImageKind::Backdrop => cache::ImageType::Backdrop,
     };
-    let suffix = settings_cache_suffix(settings, kind, image_size);
+
+    let id_key = format!("{id_type_str}/{id_value}");
+
+    // Fast path: try to reconstruct the cache key from SQLite-stored available
+    // sources, avoiding external API calls on cache hits.
+    if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+        let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, type_ratings_limit);
+        let suffix = settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix);
+        let cache_key = format!("{id_type_str}/{id_value}{variant}{suffix}");
+        let cache_path_base = format!("{id_value}{variant}{suffix}");
+        let cache_path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type_str, &cache_path_base)?;
+
+        let fanart_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
+        {
+            let id_value = id_value.to_string();
+            let fanart_cache_suffix = fanart_cache_suffix.clone();
+            let settings = settings.clone();
+            if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
+                trigger_fanart_background_refresh(s, k, p, id_type, &id_value, &fanart_cache_suffix, &settings, fanart_kind, image_size);
+            }).await? {
+                let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+                return Ok((bytes, release_date));
+            }
+        }
+    }
+
+    // Slow path: resolve ID and fetch ratings
+    let (resolved, ratings_result, cross_ids) =
+        resolve_with_ratings(state, id_type, id_value).await?;
+
+    // Persist available sources for future fast-path lookups (always write,
+    // even with external_cache_only — this is an optimization index, not a
+    // disk cache, and the fast path depends on it).
+    {
+        let sources = ratings::available_sources_string(&ratings_result.badges);
+        upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+    }
+
+    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, type_ratings_limit);
+    let ratings_suffix = ratings::badges_cache_suffix(&badges);
+
+    let suffix = settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix);
     let cache_key = format!("{id_type_str}/{id_value}{variant}{suffix}");
     let cache_path_base = format!("{id_value}{variant}{suffix}");
     let cache_path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type_str, &cache_path_base)?;
 
-    // Check caches (memory → filesystem)
+    // Check caches (memory → filesystem) — may hit if SQLite was stale but
+    // the correct cache entry already exists under the updated key.
     let fanart_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
     {
         let id_value = id_value.to_string();
@@ -1118,8 +1270,7 @@ pub async fn handle_fanart_image_inner(
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
             trigger_fanart_background_refresh(s, k, p, id_type, &id_value, &fanart_cache_suffix, &settings, fanart_kind, image_size);
         }).await? {
-            let release_date = lookup_release_date(state, id_type_str, &id_value).await;
-            return Ok((bytes, release_date));
+            return Ok((bytes, cross_ids.release_date));
         }
     }
 
@@ -1128,52 +1279,42 @@ pub async fn handle_fanart_image_inner(
         state: AppState,
         cache_key: String,
         cache_path: std::path::PathBuf,
-        id_value: String,
         fanart_cache_suffix: Arc<str>,
-        settings: PosterSettings,
         fanart: FanartClient,
         neg_textless_key: String,
         neg_lang_key: String,
         type_badge_style: Arc<str>,
         type_label_style: Arc<str>,
         label: &'static str,
+        resolved: id::ResolvedId,
+        badges: Vec<ratings::RatingBadge>,
+        cross_ids: CrossIdInfo,
     }
     let ctx = FanartGenCtx {
         state: state.clone(),
         cache_key: cache_key.clone(),
         cache_path: cache_path.clone(),
-        id_value: id_value.to_string(),
         fanart_cache_suffix: fanart_cache_suffix.clone(),
-        settings: settings.clone(),
         fanart: fanart.clone(),
         neg_textless_key,
         neg_lang_key,
         type_badge_style: type_badge_style.clone(),
         type_label_style: type_label_style.clone(),
         label,
+        resolved: resolved.clone(),
+        badges,
+        cross_ids: cross_ids.clone(),
     };
     let bytes: Bytes = state
         .poster_inflight
         .try_get_with(cache_key.clone(), async move {
             let ctx = ctx;
-            let resolved = id::resolve(id_type, &ctx.id_value, &ctx.state.tmdb, &ctx.state.id_cache).await?;
-
-            let ratings_result = ratings::fetch_ratings(
-                &resolved,
-                &ctx.state.tmdb,
-                ctx.state.omdb.as_ref(),
-                ctx.state.mdblist.as_ref(),
-                &ctx.state.ratings_cache,
-            )
-            .await;
-            let cross_ids = CrossIdInfo::from_resolved(&resolved, &ratings_result);
-            let badges = ratings::apply_rating_preferences(ratings_result.badges, &ctx.settings.ratings_order, type_ratings_limit);
 
             let fanart_result = fetch_fanart_image(
                 &ctx.fanart,
                 &ctx.state.tmdb,
                 &ctx.state.fanart_cache,
-                &resolved,
+                &ctx.resolved,
                 fanart_lang,
                 fanart_textless,
                 kind,
@@ -1210,16 +1351,16 @@ pub async fn handle_fanart_image_inner(
                 ),
             };
             let bytes = match fanart_kind {
-                FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, ctx.state.font.clone(), ctx.state.config.poster_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                FanartImageKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.poster_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
             };
 
             if !ctx.state.config.external_cache_only {
                 let _ = cache::write(&ctx.cache_path, &bytes).await;
-                let _ = cache::upsert_meta_db(&ctx.state.db, &ctx.cache_key, cross_ids.release_date.as_deref(), image_type).await;
             }
+            let _ = cache::upsert_meta_db(&ctx.state.db, &ctx.cache_key, ctx.cross_ids.release_date.as_deref(), image_type).await;
             let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(&ctx.state, cross_ids, id_type, ctx.fanart_cache_suffix.to_string(), image_type, bytes.clone());
+            spawn_cross_id_cache(&ctx.state, ctx.cross_ids, id_type, ctx.fanart_cache_suffix.to_string(), image_type, bytes.clone());
             Ok::<_, AppError>(bytes)
         })
         .await
@@ -1229,8 +1370,7 @@ pub async fn handle_fanart_image_inner(
         .poster_mem_cache
         .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
         .await;
-    let release_date = lookup_release_date(state, id_type_str, id_value).await;
-    Ok((bytes, release_date))
+    Ok((bytes, cross_ids.release_date))
 }
 
 #[cfg(test)]
@@ -1528,5 +1668,24 @@ mod tests {
             settings_cache_suffix(&s1, ImageKind::Poster, None),
             settings_cache_suffix(&s2, ImageKind::Poster, None)
         );
+    }
+
+    #[test]
+    fn cache_suffix_differs_by_actual_badges() {
+        // Two movies with the same settings but different available rating sources
+        // should produce different cache keys when using settings_cache_suffix_with_ratings.
+        let s = PosterSettings::default();
+
+        let suffix_imdb_rt = settings_cache_suffix_with_ratings(&s, ImageKind::Poster, None, "@ir");
+        let suffix_imdb_rt_lb = settings_cache_suffix_with_ratings(&s, ImageKind::Poster, None, "@irl");
+        let suffix_none = settings_cache_suffix_with_ratings(&s, ImageKind::Poster, None, "@");
+
+        assert_ne!(suffix_imdb_rt, suffix_imdb_rt_lb, "different badge sets must produce different suffixes");
+        assert_ne!(suffix_imdb_rt, suffix_none, "badges vs no badges must differ");
+        assert_ne!(suffix_imdb_rt_lb, suffix_none);
+
+        // Same badges should produce the same suffix
+        let suffix_imdb_rt_2 = settings_cache_suffix_with_ratings(&s, ImageKind::Poster, None, "@ir");
+        assert_eq!(suffix_imdb_rt, suffix_imdb_rt_2);
     }
 }

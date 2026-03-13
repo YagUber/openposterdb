@@ -31,7 +31,7 @@ impl RatingSource {
         }
     }
 
-    /// Single-char identifier used only in cache key suffixes (never parsed back).
+    /// Single-char identifier used in cache key suffixes.
     pub fn cache_char(&self) -> char {
         match self {
             Self::Mal => 'm',
@@ -42,6 +42,21 @@ impl RatingSource {
             Self::Metacritic => 'c',
             Self::Tmdb => 't',
             Self::Trakt => 'k',
+        }
+    }
+
+    /// Reverse of `cache_char`.
+    pub fn from_cache_char(c: char) -> Option<Self> {
+        match c {
+            'm' => Some(Self::Mal),
+            'i' => Some(Self::Imdb),
+            'l' => Some(Self::Letterboxd),
+            'r' => Some(Self::Rt),
+            'a' => Some(Self::RtAudience),
+            'c' => Some(Self::Metacritic),
+            't' => Some(Self::Tmdb),
+            'k' => Some(Self::Trakt),
+            _ => None,
         }
     }
 
@@ -258,8 +273,87 @@ async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: Option<&OmdbClient>) ->
     Some(badges)
 }
 
+/// Build a cache key suffix from actual rendered badges (post-filtering).
+///
+/// Unlike `ratings_cache_suffix` which predicts from user settings, this reflects
+/// which sources actually have data for a given movie.
+pub fn badges_cache_suffix(badges: &[RatingBadge]) -> String {
+    let chars: String = badges.iter().map(|b| b.source.cache_char()).collect();
+    format!("@{chars}")
+}
+
+/// Encode which rating sources have data for a movie as a compact string of
+/// cache chars in canonical order (e.g. `"ilrt"`). Stored in SQLite so the hot
+/// path can reconstruct the badges cache suffix without calling external APIs.
+///
+/// Canonical ordering ensures the stored value is deterministic regardless of
+/// the order ratings arrive from upstream APIs.
+pub fn available_sources_string(badges: &[RatingBadge]) -> String {
+    let mut sources: Vec<RatingSource> = badges.iter().map(|b| b.source).collect();
+    sources.sort_by_key(|s| {
+        CANONICAL_ORDER.iter().position(|&k| RatingSource::from_key(k) == Some(*s)).unwrap_or(usize::MAX)
+    });
+    sources.dedup();
+    sources.iter().map(|s| s.cache_char()).collect()
+}
+
 /// Canonical order of all rating sources, used for deterministic cache keys.
 const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb", "trakt"];
+
+/// Parse a comma-separated order string into a vec of known `RatingSource`s.
+fn parse_order(order: &str) -> Vec<RatingSource> {
+    order
+        .split(',')
+        .map(|k| k.trim())
+        .filter_map(RatingSource::from_key)
+        .collect()
+}
+
+/// Reorder `sources` according to `order`, appending any sources not mentioned
+/// in `order` in their original order, then truncate to `limit` (0 = no limit).
+fn order_and_limit(sources: Vec<RatingSource>, order: &str, limit: i32) -> Vec<RatingSource> {
+    let mut result = if order.is_empty() {
+        sources
+    } else {
+        let preferred = parse_order(order);
+        let mut ordered = Vec::with_capacity(sources.len());
+        for src in &preferred {
+            if sources.contains(src) {
+                ordered.push(*src);
+            }
+        }
+        for src in &sources {
+            if !preferred.contains(src) {
+                ordered.push(*src);
+            }
+        }
+        ordered
+    };
+
+    if limit > 0 {
+        result.truncate(limit as usize);
+    }
+
+    result
+}
+
+/// Reconstruct a badges cache suffix from a stored available-sources string
+/// and user preferences, without needing actual badge values.
+///
+/// Uses the same ordering logic as `apply_rating_preferences` +
+/// `badges_cache_suffix` but operates on source chars instead of full
+/// `RatingBadge` structs.
+pub fn badges_suffix_from_available(available_sources: &str, order: &str, limit: i32) -> String {
+    let available: Vec<RatingSource> = available_sources
+        .chars()
+        .filter_map(RatingSource::from_cache_char)
+        .collect();
+
+    let ordered = order_and_limit(available, order, limit);
+
+    let chars: String = ordered.iter().map(|s| s.cache_char()).collect();
+    format!("@{chars}")
+}
 
 /// Compute a deterministic cache key suffix from rating preferences.
 ///
@@ -267,11 +361,7 @@ const CANONICAL_ORDER: &[&str] = &["mal", "imdb", "lb", "rt", "rta", "mc", "tmdb
 /// in canonical order for determinism, then truncates to `limit` if positive.
 /// Returns a compact string like `@mil` (single-char per source, no commas).
 pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
-    let mut sources: Vec<RatingSource> = order
-        .split(',')
-        .map(|k| k.trim())
-        .filter_map(RatingSource::from_key)
-        .collect();
+    let mut sources = parse_order(order);
 
     // Append missing sources in canonical order
     for &canonical in CANONICAL_ORDER {
@@ -296,34 +386,15 @@ pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
 ///   Unmentioned sources are appended after in their original order.
 /// - If `limit` > 0, the result is truncated to that many badges.
 pub fn apply_rating_preferences(badges: Vec<RatingBadge>, order: &str, limit: i32) -> Vec<RatingBadge> {
-    let mut result = if order.is_empty() {
-        badges
-    } else {
-        let preferred: Vec<RatingSource> = order
-            .split(',')
-            .filter_map(|k| RatingSource::from_key(k.trim()))
-            .collect();
+    let sources: Vec<RatingSource> = badges.iter().map(|b| b.source).collect();
+    let ordered_sources = order_and_limit(sources, order, limit);
 
-        let mut ordered = Vec::with_capacity(badges.len());
-        // Add badges in preferred order
-        for src in &preferred {
-            if let Some(badge) = badges.iter().find(|b| b.source == *src) {
-                ordered.push(badge.clone());
-            }
+    let mut result = Vec::with_capacity(ordered_sources.len());
+    for src in &ordered_sources {
+        if let Some(badge) = badges.iter().find(|b| b.source == *src) {
+            result.push(badge.clone());
         }
-        // Add remaining badges not in the preferred list
-        for badge in &badges {
-            if !preferred.contains(&badge.source) {
-                ordered.push(badge.clone());
-            }
-        }
-        ordered
-    };
-
-    if limit > 0 {
-        result.truncate(limit as usize);
     }
-
     result
 }
 
@@ -485,6 +556,92 @@ mod tests {
     fn ratings_cache_suffix_invalid_sources_ignored() {
         let suffix = ratings_cache_suffix("imdb,bogus,rt,fake", 3);
         assert_eq!(suffix, "@irm");
+    }
+
+    #[test]
+    fn badges_cache_suffix_from_actual_badges() {
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Letterboxd, value: "4.2".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+        ];
+        assert_eq!(badges_cache_suffix(&badges), "@ilr");
+    }
+
+    #[test]
+    fn badges_cache_suffix_empty() {
+        let badges: Vec<RatingBadge> = vec![];
+        assert_eq!(badges_cache_suffix(&badges), "@");
+    }
+
+    #[test]
+    fn badges_cache_suffix_single() {
+        let badges = vec![
+            RatingBadge { source: RatingSource::Mal, value: "8.50".into() },
+        ];
+        assert_eq!(badges_cache_suffix(&badges), "@m");
+    }
+
+    #[test]
+    fn from_cache_char_roundtrip() {
+        for src in [
+            RatingSource::Mal, RatingSource::Imdb, RatingSource::Letterboxd,
+            RatingSource::Rt, RatingSource::RtAudience, RatingSource::Metacritic,
+            RatingSource::Tmdb, RatingSource::Trakt,
+        ] {
+            assert_eq!(RatingSource::from_cache_char(src.cache_char()), Some(src));
+        }
+        assert_eq!(RatingSource::from_cache_char('z'), None);
+    }
+
+    #[test]
+    fn badges_suffix_from_available_matches_full_pipeline() {
+        // Simulate: movie has imdb, rt, tmdb data. User orders "imdb,rt,tmdb" limit 3.
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+            RatingBadge { source: RatingSource::Tmdb, value: "7.5".into() },
+        ];
+        let available = available_sources_string(&badges);
+        assert_eq!(available, "irt");
+
+        // Full pipeline: apply_rating_preferences then badges_cache_suffix
+        let filtered = apply_rating_preferences(badges, "imdb,rt,tmdb", 3);
+        let expected = badges_cache_suffix(&filtered);
+
+        // SQLite fast path: badges_suffix_from_available
+        let actual = badges_suffix_from_available(&available, "imdb,rt,tmdb", 3);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn badges_suffix_from_available_respects_limit() {
+        let suffix = badges_suffix_from_available("irt", "imdb,rt,tmdb", 2);
+        assert_eq!(suffix, "@ir");
+    }
+
+    #[test]
+    fn badges_suffix_from_available_respects_order() {
+        let suffix = badges_suffix_from_available("irt", "tmdb,rt,imdb", 3);
+        assert_eq!(suffix, "@tri");
+    }
+
+    #[test]
+    fn badges_suffix_from_available_empty() {
+        assert_eq!(badges_suffix_from_available("", "imdb,rt", 3), "@");
+    }
+
+    #[test]
+    fn available_sources_string_canonical_order() {
+        // Badges arriving in non-canonical order should be stored canonically
+        let badges = vec![
+            RatingBadge { source: RatingSource::Tmdb, value: "7.5".into() },
+            RatingBadge { source: RatingSource::Imdb, value: "8.0".into() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".into() },
+        ];
+        // Canonical order is: mal, imdb, lb, rt, rta, mc, tmdb, trakt
+        // So imdb(i) < rt(r) < tmdb(t)
+        assert_eq!(available_sources_string(&badges), "irt");
     }
 
     #[test]

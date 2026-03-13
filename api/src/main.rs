@@ -191,7 +191,7 @@ async fn main() {
     let poster_mem_cache = moka::future::Cache::builder()
         .weigher(|_key: &String, value: &MemCacheEntry| -> u32 {
             // Poster JPEGs are typically 50-500KB, well within u32 range
-            (value.bytes.len() as u32).saturating_add(64)
+            u32::try_from(value.bytes.len()).unwrap_or(u32::MAX).saturating_add(64)
         })
         .max_capacity(config.poster_mem_cache_mb * 1024 * 1024)
         .time_to_live(Duration::from_secs(3600))
@@ -237,6 +237,11 @@ async fn main() {
     let settings_hash_registry = moka::future::Cache::builder()
         .max_capacity(10_000)
         .time_to_live(Duration::from_secs(300))
+        .build();
+
+    let available_ratings_cache = moka::future::Cache::builder()
+        .max_capacity(50_000)
+        .time_to_live(Duration::from_secs(3600))
         .build();
 
     let available_cpus = std::thread::available_parallelism()
@@ -286,6 +291,7 @@ async fn main() {
         render_semaphore,
         cross_id_semaphore,
         settings_hash_registry,
+        available_ratings_cache,
         config: config.clone(),
     });
 

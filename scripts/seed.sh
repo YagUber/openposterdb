@@ -12,7 +12,6 @@ GENRES=""        # comma-separated, e.g. "Action,Horror"
 YEAR_FROM=""
 YEAR_TO="$(($(date +%Y) - 1))"
 API_KEY="t0-free-rpdb"
-CONCURRENCY=1
 ASSETS="poster"  # poster, logo, backdrop, all
 DRY_RUN=false
 
@@ -35,10 +34,6 @@ Options:
   -f, --year-from YEAR     Minimum year (inclusive)
   -y, --year-to YEAR       Maximum year (inclusive, default: current year - 1)
   -k, --key KEY            API key to use (default: $API_KEY)
-  -c, --concurrency NUM    Parallel requests (default: $CONCURRENCY)
-                           WARNING: Each request may trigger upstream API calls
-                           (TMDB, MDBList, OMDb). Higher concurrency risks hitting
-                           their rate limits. Increase with caution.
   -a, --assets ASSETS      What to fetch: poster, logo, backdrop, all (default: $ASSETS)
   -d, --dry-run            Print what would be seeded without making requests
   -h, --help               Show this help
@@ -47,7 +42,6 @@ Examples:
   $(basename "$0") http://localhost:3000
   $(basename "$0") http://localhost:3000 -n 500 -t movie -f 2000
   $(basename "$0") http://localhost:3000 -n 0 -g "Horror,Thriller" -a all
-  $(basename "$0") http://localhost:3000 -t tv -y 2020 -c 8
   $(basename "$0") http://localhost:3000 -N 100000
 EOF
   exit 0
@@ -75,7 +69,6 @@ while [[ $# -gt 0 ]]; do
     -f|--year-from)   YEAR_FROM="$2";   shift 2 ;;
     -y|--year-to)     YEAR_TO="$2";     shift 2 ;;
     -k|--key)         API_KEY="$2";     shift 2 ;;
-    -c|--concurrency) CONCURRENCY="$2"; shift 2 ;;
     -a|--assets)      ASSETS="$2";      shift 2 ;;
     -d|--dry-run)     DRY_RUN=true;     shift   ;;
     -h|--help)        usage ;;
@@ -194,7 +187,6 @@ fi
 echo "Server:      $BASE_URL"
 echo "API key:     $API_KEY"
 echo "Assets:      $ASSETS"
-echo "Concurrency: $CONCURRENCY"
 echo ""
 
 if [[ "$DRY_RUN" == true ]]; then

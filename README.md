@@ -410,7 +410,13 @@ Use the same Caddy + OpenPosterDB compose setup from the [reverse proxy section]
 
 4. **Tiered Cache**: Go to **Caching > Tiered Cache** and enable **Smart Tiered Caching**. This reduces origin hits by allowing Cloudflare's upper-tier data centers to serve cache hits to lower-tier ones.
 
-5. **Browser TTL** (optional): Under **Caching > Configuration**, set **Browser Cache TTL** to **Respect Existing Headers** so the origin's `Cache-Control` headers are passed through to clients.
+5. **Static Assets**: The web UI's static assets (JS, CSS, fonts, images) are built by Vite with content hashes in their filenames (e.g. `assets/index-abc123.js`), making them safe to cache aggressively. Add a second cache rule:
+   - **When**: URI Path starts with `/assets/`
+   - **Then**: **Eligible for cache**, set **Edge TTL** to 1 year, **Browser TTL** to 1 year
+   - These files are immutable — when the app is redeployed, Vite generates new filenames, so stale cache entries are never served.
+   - The SPA's `index.html` is served without a file extension on all non-API routes, so Cloudflare will not cache it by default. This is the desired behavior — it ensures users always load the latest HTML that references the current hashed assets.
+
+6. **Browser TTL** (optional): Under **Caching > Configuration**, set **Browser Cache TTL** to **Respect Existing Headers** so the origin's `Cache-Control` headers are passed through to clients.
 
 #### How the CDN flow works
 

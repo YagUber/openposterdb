@@ -1,0 +1,20 @@
+IMDb Non-Commercial Datasets License
+=====================================
+
+The file title.basics.tsv in this directory is sourced from the IMDb
+Non-Commercial Datasets, available at:
+
+  https://developer.imdb.com/non-commercial-datasets/
+
+This data is provided by IMDb for personal and non-commercial use only.
+By using this data, you agree to the following terms:
+
+- The data can only be used for personal and non-commercial use.
+- You must not use the data to replicate or compete with IMDb's core
+  business.
+- The data must not be redistributed or used in a commercial product
+  or service without IMDb's written permission.
+- You must acknowledge IMDb as the source of the data.
+
+Information courtesy of IMDb (https://www.imdb.com).
+Used with permission for non-commercial purposes.

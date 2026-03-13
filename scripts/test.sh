@@ -62,7 +62,7 @@ for i in $(seq 1 60); do
     sleep 1
 done
 
-(cd web && npx playwright test --project=setup --project=chromium)
+(cd web && npx playwright test --workers=1 --project=setup --project=settings --project=chromium)
 
 echo ""
 echo "All tests passed."

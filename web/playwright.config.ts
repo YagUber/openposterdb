@@ -56,9 +56,20 @@ export default defineConfig({
       },
     },
     {
-      name: 'chromium',
+      // settings.spec.ts mutates the shared global poster_source via UI
+      // auto-save.  Run it first so it doesn't race with key-settings and
+      // key-auth-api tests that depend on the global default being 't'.
+      name: 'settings',
       dependencies: ['setup'],
-      testIgnore: [/setup-flow\.spec\.ts/, /live-api\.spec\.ts/],
+      testMatch: /settings\.spec\.ts$/,
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
+      name: 'chromium',
+      dependencies: ['setup', 'settings'],
+      testIgnore: [/setup-flow\.spec\.ts/, /live-api\.spec\.ts/, /settings\.spec\.ts$/],
       use: {
         ...devices['Desktop Chrome'],
       },

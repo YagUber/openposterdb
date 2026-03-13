@@ -307,14 +307,22 @@ When `ENABLE_CDN_REDIRECTS=true`, authenticated poster requests (`/{api_key}/...
 
 1. The app computes a 32-character hex hash from the user's effective settings (ratings order, badge style, position, etc.)
 2. The original endpoint validates the API key, then redirects to `/c/{hash}/{id_type}/poster-default/{id_value}.jpg`
-3. The `/c/` endpoint serves the image with a long public cache TTL (`max-age=86400`)
+3. The `/c/` endpoint serves the image with a dynamic `Cache-Control` TTL based on the film's age (see below)
 4. The CDN caches by the `/c/` URL — all users with identical settings share one cache entry
 
 **Why this helps:** Without redirects, the CDN caches by the full URL including the API key, so two users requesting the same poster with the same settings produce two separate cache entries. With redirects, they share one.
 
 **When to enable:** Only when a CDN sits in front of the origin. Without a CDN, the redirect is an extra round-trip to the same server for no benefit.
 
-The redirect response uses `Cache-Control: private, max-age=300` so the CDN does not cache the redirect itself (it contains the API key path). The `/c/` image response uses `Cache-Control: public, max-age=86400, stale-while-revalidate=604800` for long CDN caching. The `/c/` routes are rate-limited by IP.
+The redirect response uses `Cache-Control: private, max-age=300` so the CDN does not cache the redirect itself (it contains the API key path). The `/c/` image response uses a dynamic `Cache-Control` TTL that scales with the film's age — the same staleness logic used for internal cache revalidation:
+
+| Film age | `max-age` | Why |
+|---|---|---|
+| Unreleased / unknown | `RATINGS_STALE_SECS` (default 1 day) | Ratings are volatile, may change daily |
+| Recently released | Scales linearly from 1 day to 1 year | Ratings stabilize over time |
+| Older than `RATINGS_MAX_AGE_SECS` (default 1 year) | 1 year | Ratings are settled |
+
+The `stale-while-revalidate` directive is set to 7x the `max-age`, so CDN edge nodes can serve slightly stale content while revalidating in the background. The `/c/` routes are rate-limited by IP.
 
 **Important:** The origin keeps the settings hash → settings mapping in memory with a 5-minute TTL. The CDN must cache the image on the first request to the `/c/` URL; if it doesn't, subsequent requests after the TTL expires will 404 at origin until the next authenticated request re-populates the mapping. Cloudflare and most production CDNs cache on first hit, so this is not an issue in practice.
 
@@ -328,6 +336,93 @@ When `EXTERNAL_CACHE_ONLY=true`, the server skips **all** image file writes to d
 - Filesystem reads naturally return misses (no files on disk), so every request either hits the in-memory cache or regenerates the image
 - Best used together with `ENABLE_CDN_REDIRECTS=true` so the CDN absorbs the vast majority of traffic
 - The Docker volume is still required for the SQLite database (`DB_DIR`), even when image caching is fully external
+
+## Deploying to the Public Internet
+
+If you plan to expose OpenPosterDB to external users, put it behind a reverse proxy with TLS and (optionally) a CDN. The sections below cover using Caddy as the reverse proxy and Cloudflare as the CDN.
+
+### Reverse Proxy with Caddy
+
+The repository includes a [`Caddyfile.example`](Caddyfile.example). Copy it, replace the domain, and add a Caddy service to your compose file:
+
+```yaml
+services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+    restart: unless-stopped
+
+  openposterdb:
+    image: pnrxa/openposterdb:latest
+    environment:
+      # refer to docker-compose.yml
+    volumes:
+      - openposterdb-data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  openposterdb-data:
+```
+
+Caddy automatically provisions TLS certificates via Let's Encrypt. No extra configuration is needed — just point your DNS A record to the server's IP.
+
+### Deploying behind Cloudflare
+
+When Cloudflare sits in front of your origin, you can enable two environment flags that significantly reduce origin load:
+
+```env
+ENABLE_CDN_REDIRECTS=true
+EXTERNAL_CACHE_ONLY=true
+```
+
+- **`ENABLE_CDN_REDIRECTS`** makes poster requests redirect to content-addressed `/c/` URLs so Cloudflare deduplicates cache entries across users with identical settings (see [CDN Caching](#cdn-caching))
+- **`EXTERNAL_CACHE_ONLY`** skips all image writes to disk, relying on Cloudflare's edge cache for long-term storage and the in-memory cache for short-term deduplication
+
+Use the same Caddy + OpenPosterDB compose setup from the [reverse proxy section](#reverse-proxy-with-caddy), adding the two CDN flags and bumping the in-memory cache. The key changes to the `openposterdb` environment:
+
+```yaml
+      # Add these to your existing environment block
+      ENABLE_CDN_REDIRECTS: "true"
+      EXTERNAL_CACHE_ONLY: "true"
+      POSTER_MEM_CACHE_MB: ${POSTER_MEM_CACHE_MB:-1024}
+```
+
+> `CACHE_DIR` can be omitted because no images are written to disk. The volume is still needed for the SQLite database (`DB_DIR`). `POSTER_MEM_CACHE_MB` is increased to 1024 because the in-memory cache is the only deduplication layer before Cloudflare — size it to fit your server's available RAM.
+
+#### Cloudflare configuration
+
+1. **DNS**: Add an A record pointing to your server's IP with the orange cloud (Proxied) enabled.
+
+2. **SSL/TLS**: Go to **SSL/TLS > Overview** and set the mode to **Full (strict)**. This encrypts traffic between Cloudflare and your origin. Caddy's auto-TLS handles the origin certificate, or you can use a [Cloudflare Origin CA certificate](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/).
+
+3. **Cache Rules**: Cloudflare already caches `.jpg` and `.png` responses by default. The origin sets a dynamic `Cache-Control` header based on film age (1 day for new releases, up to 1 year for older films). To ensure Cloudflare respects this, add a cache rule:
+   - Go to **Caching > Cache Rules** and create a rule:
+     - **When**: URI Path starts with `/c/`
+     - **Then**: **Eligible for cache**, set **Edge TTL** to **Respect origin**
+   - This ensures new releases get short edge TTLs (so updated ratings propagate quickly) while old films stay cached for up to a year.
+
+4. **Tiered Cache**: Go to **Caching > Tiered Cache** and enable **Smart Tiered Caching**. This reduces origin hits by allowing Cloudflare's upper-tier data centers to serve cache hits to lower-tier ones.
+
+5. **Browser TTL** (optional): Under **Caching > Configuration**, set **Browser Cache TTL** to **Respect Existing Headers** so the origin's `Cache-Control` headers are passed through to clients.
+
+#### How the CDN flow works
+
+```
+Client → Cloudflare edge
+  → /{api_key}/imdb/poster-default/tt1234567.jpg
+  → Origin validates API key, returns 302 → /c/{hash}/imdb/poster-default/tt1234567.jpg
+  → Cloudflare follows redirect internally (or client follows it)
+  → /c/{hash}/... → Cache HIT at edge (served from Cloudflare)
+     or Cache MISS → Origin renders image → Cloudflare caches it → Response
+```
+
+After the first request, all users with the same settings get the cached image directly from Cloudflare's edge — the origin is not hit.
 
 ## Acknowledgments
 

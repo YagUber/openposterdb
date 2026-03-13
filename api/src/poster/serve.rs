@@ -15,6 +15,9 @@ use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMa
 use crate::services::ratings;
 use crate::AppState;
 
+/// Hardcoded CDN TTL for placeholder/fallback images (1 day).
+pub const PLACEHOLDER_CDN_MAX_AGE: u64 = 86400;
+
 /// Alias for the unified image kind enum used throughout the serve layer.
 pub type ImageKind = cache::ImageType;
 
@@ -157,6 +160,42 @@ pub fn settings_hash(settings: &PosterSettings, kind: ImageKind, image_size: Opt
 }
 
 /// 302 redirect response for CDN content-addressed URLs.
+/// Compute `max-age` for CDN responses based on film age.
+///
+/// New/unreleased films change frequently (ratings settling) → short TTL.
+/// Old films are stable → long TTL.  Maps the same release-date logic used
+/// for internal cache staleness to CDN-appropriate durations:
+///
+/// - Unreleased / unknown release date → 1 day
+/// - Just released → 1 day
+/// - Linearly scales up to 1 year as film age approaches `max_age_secs`
+/// - Older than `max_age_secs` → 1 year
+pub fn compute_cdn_max_age(release_date: Option<&str>, min_stale_secs: u64, max_age_secs: u64) -> u64 {
+    let stale = cache::compute_stale_secs(release_date, min_stale_secs, max_age_secs);
+    if stale == 0 {
+        // Film older than max_age — ratings are stable, cache for 1 year
+        365 * 24 * 3600
+    } else {
+        // Use the staleness interval as the CDN TTL — the image won't be
+        // regenerated before then anyway, so it's safe to cache that long.
+        stale
+    }
+}
+
+/// Look up the release date for CDN TTL computation.
+///
+/// Uses `id::resolve` which is cache-first (hits `id_cache` on the hot path)
+/// and only falls back to TMDB on a miss.  This guarantees the release date
+/// is available even on cache-hit paths where `generate_poster_with_source`
+/// was never called (or the `id_cache` entry expired before the poster cache).
+async fn lookup_release_date(state: &AppState, id_type_str: &str, id_value: &str) -> Option<String> {
+    let id_type = IdType::parse(id_type_str).ok()?;
+    id::resolve(id_type, id_value, &state.tmdb, &state.id_cache)
+        .await
+        .ok()
+        .and_then(|r| r.release_date)
+}
+
 /// `private` prevents CF from caching the redirect itself; the client may cache for 300s.
 pub fn cdn_redirect_response(location: &str) -> Response {
     (
@@ -169,30 +208,15 @@ pub fn cdn_redirect_response(location: &str) -> Response {
         .into_response()
 }
 
-/// JPEG response with long CDN cache TTL for content-addressed `/c/` routes.
-pub fn cdn_jpeg_response(bytes: Bytes) -> Response {
+/// Image response with dynamic CDN cache TTL for content-addressed `/c/` routes.
+pub fn cdn_image_response(bytes: Bytes, max_age: u64, content_type: &'static str) -> Response {
+    let swr = max_age.saturating_mul(7);
+    let cache_control = format!("public, max-age={max_age}, stale-while-revalidate={swr}");
     (
         [
-            (header::CONTENT_TYPE, "image/jpeg"),
-            (
-                header::CACHE_CONTROL,
-                "public, max-age=86400, stale-while-revalidate=604800",
-            ),
-        ],
-        bytes,
-    )
-        .into_response()
-}
-
-/// PNG response with long CDN cache TTL for content-addressed `/c/` routes.
-pub fn cdn_png_response(bytes: Bytes) -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "image/png"),
-            (
-                header::CACHE_CONTROL,
-                "public, max-age=86400, stale-while-revalidate=604800",
-            ),
+            (header::CONTENT_TYPE, header::HeaderValue::from_static(content_type)),
+            // SAFETY: the format string above only produces ASCII digits and commas.
+            (header::CACHE_CONTROL, header::HeaderValue::from_str(&cache_control).unwrap()),
         ],
         bytes,
     )
@@ -381,7 +405,7 @@ pub async fn handle_inner(
     id_value_jpg: &str,
     mut settings: PosterSettings,
     image_size: Option<ImageSize>,
-) -> Result<Bytes, AppError> {
+) -> Result<(Bytes, Option<String>), AppError> {
     let id_type = IdType::parse(id_type_str)?;
     let id_value = id_value_jpg.strip_suffix(".jpg").unwrap_or(id_value_jpg);
 
@@ -405,7 +429,8 @@ pub async fn handle_inner(
     //       (e.g. fanart-specific lang/textless) don't apply to TMDB posters.
     if use_fanart {
         if let Some(bytes) = try_fanart_path(state, id_type_str, id_value, id_type, &settings, image_size).await? {
-            return Ok(bytes);
+            let release_date = lookup_release_date(state, id_type_str, id_value).await;
+            return Ok((bytes, release_date));
         }
     }
 
@@ -436,7 +461,8 @@ pub async fn handle_inner(
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
             trigger_background_refresh(s, k, p, id_type, &id_value, &cache_suffix, &settings, image_size);
         }).await? {
-            return Ok(bytes);
+            let release_date = lookup_release_date(state, id_type_str, &id_value).await;
+            return Ok((bytes, release_date));
         }
     }
 
@@ -473,7 +499,8 @@ pub async fn handle_inner(
             },
         )
         .await;
-    Ok(bytes)
+    let release_date = lookup_release_date(state, id_type_str, id_value).await;
+    Ok((bytes, release_date))
 }
 
 /// Check a single fanart cache variant (memory → filesystem).
@@ -1022,7 +1049,7 @@ pub async fn handle_fanart_image_inner(
     settings: &PosterSettings,
     fanart_kind: FanartImageKind,
     image_size: Option<ImageSize>,
-) -> Result<Bytes, AppError> {
+) -> Result<(Bytes, Option<String>), AppError> {
     let fanart = state
         .fanart
         .as_ref()
@@ -1091,7 +1118,8 @@ pub async fn handle_fanart_image_inner(
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
             trigger_fanart_background_refresh(s, k, p, id_type, &id_value, &fanart_cache_suffix, &settings, fanart_kind, image_size);
         }).await? {
-            return Ok(bytes);
+            let release_date = lookup_release_date(state, id_type_str, &id_value).await;
+            return Ok((bytes, release_date));
         }
     }
 
@@ -1201,7 +1229,8 @@ pub async fn handle_fanart_image_inner(
         .poster_mem_cache
         .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
         .await;
-    Ok(bytes)
+    let release_date = lookup_release_date(state, id_type_str, id_value).await;
+    Ok((bytes, release_date))
 }
 
 #[cfg(test)]

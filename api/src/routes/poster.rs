@@ -224,7 +224,7 @@ async fn serve_poster(
     image_size: Option<db::ImageSize>,
 ) -> Response {
     match serve::handle_inner(state, id_type_str, id_value_jpg, settings.clone(), image_size).await {
-        Ok(bytes) => serve::jpeg_response(bytes),
+        Ok((bytes, _)) => serve::jpeg_response(bytes),
         Err(e) => {
             if use_fallback {
                 tracing::warn!(error = %e, "returning fallback placeholder");
@@ -343,7 +343,7 @@ async fn serve_fanart_image(
     image_size: Option<db::ImageSize>,
 ) -> Response {
     match serve::handle_fanart_image_inner(state, id_type_str, id_value_raw, settings, kind, image_size).await {
-        Ok(bytes) => match kind {
+        Ok((bytes, _)) => match kind {
             serve::FanartImageKind::Logo => serve::png_response(bytes),
             serve::FanartImageKind::Backdrop => serve::jpeg_response(bytes),
         },
@@ -389,11 +389,14 @@ pub async fn cdn_poster_handler(
     };
 
     match serve::handle_inner(&state, &id_type_str, &id_value_jpg, (*settings).clone(), image_size).await {
-        Ok(bytes) => serve::cdn_jpeg_response(bytes),
+        Ok((bytes, release_date)) => {
+            let max_age = serve::compute_cdn_max_age(release_date.as_deref(), state.config.ratings_min_stale_secs, state.config.ratings_max_age_secs);
+            serve::cdn_image_response(bytes, max_age, "image/jpeg")
+        }
         Err(e) => {
             if use_fallback {
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
-                serve::cdn_jpeg_response(generate::placeholder_jpeg().into())
+                serve::cdn_image_response(generate::placeholder_jpeg().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/jpeg")
             } else {
                 e.into_response()
             }
@@ -423,11 +426,14 @@ pub async fn cdn_logo_handler(
     };
 
     match serve::handle_fanart_image_inner(&state, &id_type_str, &id_value_png, &settings, serve::FanartImageKind::Logo, image_size).await {
-        Ok(bytes) => serve::cdn_png_response(bytes),
+        Ok((bytes, release_date)) => {
+            let max_age = serve::compute_cdn_max_age(release_date.as_deref(), state.config.ratings_min_stale_secs, state.config.ratings_max_age_secs);
+            serve::cdn_image_response(bytes, max_age, "image/png")
+        }
         Err(e) => {
             if use_fallback {
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
-                serve::cdn_png_response(generate::placeholder_png().into())
+                serve::cdn_image_response(generate::placeholder_png().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/png")
             } else {
                 e.into_response()
             }
@@ -457,11 +463,14 @@ pub async fn cdn_backdrop_handler(
     };
 
     match serve::handle_fanart_image_inner(&state, &id_type_str, &id_value_jpg, &settings, serve::FanartImageKind::Backdrop, image_size).await {
-        Ok(bytes) => serve::cdn_jpeg_response(bytes),
+        Ok((bytes, release_date)) => {
+            let max_age = serve::compute_cdn_max_age(release_date.as_deref(), state.config.ratings_min_stale_secs, state.config.ratings_max_age_secs);
+            serve::cdn_image_response(bytes, max_age, "image/jpeg")
+        }
         Err(e) => {
             if use_fallback {
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
-                serve::cdn_jpeg_response(generate::placeholder_jpeg().into())
+                serve::cdn_image_response(generate::placeholder_jpeg().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/jpeg")
             } else {
                 e.into_response()
             }

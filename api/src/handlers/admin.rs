@@ -278,7 +278,7 @@ pub async fn fetch_poster(
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
-    let bytes = serve::handle_inner(&state, &id_type, &id_value, (*settings).clone(), None).await?;
+    let (bytes, _) = serve::handle_inner(&state, &id_type, &id_value, (*settings).clone(), None).await?;
     Ok(serve::jpeg_response(bytes))
 }
 
@@ -393,7 +393,7 @@ async fn fetch_fanart_image(
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
-    let bytes = serve::handle_fanart_image_inner(state, id_type, id_value, &settings, fanart_kind, None).await?;
+    let (bytes, _) = serve::handle_fanart_image_inner(state, id_type, id_value, &settings, fanart_kind, None).await?;
 
     Ok((
         [(axum::http::header::CONTENT_TYPE, content_type)],

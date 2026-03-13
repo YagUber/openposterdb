@@ -1,0 +1,14 @@
+# Example Caddyfile for running OpenPosterDB behind Caddy as a reverse proxy.
+#
+# This is intended for deployments where Caddy terminates TLS and forwards
+# traffic to the OpenPosterDB container. If you're using Cloudflare as a CDN,
+# see the "Deploying behind Cloudflare" section in the README.
+#
+# Usage:
+#   1. Replace posters.example.com with your actual domain
+#   2. Place this file alongside your docker-compose.yml as "Caddyfile"
+#   3. Add a caddy service to your docker-compose.yml (see below)
+
+posters.example.com {
+	reverse_proxy openposterdb:3000
+}

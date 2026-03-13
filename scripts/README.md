@@ -23,7 +23,6 @@ Requires `title.basics.tsv` in the scripts directory. Download it from <https://
 | `-f, --year-from YEAR` | Minimum year (inclusive) | none |
 | `-y, --year-to YEAR` | Maximum year (inclusive) | none |
 | `-k, --key KEY` | API key to use | `t0-free-rpdb` |
-| `-c, --concurrency NUM` | Parallel requests | `4` |
 | `-a, --assets ASSETS` | `poster`, `logo`, `backdrop`, or `all` | `poster` |
 | `-d, --dry-run` | Print matching titles without making requests | off |
 
@@ -45,8 +44,7 @@ Requires `title.basics.tsv` in the scripts directory. Download it from <https://
 # Seed 100k movies + 100k series in one run
 ./scripts/seed.sh http://localhost:3000 -N 100000
 
-# Seed with a specific API key and higher concurrency
-./scripts/seed.sh http://localhost:3000 -k my-api-key -c 8
+
 ```
 
 ### Data files

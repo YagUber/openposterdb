@@ -110,7 +110,7 @@ async fn backdrop_returns_302_when_cdn_enabled() {
 // --- Redirect cache headers ---
 
 #[tokio::test]
-async fn redirect_has_private_cache_control() {
+async fn redirect_has_public_cache_control() {
     let (app, _state) = setup_cdn_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "cdn-cc").await;
@@ -123,8 +123,9 @@ async fn redirect_has_private_cache_control() {
     let res = app.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::FOUND);
     let cc = res.headers().get("cache-control").unwrap().to_str().unwrap();
-    assert!(cc.contains("private"), "redirect cache-control should be private: {cc}");
+    assert!(cc.contains("public"), "redirect cache-control should be public: {cc}");
     assert!(cc.contains("max-age=300"), "redirect cache-control should have max-age=300: {cc}");
+    assert!(cc.contains("stale-while-revalidate=3600"), "redirect should have stale-while-revalidate: {cc}");
 }
 
 // --- Query parameter forwarding ---

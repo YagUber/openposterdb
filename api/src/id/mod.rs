@@ -125,7 +125,7 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             release_date: tv.first_air_date.clone(),
         });
     }
-    Err(AppError::IdNotFound(imdb_id.to_string()))
+    Err(AppError::IdNotFound(format!("{imdb_id} (not found on TMDB)")))
 }
 
 async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
@@ -282,5 +282,5 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             release_date: details.release_date,
         });
     }
-    Err(AppError::IdNotFound(tvdb_id.to_string()))
+    Err(AppError::IdNotFound(format!("{tvdb_id} (not found on TMDB via TVDB lookup)")))
 }

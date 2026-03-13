@@ -5,6 +5,9 @@ use crate::services::tmdb::TmdbClient;
 use image::Rgba;
 use serde::Deserialize;
 
+/// Threshold (ms) above which ratings fetches are logged as slow.
+const SLOW_RATINGS_MS: u64 = 2000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RatingSource {
     Imdb,
@@ -155,12 +158,39 @@ async fn fetch_ratings_inner(
     omdb: Option<&OmdbClient>,
     mdblist: Option<&MdblistClient>,
 ) -> RatingsResult {
-    let tmdb_fut = fetch_tmdb_rating(resolved, tmdb);
-    let omdb_fut = fetch_omdb_ratings(resolved.imdb_id.as_deref(), omdb);
-    let mdblist_fut = fetch_mdblist_ratings(resolved, mdblist);
+    let ratings_start = std::time::Instant::now();
 
-    let (tmdb_badges, omdb_badges, mdblist_raw) =
+    let tmdb_fut = async {
+        let start = std::time::Instant::now();
+        let result = fetch_tmdb_rating(resolved, tmdb).await;
+        (result, start.elapsed())
+    };
+    let omdb_fut = async {
+        let start = std::time::Instant::now();
+        let result = fetch_omdb_ratings(resolved.imdb_id.as_deref(), omdb).await;
+        (result, start.elapsed())
+    };
+    let mdblist_fut = async {
+        let start = std::time::Instant::now();
+        let result = fetch_mdblist_ratings(resolved, mdblist).await;
+        (result, start.elapsed())
+    };
+
+    let ((tmdb_badges, tmdb_dur), (omdb_badges, omdb_dur), (mdblist_raw, mdblist_dur)) =
         tokio::join!(tmdb_fut, omdb_fut, mdblist_fut);
+
+    let ratings_elapsed = ratings_start.elapsed().as_millis() as u64;
+    if ratings_elapsed > SLOW_RATINGS_MS {
+        tracing::warn!(
+            tmdb_id = resolved.tmdb_id,
+            imdb_id = ?resolved.imdb_id,
+            total_ms = ratings_elapsed,
+            tmdb_ms = tmdb_dur.as_millis() as u64,
+            omdb_ms = omdb_dur.as_millis() as u64,
+            mdblist_ms = mdblist_dur.as_millis() as u64,
+            "slow ratings fetch"
+        );
+    }
 
     let (mdblist_badges, mdb_tmdb_id, mdb_tvdb_id, mdb_imdb_id) = match mdblist_raw {
         Some((badges, tmdb_id, tvdb_id, imdb_id)) => (Some(badges), tmdb_id, tvdb_id, imdb_id),

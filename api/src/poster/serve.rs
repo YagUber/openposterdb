@@ -18,6 +18,9 @@ use crate::AppState;
 /// Hardcoded CDN TTL for placeholder/fallback images (1 day).
 pub const PLACEHOLDER_CDN_MAX_AGE: u64 = 86400;
 
+/// Threshold (ms) above which requests are logged as slow.
+const SLOW_REQUEST_MS: u64 = 2000;
+
 /// Alias for the unified image kind enum used throughout the serve layer.
 pub type ImageKind = cache::ImageType;
 
@@ -277,7 +280,10 @@ async fn resolve_with_ratings(
     id_type: IdType,
     id_value: &str,
 ) -> Result<(id::ResolvedId, ratings::RatingsResult, CrossIdInfo), AppError> {
+    let id_resolve_start = Instant::now();
     let resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
+    let id_resolve_ms = id_resolve_start.elapsed().as_millis() as u64;
+
     let ratings_result = ratings::fetch_ratings(
         &resolved,
         &state.tmdb,
@@ -286,6 +292,15 @@ async fn resolve_with_ratings(
         &state.ratings_cache,
     )
     .await;
+
+    if id_resolve_ms > SLOW_REQUEST_MS {
+        tracing::warn!(
+            id = %id_value,
+            id_resolve_ms,
+            "slow id resolution"
+        );
+    }
+
     let cross_ids = CrossIdInfo::from_resolved(&resolved, &ratings_result);
     Ok((resolved, ratings_result, cross_ids))
 }
@@ -474,6 +489,7 @@ pub async fn handle_inner(
     mut settings: PosterSettings,
     image_size: Option<ImageSize>,
 ) -> Result<(Bytes, Option<String>), AppError> {
+    let request_start = Instant::now();
     let id_type = IdType::parse(id_type_str)?;
     let id_value = id_value_jpg.strip_suffix(".jpg").unwrap_or(id_value_jpg);
 
@@ -490,7 +506,9 @@ pub async fn handle_inner(
     // Fast path (non-fanart): try to reconstruct the cache key from SQLite-stored
     // available sources, avoiding external API calls entirely on cache hits.
     if !use_fanart {
+        let fast_path_start = Instant::now();
         if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+            let available_ratings_ms = fast_path_start.elapsed().as_millis() as u64;
             let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.ratings_limit);
             let suffix = settings_cache_suffix_with_ratings(&settings, ImageKind::Poster, image_size, &ratings_suffix);
             let cache_value = format!("{id_value}{suffix}");
@@ -502,20 +520,47 @@ pub async fn handle_inner(
                 let id_value = id_value.to_string();
                 let cache_suffix = cache_suffix.clone();
                 let settings = settings.clone();
+                let cache_check_start = Instant::now();
                 if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
                     trigger_background_refresh(s, k, p, id_type, &id_value, &cache_suffix, &settings, image_size);
                 }).await? {
+                    let cache_check_ms = cache_check_start.elapsed().as_millis() as u64;
+                    let meta_start = Instant::now();
                     let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+                    let meta_ms = meta_start.elapsed().as_millis() as u64;
+                    let total_ms = request_start.elapsed().as_millis() as u64;
+                    if total_ms > SLOW_REQUEST_MS {
+                        tracing::warn!(
+                            id = %id_key,
+                            total_ms,
+                            available_ratings_ms,
+                            cache_check_ms,
+                            meta_db_ms = meta_ms,
+                            "slow poster request (fast path hit)"
+                        );
+                    }
                     return Ok((bytes, release_date));
                 }
+            }
+            let total_fast_path_ms = fast_path_start.elapsed().as_millis() as u64;
+            if total_fast_path_ms > SLOW_REQUEST_MS {
+                tracing::warn!(
+                    id = %id_key,
+                    total_fast_path_ms,
+                    available_ratings_ms,
+                    "slow fast path — cache miss, falling to slow path"
+                );
             }
         }
     }
 
     // Slow path: resolve ID and fetch ratings (moka-cached, so still fast on
     // repeat requests within the 30-min TTL).
+    let slow_path_start = Instant::now();
+    let resolve_start = Instant::now();
     let (resolved, ratings_result, cross_ids) =
         resolve_with_ratings(state, id_type, id_value).await?;
+    let resolve_ms = resolve_start.elapsed().as_millis() as u64;
 
     // Persist available sources for future fast-path lookups (always write,
     // even with external_cache_only — this is an optimization index, not a
@@ -572,14 +617,26 @@ pub async fn handle_inner(
         let id_value = id_value.to_string();
         let cache_suffix = cache_suffix.clone();
         let settings = settings.clone();
+        let slow_cache_check_start = Instant::now();
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
             trigger_background_refresh(s, k, p, id_type, &id_value, &cache_suffix, &settings, image_size);
         }).await? {
+            let total_ms = request_start.elapsed().as_millis() as u64;
+            if total_ms > SLOW_REQUEST_MS {
+                tracing::warn!(
+                    id = %id_key,
+                    total_ms,
+                    resolve_ms,
+                    cache_check_ms = slow_cache_check_start.elapsed().as_millis() as u64,
+                    "slow poster request (slow path cache hit)"
+                );
+            }
             return Ok((bytes, release_date));
         }
     }
 
     // Request coalescing — concurrent requests for the same poster share one generation
+    let generate_start = Instant::now();
     let state2 = state.clone();
     let cache_key2 = cache_key.clone();
     let cache_path2 = cache_path.clone();
@@ -599,6 +656,18 @@ pub async fn handle_inner(
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
+
+    let total_ms = request_start.elapsed().as_millis() as u64;
+    if total_ms > SLOW_REQUEST_MS {
+        tracing::warn!(
+            id = %id_key,
+            total_ms,
+            resolve_ms,
+            generate_ms = generate_start.elapsed().as_millis() as u64,
+            slow_path_ms = slow_path_start.elapsed().as_millis() as u64,
+            "slow poster request (generated)"
+        );
+    }
 
     // Insert into memory cache
     state
@@ -947,7 +1016,11 @@ async fn generate_poster_with_source(
     let poster_path = resolved
         .poster_path
         .as_deref()
-        .ok_or_else(|| AppError::Other("no poster available".into()))?;
+        .ok_or_else(|| {
+            let id_desc = resolved.imdb_id.as_deref()
+                .unwrap_or_else(|| "unknown");
+            AppError::Other(format!("no poster available for {id_desc} / tmdb:{} (TMDB has no poster_path)", resolved.tmdb_id))
+        })?;
 
     // Try to fetch poster bytes from fanart.tv if configured
     let fanart_result = if &*settings.poster_source == SOURCE_FANART || settings.lang_override {

@@ -12,6 +12,9 @@ use crate::services::db::STYLE_VERTICAL;
 use crate::services::ratings::RatingBadge;
 use crate::services::tmdb::TmdbClient;
 
+/// Threshold (ms) above which render is logged as slow.
+const SLOW_RENDER_MS: u64 = 2000;
+
 const BADGE_SPACING: u32 = 10;
 const BADGE_BOTTOM_MARGIN: u32 = 10;
 const BADGE_TOP_MARGIN: u32 = 20;
@@ -123,7 +126,15 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
 
-    tracing::debug!(elapsed_ms = start.elapsed().as_millis() as u64, "poster render complete");
+    let render_ms = start.elapsed().as_millis() as u64;
+    tracing::debug!(elapsed_ms = render_ms, "poster render complete");
+    if render_ms > SLOW_RENDER_MS {
+        tracing::warn!(
+            poster_path,
+            render_ms,
+            "slow generate_poster"
+        );
+    }
     Ok(buf)
 }
 

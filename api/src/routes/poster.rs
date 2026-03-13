@@ -1,5 +1,5 @@
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -363,12 +363,26 @@ async fn serve_fanart_image(
 
 // --- Content-addressed CDN handlers (`/c/{settings_hash}/...`) ---
 
+/// Cache errors on `/c/` routes for 1 hour so Cloudflare doesn't cache them indefinitely
+/// but also doesn't hammer the origin for titles that don't exist yet.
+const CDN_ERROR_CACHE_CONTROL: &str = "public, max-age=3600";
+
 fn cdn_not_found() -> Response {
     (
         StatusCode::NOT_FOUND,
+        [(header::CACHE_CONTROL, CDN_ERROR_CACHE_CONTROL)],
         axum::Json(serde_json::json!({"error": "not found"})),
     )
         .into_response()
+}
+
+fn cdn_error_response(e: AppError) -> Response {
+    let mut resp = e.into_response();
+    resp.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static(CDN_ERROR_CACHE_CONTROL),
+    );
+    resp
 }
 
 pub async fn cdn_poster_handler(
@@ -398,7 +412,7 @@ pub async fn cdn_poster_handler(
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
                 serve::cdn_image_response(generate::placeholder_jpeg().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/jpeg")
             } else {
-                e.into_response()
+                cdn_error_response(e)
             }
         }
     }
@@ -435,7 +449,7 @@ pub async fn cdn_logo_handler(
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
                 serve::cdn_image_response(generate::placeholder_png().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/png")
             } else {
-                e.into_response()
+                cdn_error_response(e)
             }
         }
     }
@@ -472,8 +486,43 @@ pub async fn cdn_backdrop_handler(
                 tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
                 serve::cdn_image_response(generate::placeholder_jpeg().into(), serve::PLACEHOLDER_CDN_MAX_AGE, "image/jpeg")
             } else {
-                e.into_response()
+                cdn_error_response(e)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cdn_not_found_has_cache_control() {
+        let resp = cdn_not_found();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            resp.headers().get(header::CACHE_CONTROL).unwrap(),
+            CDN_ERROR_CACHE_CONTROL,
+        );
+    }
+
+    #[test]
+    fn cdn_error_response_has_cache_control() {
+        let resp = cdn_error_response(AppError::IdNotFound("tt0000000".into()));
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            resp.headers().get(header::CACHE_CONTROL).unwrap(),
+            CDN_ERROR_CACHE_CONTROL,
+        );
+    }
+
+    #[test]
+    fn cdn_error_response_preserves_status_code() {
+        let resp = cdn_error_response(AppError::BadRequest("bad".into()));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            resp.headers().get(header::CACHE_CONTROL).unwrap(),
+            CDN_ERROR_CACHE_CONTROL,
+        );
     }
 }

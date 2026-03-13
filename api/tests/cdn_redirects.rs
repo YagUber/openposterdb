@@ -230,6 +230,23 @@ async fn cdn_endpoint_unknown_hash_returns_404() {
 }
 
 #[tokio::test]
+async fn cdn_endpoint_404_has_short_cache_ttl() {
+    let (app, _state) = setup_cdn_app().await;
+
+    let req = Request::builder()
+        .uri("/c/deadbeef1234/imdb/poster-default/tt0111161.jpg")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+    let cc = res.headers().get("cache-control").unwrap().to_str().unwrap();
+    assert!(cc.contains("public"), "404 should be publicly cacheable: {cc}");
+    assert!(cc.contains("max-age=3600"), "404 should cache for 1 hour: {cc}");
+}
+
+#[tokio::test]
 async fn cdn_logo_endpoint_unknown_hash_returns_404() {
     let (app, _state) = setup_cdn_app().await;
 

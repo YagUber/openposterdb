@@ -203,13 +203,17 @@ pub fn compute_cdn_max_age(release_date: Option<&str>, min_stale_secs: u64, max_
     }
 }
 
-/// `private` prevents CF from caching the redirect itself; the client may cache for 300s.
+/// `public` lets the CDN cache the redirect at the edge so it can be served
+/// during origin downtime.  The cache is keyed by the full URL (which includes
+/// the API key), so one user's redirect is never served to another.
+/// `stale-while-revalidate` allows the edge to keep serving the cached redirect
+/// while the origin is unreachable.
 pub fn cdn_redirect_response(location: &str) -> Response {
     (
         StatusCode::FOUND,
         [
             (header::LOCATION, location),
-            (header::CACHE_CONTROL, "private, max-age=300"),
+            (header::CACHE_CONTROL, "public, max-age=300, stale-while-revalidate=3600"),
         ],
     )
         .into_response()

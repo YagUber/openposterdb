@@ -314,7 +314,7 @@ When `ENABLE_CDN_REDIRECTS=true`, authenticated poster requests (`/{api_key}/...
 
 **When to enable:** Only when a CDN sits in front of the origin. Without a CDN, the redirect is an extra round-trip to the same server for no benefit.
 
-The redirect response uses `Cache-Control: private, max-age=300` so the CDN does not cache the redirect itself (it contains the API key path). The `/c/` image response uses a dynamic `Cache-Control` TTL that scales with the film's age — the same staleness logic used for internal cache revalidation:
+The redirect response uses `Cache-Control: public, max-age=300, stale-while-revalidate=3600` so the CDN caches the redirect at the edge. The cache is keyed by the full URL (which includes the API key), so one user's cached redirect is never served to another. The `stale-while-revalidate` directive allows the edge to keep serving the cached redirect for up to an hour while the origin is unreachable. The `/c/` image response uses a dynamic `Cache-Control` TTL that scales with the film's age — the same staleness logic used for internal cache revalidation:
 
 | Film age | `max-age` | Why |
 |---|---|---|

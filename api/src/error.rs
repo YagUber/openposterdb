@@ -48,7 +48,11 @@ impl IntoResponse for AppError {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
             _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into()),
         };
-        tracing::error!(%status, error = %self);
+        if status.is_server_error() {
+            tracing::error!(%status, error = %self);
+        } else {
+            tracing::info!(%status, error = %self);
+        }
         (status, axum::Json(json!({ "error": message }))).into_response()
     }
 }

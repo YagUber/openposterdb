@@ -7,7 +7,7 @@ export async function routeGuard(to: RouteLocationNormalized) {
   // Only check setup status when navigating to setup or login (avoids an API
   // call on every navigation). The result is cached in the auth store after the
   // first successful call.
-  if (to.name === 'setup' || to.name === 'login' || to.name === 'landing' || to.name === 'dashboard') {
+  if (to.name === 'setup' || to.name === 'login' || to.name === 'landing' || to.name === 'dashboard' || to.name === 'not-found') {
     try {
       const setupRequired = await auth.checkSetupRequired()
       if (setupRequired && to.name !== 'setup') {
@@ -132,7 +132,8 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/',
+      name: 'not-found',
+      component: () => import('@/views/NotFoundView.vue'),
     },
   ],
 })

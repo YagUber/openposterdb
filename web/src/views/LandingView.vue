@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { version } from "../../package.json";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Image, KeyRound, Zap, Shield, Github, ExternalLink, BookOpen } from "lucide-vue-next";
+import { Image, KeyRound, Zap, Shield, ExternalLink } from "lucide-vue-next";
+import NavButtons from "@/components/NavButtons.vue";
 import FreeApiKeyCard from "@/components/FreeApiKeyCard.vue";
 
 const features = [
@@ -116,26 +116,8 @@ const backdrops = [
           <p class="text-lg text-muted-foreground max-w-xl mx-auto">
             Self-hosted poster, logo, and backdrop serving for your media server.
           </p>
-          <div class="pt-4 flex items-center justify-center gap-3">
-            <Button as-child size="lg">
-              <router-link to="/login">Sign in</router-link>
-            </Button>
-            <Button as-child variant="outline" size="lg">
-              <router-link to="/docs">
-                <BookOpen class="h-5 w-5" />
-                API Docs
-              </router-link>
-            </Button>
-            <Button as-child variant="outline" size="lg">
-              <a
-                href="https://github.com/PNRxA/openposterdb"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Github class="h-5 w-5" />
-                GitHub
-              </a>
-            </Button>
+          <div class="pt-4">
+            <NavButtons />
           </div>
           <div class="pt-4 max-w-lg mx-auto">
             <FreeApiKeyCard />

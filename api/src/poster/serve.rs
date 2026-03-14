@@ -655,7 +655,10 @@ pub async fn handle_inner(
             Ok::<_, AppError>(bytes)
         })
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(|e| match Arc::try_unwrap(e) {
+            Ok(app_err) => app_err,
+            Err(arc) => AppError::Other(arc.to_string()),
+        })?;
 
     let total_ms = request_start.elapsed().as_millis() as u64;
     if total_ms > SLOW_REQUEST_MS {
@@ -1441,7 +1444,10 @@ pub async fn handle_fanart_image_inner(
             Ok::<_, AppError>(bytes)
         })
         .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+        .map_err(|e| match Arc::try_unwrap(e) {
+            Ok(app_err) => app_err,
+            Err(arc) => AppError::Other(arc.to_string()),
+        })?;
 
     state
         .poster_mem_cache

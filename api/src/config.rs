@@ -9,10 +9,10 @@ pub struct Config {
     pub listen_addr: String,
     pub ratings_min_stale_secs: u64,
     pub ratings_max_age_secs: u64,
-    pub poster_stale_secs: u64,
-    pub poster_quality: u8,
+    pub image_stale_secs: u64,
+    pub image_quality: u8,
     pub mdblist_api_key: Option<String>,
-    pub poster_mem_cache_mb: u64,
+    pub image_mem_cache_mb: u64,
     pub static_dir: Option<String>,
     pub cors_origin: Option<String>,
     pub fanart_api_key: Option<String>,
@@ -37,16 +37,16 @@ impl Config {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(31_536_000),
-            poster_stale_secs: env::var("POSTER_STALE_SECS")
+            image_stale_secs: env::var("IMAGE_STALE_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(0),
-            poster_quality: env::var("POSTER_QUALITY")
+            image_quality: env::var("IMAGE_QUALITY")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(85),
             mdblist_api_key: env::var("MDBLIST_API_KEY").ok(),
-            poster_mem_cache_mb: env::var("POSTER_MEM_CACHE_MB")
+            image_mem_cache_mb: env::var("IMAGE_MEM_CACHE_MB")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(512),

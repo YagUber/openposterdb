@@ -158,11 +158,11 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `LISTEN_ADDR` | `0.0.0.0:3000` | Server bind address |
 | `CACHE_DIR` | `./cache` | Poster and metadata cache directory |
 | `DB_DIR` | `./db` | SQLite database directory |
-| `POSTER_QUALITY` | `85` | JPEG output quality (1-100) |
-| `POSTER_MEM_CACHE_MB` | `512` | In-memory cache size in MB |
+| `IMAGE_QUALITY` | `85` | JPEG output quality (1-100) |
+| `IMAGE_MEM_CACHE_MB` | `512` | In-memory cache size in MB |
 | `RATINGS_STALE_SECS` | `86400` | Min ratings cache lifetime |
 | `RATINGS_MAX_AGE_SECS` | `31536000` | Film age after which ratings stop refreshing |
-| `POSTER_STALE_SECS` | `0` | Base poster cache lifetime (0 = never re-fetch) |
+| `IMAGE_STALE_SECS` | `0` | Base image cache lifetime (0 = never re-fetch) |
 | `COOKIE_SECURE` | `true` | HTTPS-only cookies |
 | `RUST_LOG` | `warn` | Log level filter — levels: `error`, `warn`, `info`, `debug`, `trace`. Supports comma-separated per-module overrides. Relevant modules: `openposterdb_api` (app), `tower_http` (HTTP tracing), `sea_orm` / `sqlx` (database), `reqwest` / `hyper` (HTTP client/server). Example: `warn,openposterdb_api=info,tower_http=debug` |
 | `FANART_API_KEY` | — | [Fanart.tv](https://fanart.tv/get-an-api-key/) key (enables Fanart.tv as alternative poster source; required for logo and backdrop endpoints) |
@@ -194,7 +194,7 @@ Images are cached in three layers: in-memory (moka), filesystem, and SQLite meta
 
 ### Cache Key Format
 
-Cache keys uniquely identify a rendered image. They are used as keys in the in-memory cache and stored in the `poster_meta` SQLite table.
+Cache keys uniquely identify a rendered image. They are used as keys in the in-memory cache and stored in the `image_meta` SQLite table.
 
 **Poster:**
 ```
@@ -245,7 +245,7 @@ When the poster source is fanart.tv, the cache key includes a variant marker ind
 
 ### Database Values
 
-The `poster_meta` table tracks metadata for cached images:
+The `image_meta` table tracks metadata for cached images:
 
 | Field | Short Value | Meaning |
 |---|---|---|
@@ -336,7 +336,7 @@ When `EXTERNAL_CACHE_ONLY=true`, the server skips image file writes to disk (ren
 - The cache directory is not created on startup
 - Filesystem reads naturally return misses (no files on disk), so every request either hits the in-memory cache or regenerates the image
 - Best used together with `ENABLE_CDN_REDIRECTS=true` so the CDN absorbs the vast majority of traffic
-- SQLite metadata is **always** written, even with this flag — `poster_meta` stores release dates (for CDN TTL computation) and `available_ratings` records which rating sources have data for each movie (so cache keys can be reconstructed without external API calls on cache hits)
+- SQLite metadata is **always** written, even with this flag — `image_meta` stores release dates (for CDN TTL computation) and `available_ratings` records which rating sources have data for each movie (so cache keys can be reconstructed without external API calls on cache hits)
 - The Docker volume is still required for the SQLite database (`DB_DIR`), even when image caching is fully external
 
 ## Deploying to the Public Internet
@@ -392,10 +392,10 @@ Use the same Caddy + OpenPosterDB compose setup from the [reverse proxy section]
       # Add these to your existing environment block
       ENABLE_CDN_REDIRECTS: "true"
       EXTERNAL_CACHE_ONLY: "true"
-      POSTER_MEM_CACHE_MB: ${POSTER_MEM_CACHE_MB:-1024}
+      IMAGE_MEM_CACHE_MB: ${IMAGE_MEM_CACHE_MB:-1024}
 ```
 
-> `CACHE_DIR` can be omitted because no images are written to disk. The volume is still needed for the SQLite database (`DB_DIR`). `POSTER_MEM_CACHE_MB` is increased to 1024 because the in-memory cache is the only deduplication layer before Cloudflare — size it to fit your server's available RAM.
+> `CACHE_DIR` can be omitted because no images are written to disk. The volume is still needed for the SQLite database (`DB_DIR`). `IMAGE_MEM_CACHE_MB` is increased to 1024 because the in-memory cache is the only deduplication layer before Cloudflare — size it to fit your server's available RAM.
 
 #### Cloudflare configuration
 

@@ -13,12 +13,12 @@ vi.mock('@/lib/api', () => ({
 }))
 
 const sampleStats = {
-  total_posters: 42,
+  total_images: 42,
   total_api_keys: 3,
   mem_cache_entries: 100,
   id_cache_entries: 50,
   ratings_cache_entries: 25,
-  poster_mem_cache_mb: 128,
+  image_mem_cache_mb: 128,
 }
 
 function mountView() {
@@ -96,7 +96,7 @@ describe('DashboardView', () => {
     mockAdminApi.getStats.mockClear()
     mockAdminApi.getStats.mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ ...sampleStats, total_posters: 99 }),
+      json: () => Promise.resolve({ ...sampleStats, total_images: 99 }),
     })
 
     const refreshButton = wrapper.findAll('button').find((b) => b.text().includes('Refresh'))

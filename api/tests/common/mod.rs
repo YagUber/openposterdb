@@ -80,7 +80,7 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enab
         .max_capacity(100)
         .time_to_live(Duration::from_secs(300))
         .build();
-    let poster_inflight = moka::future::Cache::builder()
+    let image_inflight = moka::future::Cache::builder()
         .max_capacity(100)
         .time_to_live(Duration::from_secs(30))
         .build();
@@ -92,7 +92,7 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enab
         .max_capacity(100)
         .time_to_live(Duration::from_secs(1800))
         .build();
-    let poster_mem_cache = moka::future::Cache::builder()
+    let image_mem_cache = moka::future::Cache::builder()
         .max_capacity(1024 * 1024)
         .time_to_live(Duration::from_secs(3600))
         .build();
@@ -110,10 +110,10 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enab
             listen_addr: "127.0.0.1:0".into(),
             ratings_min_stale_secs: 86400,
             ratings_max_age_secs: 31_536_000,
-            poster_stale_secs: 0,
-            poster_quality: 85,
+            image_stale_secs: 0,
+            image_quality: 85,
             mdblist_api_key: None,
-            poster_mem_cache_mb: 1,
+            image_mem_cache_mb: 1,
             static_dir: None,
             cors_origin,
             fanart_api_key: Some("test".into()),
@@ -131,10 +131,10 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enab
         jwt_secret,
         secure_cookies,
         api_key_cache,
-        poster_inflight,
+        image_inflight,
         id_cache,
         ratings_cache,
-        poster_mem_cache,
+        image_mem_cache,
         pending_last_used: Arc::new(DashMap::new()),
         fanart: Some(FanartClient::new("test".into(), http)),
         fanart_cache: moka::future::Cache::builder()

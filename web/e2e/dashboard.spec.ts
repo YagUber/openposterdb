@@ -15,16 +15,16 @@ test.describe('dashboard', () => {
 
   test('shows stats cards', async ({ page }) => {
     const cards = page.locator('[data-slot="card"]')
-    await expect(cards.filter({ hasText: 'Total Posters' })).toBeVisible()
+    await expect(cards.filter({ hasText: 'Total Images' })).toBeVisible()
     await expect(cards.filter({ hasText: 'API Keys' })).toBeVisible()
     await expect(cards.filter({ hasText: 'Memory Cache Entries' })).toBeVisible()
     await expect(cards.filter({ hasText: 'ID Cache Entries' })).toBeVisible()
     await expect(cards.filter({ hasText: 'Ratings Cache Entries' })).toBeVisible()
-    await expect(cards.filter({ hasText: 'Poster Cache (MB)' })).toBeVisible()
+    await expect(cards.filter({ hasText: 'Image Cache (MB)' })).toBeVisible()
   })
 
   test('refresh button fetches new data', async ({ page }) => {
-    await expect(page.locator('text=Total Posters')).toBeVisible()
+    await expect(page.locator('text=Total Images')).toBeVisible()
 
     await page.click('button:has-text("Refresh")')
 

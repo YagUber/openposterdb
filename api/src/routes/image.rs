@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use axum::Router;
+#[cfg(not(any(test, feature = "test-support")))]
+use axum::http::Request;
 
-use crate::handlers::poster;
+use crate::handlers::image;
 use crate::AppState;
 
 /// Extract client IP from `X-Forwarded-For` or `X-Real-IP` headers.
@@ -24,10 +26,10 @@ fn extract_client_ip<T>(req: &Request<T>) -> String {
 
 #[cfg(not(any(test, feature = "test-support")))]
 #[derive(Debug, Clone)]
-struct PosterKeyExtractor;
+struct ImageKeyExtractor;
 
 #[cfg(not(any(test, feature = "test-support")))]
-impl tower_governor::key_extractor::KeyExtractor for PosterKeyExtractor {
+impl tower_governor::key_extractor::KeyExtractor for ImageKeyExtractor {
     type Key = String;
 
     fn extract<T>(
@@ -59,20 +61,20 @@ impl tower_governor::key_extractor::KeyExtractor for IpKeyExtractor {
     }
 }
 
-/// Poster, logo, and backdrop routes with `PosterKeyExtractor` rate limiting.
-pub fn poster_routes() -> Router<Arc<AppState>> {
+/// Poster, logo, and backdrop routes with `ImageKeyExtractor` rate limiting.
+pub fn image_routes() -> Router<Arc<AppState>> {
     let router = Router::new()
         .route(
             "/{api_key}/{id_type}/poster-default/{id_value}",
-            axum::routing::get(poster::handler),
+            axum::routing::get(image::handler),
         )
         .route(
             "/{api_key}/{id_type}/logo-default/{id_value}",
-            axum::routing::get(poster::logo_handler),
+            axum::routing::get(image::logo_handler),
         )
         .route(
             "/{api_key}/{id_type}/backdrop-default/{id_value}",
-            axum::routing::get(poster::backdrop_handler),
+            axum::routing::get(image::backdrop_handler),
         );
 
     #[cfg(not(any(test, feature = "test-support")))]
@@ -82,7 +84,7 @@ pub fn poster_routes() -> Router<Arc<AppState>> {
         let governor_conf = GovernorConfigBuilder::default()
             .per_millisecond(200)
             .burst_size(240)
-            .key_extractor(PosterKeyExtractor)
+            .key_extractor(ImageKeyExtractor)
             .finish()
             .expect("valid governor config");
 
@@ -96,7 +98,7 @@ pub fn poster_routes() -> Router<Arc<AppState>> {
 pub fn is_valid_route() -> Router<Arc<AppState>> {
     let router = Router::new().route(
         "/{api_key}/isValid",
-        axum::routing::get(poster::is_valid_handler),
+        axum::routing::get(image::is_valid_handler),
     );
 
     #[cfg(not(any(test, feature = "test-support")))]
@@ -106,7 +108,7 @@ pub fn is_valid_route() -> Router<Arc<AppState>> {
         let governor_conf = GovernorConfigBuilder::default()
             .per_millisecond(100) // 10 req/s
             .burst_size(30)
-            .key_extractor(PosterKeyExtractor)
+            .key_extractor(ImageKeyExtractor)
             .finish()
             .expect("valid governor config");
 
@@ -121,15 +123,15 @@ pub fn cdn_routes() -> Router<Arc<AppState>> {
     let router = Router::new()
         .route(
             "/c/{settings_hash}/{id_type}/poster-default/{id_value}",
-            axum::routing::get(poster::cdn_poster_handler),
+            axum::routing::get(image::cdn_poster_handler),
         )
         .route(
             "/c/{settings_hash}/{id_type}/logo-default/{id_value}",
-            axum::routing::get(poster::cdn_logo_handler),
+            axum::routing::get(image::cdn_logo_handler),
         )
         .route(
             "/c/{settings_hash}/{id_type}/backdrop-default/{id_value}",
-            axum::routing::get(poster::cdn_backdrop_handler),
+            axum::routing::get(image::cdn_backdrop_handler),
         );
 
     #[cfg(not(any(test, feature = "test-support")))]

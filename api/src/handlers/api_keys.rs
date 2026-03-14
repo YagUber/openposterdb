@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, validate_poster_settings_input, PosterSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction};
+use crate::services::db::{self, validate_render_settings_input, RenderSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction};
 use crate::services::validation;
 use crate::AppState;
 
@@ -92,7 +92,7 @@ pub async fn delete(
 }
 
 #[derive(Serialize)]
-pub struct PosterSettingsResponse {
+pub struct RenderSettingsResponse {
     pub poster_source: String,
     pub fanart_lang: String,
     pub fanart_textless: bool,
@@ -115,16 +115,16 @@ pub struct PosterSettingsResponse {
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i32>,
-) -> Result<Json<PosterSettingsResponse>, AppError> {
+) -> Result<Json<RenderSettingsResponse>, AppError> {
     db::find_api_key_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
-    let settings = db::get_effective_poster_settings(&state.db, id, None).await;
+    let settings = db::get_effective_render_settings(&state.db, id, None).await;
     Ok(Json(settings_to_response(&settings, state.fanart.is_some())))
 }
 
-fn settings_to_response(settings: &db::PosterSettings, fanart_available: bool) -> PosterSettingsResponse {
-    PosterSettingsResponse {
+fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -> RenderSettingsResponse {
+    RenderSettingsResponse {
         poster_source: settings.poster_source.to_string(),
         fanart_lang: settings.fanart_lang.to_string(),
         fanart_textless: settings.fanart_textless,
@@ -178,7 +178,7 @@ pub struct UpdateSettingsRequest {
     pub poster_badge_direction: String,
 }
 
-impl PosterSettingsInput for UpdateSettingsRequest {
+impl RenderSettingsInput for UpdateSettingsRequest {
     fn poster_source(&self) -> &str { &self.poster_source }
     fn fanart_lang(&self) -> &str { &self.fanart_lang }
     fn ratings_limit(&self) -> i32 { self.ratings_limit }
@@ -203,7 +203,7 @@ pub async fn update_settings(
     db::find_api_key_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
-    validate_poster_settings_input(&req)?;
+    validate_render_settings_input(&req)?;
     db::upsert_api_key_settings(&state.db, db::UpsertApiKeySettings {
         api_key_id: id,
         poster_source: &req.poster_source,
@@ -256,9 +256,9 @@ pub async fn get_own_key_info(
 pub async fn get_own_settings(
     State(state): State<Arc<AppState>>,
     Extension(api_key_user): Extension<ApiKeyUser>,
-) -> Result<Json<PosterSettingsResponse>, AppError> {
+) -> Result<Json<RenderSettingsResponse>, AppError> {
     let settings =
-        db::get_effective_poster_settings(&state.db, api_key_user.key_id, None).await;
+        db::get_effective_render_settings(&state.db, api_key_user.key_id, None).await;
     Ok(Json(settings_to_response(&settings, state.fanart.is_some())))
 }
 
@@ -268,7 +268,7 @@ pub async fn update_own_settings(
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<Value>, AppError> {
     let id = api_key_user.key_id;
-    validate_poster_settings_input(&req)?;
+    validate_render_settings_input(&req)?;
     db::upsert_api_key_settings(&state.db, db::UpsertApiKeySettings {
         api_key_id: id,
         poster_source: &req.poster_source,

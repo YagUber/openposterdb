@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
-import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
+import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
+import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
 
 vi.mock('@/lib/api', () => ({}))
 
-const defaultSettings: PosterSettings = {
+const defaultSettings: RenderSettings = {
   poster_source: 't',
   fanart_lang: 'en',
   fanart_textless: false,
@@ -32,9 +32,9 @@ function makeFetchPreview() {
   })
 }
 
-function mountForm(overrides: Partial<PosterSettings> = {}, fetchPreview = makeFetchPreview()) {
+function mountForm(overrides: Partial<RenderSettings> = {}, fetchPreview = makeFetchPreview()) {
   const settings = { ...defaultSettings, ...overrides }
-  return mount(PosterSettingsForm, {
+  return mount(RenderSettingsForm, {
     props: {
       settings,
       loadSettings: vi.fn().mockResolvedValue(settings),
@@ -53,7 +53,7 @@ function mountForm(overrides: Partial<PosterSettings> = {}, fetchPreview = makeF
   })
 }
 
-describe('PosterSettingsForm', () => {
+describe('RenderSettingsForm', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.useFakeTimers()

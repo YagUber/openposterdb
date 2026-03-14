@@ -71,8 +71,8 @@ async fn main() {
     tracing::info!(
         cache_dir = %config.cache_dir,
         db_dir = %config.db_dir,
-        poster_quality = config.poster_quality,
-        mem_cache_mb = config.poster_mem_cache_mb,
+        image_quality = config.image_quality,
+        mem_cache_mb = config.image_mem_cache_mb,
         secure_cookies,
         cdn_redirects = config.enable_cdn_redirects,
         external_cache_only = config.external_cache_only,
@@ -171,9 +171,9 @@ async fn main() {
         .build();
 
     // `try_get_with` provides true in-flight coalescing — concurrent requests for the
-    // same poster share one generation future. The 30s TTL only retains the completed
+    // same image share one generation future. The 30s TTL only retains the completed
     // result briefly so that near-simultaneous requests don't re-generate.
-    let poster_inflight = moka::future::Cache::builder()
+    let image_inflight = moka::future::Cache::builder()
         .max_capacity(1_000)
         .time_to_live(Duration::from_secs(30))
         .build();
@@ -188,12 +188,12 @@ async fn main() {
         .time_to_live(Duration::from_secs(1800))
         .build();
 
-    let poster_mem_cache = moka::future::Cache::builder()
+    let image_mem_cache = moka::future::Cache::builder()
         .weigher(|_key: &String, value: &MemCacheEntry| -> u32 {
-            // Poster JPEGs are typically 50-500KB, well within u32 range
+            // Images are typically 50-500KB, well within u32 range
             u32::try_from(value.bytes.len()).unwrap_or(u32::MAX).saturating_add(64)
         })
-        .max_capacity(config.poster_mem_cache_mb * 1024 * 1024)
+        .max_capacity(config.image_mem_cache_mb * 1024 * 1024)
         .time_to_live(Duration::from_secs(3600))
         .time_to_idle(Duration::from_secs(1800))
         .build();
@@ -276,10 +276,10 @@ async fn main() {
         jwt_secret,
         secure_cookies,
         api_key_cache,
-        poster_inflight,
+        image_inflight,
         id_cache,
         ratings_cache,
-        poster_mem_cache,
+        image_mem_cache,
         pending_last_used: pending_last_used.clone(),
         fanart,
         fanart_cache,

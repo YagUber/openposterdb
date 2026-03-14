@@ -4,7 +4,7 @@ use std::time::{Instant, SystemTime};
 use sea_orm::*;
 use tokio::fs;
 
-use crate::entity::{available_ratings, poster_meta};
+use crate::entity::{available_ratings, image_meta};
 use crate::error::AppError;
 
 pub struct CacheEntry {
@@ -88,6 +88,17 @@ impl ImageType {
             ImageType::Backdrop => "backdrop",
         }
     }
+
+    pub fn content_type(self) -> &'static str {
+        match self {
+            ImageType::Poster | ImageType::Backdrop => "image/jpeg",
+            ImageType::Logo => "image/png",
+        }
+    }
+
+    pub fn requires_fanart(self) -> bool {
+        matches!(self, ImageType::Logo | ImageType::Backdrop)
+    }
 }
 
 /// Path for a rendered (composited) image: `{cache_dir}/{subdir}/{id_type}/{id_value}.{ext}`
@@ -170,7 +181,7 @@ pub async fn write(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
 }
 
 pub async fn read_meta_db(db: &DatabaseConnection, cache_key: &str) -> Option<String> {
-    poster_meta::Entity::find_by_id(cache_key)
+    image_meta::Entity::find_by_id(cache_key)
         .one(db)
         .await
         .ok()
@@ -189,7 +200,7 @@ pub async fn upsert_meta_db(
         .unwrap_or_default()
         .as_secs() as i64;
 
-    let model = poster_meta::ActiveModel {
+    let model = image_meta::ActiveModel {
         cache_key: Set(cache_key.to_string()),
         release_date: Set(release_date.map(|s| s.to_string())),
         image_type: Set(image_type.db_value().to_string()),
@@ -197,10 +208,10 @@ pub async fn upsert_meta_db(
         updated_at: Set(now),
     };
 
-    poster_meta::Entity::insert(model)
+    image_meta::Entity::insert(model)
         .on_conflict(
-            sea_orm::sea_query::OnConflict::column(poster_meta::Column::CacheKey)
-                .update_columns([poster_meta::Column::ReleaseDate, poster_meta::Column::UpdatedAt])
+            sea_orm::sea_query::OnConflict::column(image_meta::Column::CacheKey)
+                .update_columns([image_meta::Column::ReleaseDate, image_meta::Column::UpdatedAt])
                 .to_owned(),
         )
         .exec(db)

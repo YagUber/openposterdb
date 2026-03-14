@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { SaveSettingsPayload } from '@/lib/api'
 
-export interface PosterSettings {
+export interface RenderSettings {
   poster_source: string
   fanart_lang: string
   fanart_textless: boolean
@@ -37,9 +37,9 @@ const ALL_RATING_SOURCES = [
 ] as const
 
 const props = defineProps<{
-  settings: PosterSettings
+  settings: RenderSettings
   uid?: string
-  loadSettings: () => Promise<PosterSettings | null>
+  loadSettings: () => Promise<RenderSettings | null>
   saveSettings: (s: SaveSettingsPayload) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
   fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string) => Promise<Response>
@@ -63,7 +63,7 @@ const editLogoLabelStyle = ref(props.settings.logo_label_style || 'i')
 const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'i')
 const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd')
 
-function applySettings(s: PosterSettings) {
+function applySettings(s: RenderSettings) {
   editSource.value = s.poster_source
   editLang.value = s.fanart_lang
   editTextless.value = s.fanart_textless
@@ -80,7 +80,7 @@ function applySettings(s: PosterSettings) {
   editBackdropLabelStyle.value = s.backdrop_label_style || 'i'
   editPosterBadgeDirection.value = s.poster_badge_direction || 'd'
 }
-const currentSettings = ref<PosterSettings>(props.settings)
+const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
 const error = ref('')
 const showCheck = ref(false)

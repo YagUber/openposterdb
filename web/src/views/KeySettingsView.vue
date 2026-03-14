@@ -3,8 +3,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { selfApi, type SaveSettingsPayload } from '@/lib/api'
-import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
-import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
+import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
+import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
 import { Button } from '@/components/ui/button'
 
 const auth = useAuthStore()
@@ -12,7 +12,7 @@ const router = useRouter()
 
 const keyName = ref('')
 const keyPrefix = ref('')
-const settings = ref<PosterSettings | null>(null)
+const settings = ref<RenderSettings | null>(null)
 const settingsLoading = ref(true)
 const initError = ref('')
 
@@ -42,11 +42,11 @@ onMounted(async () => {
   }
 })
 
-async function loadSettings(): Promise<PosterSettings | null> {
+async function loadSettings(): Promise<RenderSettings | null> {
   try {
     const res = await selfApi.getSettings()
     if (res.ok) {
-      const data: PosterSettings = await res.json()
+      const data: RenderSettings = await res.json()
       settings.value = data
       return data
     }
@@ -92,7 +92,7 @@ function handleLogout() {
       <div v-else-if="initError" class="text-sm text-destructive">{{ initError }}</div>
 
       <div v-else-if="settings" class="rounded-md border p-4">
-        <PosterSettingsForm
+        <RenderSettingsForm
           :settings="settings"
           uid="self"
           :load-settings="loadSettings"

@@ -8,8 +8,8 @@ use std::sync::{Arc, LazyLock};
 
 use crate::cache;
 use crate::error::AppError;
-use crate::poster::generate;
-use crate::poster::serve;
+use crate::image::generate;
+use crate::image::serve;
 use crate::services::db::{self, validate_poster_position, validate_badge_style, validate_label_style, default_label_style, validate_badge_direction, default_poster_badge_direction, resolve_badge_direction, resolve_badge_style};
 use crate::services::ratings::{self, RatingBadge, RatingSource};
 use crate::AppState;
@@ -171,7 +171,7 @@ pub async fn preview_poster(
 
     let poster_png: &'static Vec<u8> = &SAMPLE_POSTER_PNG;
     let font = state.font.clone();
-    let quality = state.config.poster_quality;
+    let quality = state.config.image_quality;
     let position = position.to_string();
     let label_style = label_style.to_string();
     let buf = tokio::task::spawn_blocking(move || {
@@ -281,7 +281,7 @@ pub async fn preview_backdrop(
 
     let backdrop_png: &'static Vec<u8> = &SAMPLE_BACKDROP_PNG;
     let font = state.font.clone();
-    let quality = state.config.poster_quality;
+    let quality = state.config.image_quality;
     let badge_style = badge_style.to_string();
     let label_style = label_style.to_string();
 

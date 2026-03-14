@@ -36,9 +36,9 @@ fn build_cors_layer(config: &Config) -> CorsLayer {
 }
 
 /// Returns true if `path` looks like an API management route (`/api/...`) or
-/// a poster route (first segment is a 64-char hex API key). Used by the
+/// an image route (first segment is a 64-char hex API key). Used by the
 /// fallback service to return JSON 404 instead of the SPA HTML page.
-fn is_api_or_poster_path(path: &str) -> bool {
+fn is_api_or_image_path(path: &str) -> bool {
     if path.starts_with("/api/") || path == "/api" {
         return true;
     }
@@ -119,13 +119,13 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .layer(CompressionLayer::new());
 
     let mut app = Router::new()
-        .merge(super::poster::poster_routes())
-        .merge(super::poster::is_valid_route());
+        .merge(super::image::image_routes())
+        .merge(super::image::is_valid_route());
 
     // Content-addressed CDN routes — only registered when ENABLE_CDN_REDIRECTS is set,
     // since nothing populates the settings_hash_registry otherwise.
     if state.config.enable_cdn_redirects {
-        app = app.merge(super::poster::cdn_routes());
+        app = app.merge(super::image::cdn_routes());
     }
 
     let mut app = app
@@ -134,7 +134,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
     // Serve static frontend files when STATIC_DIR is set.
     // Falls back to index.html for SPA client-side routing, but returns
     // a proper JSON 404 for unmatched /api/ paths and paths that look like
-    // poster requests (64-char hex first segment) so API consumers get JSON
+    // image requests (64-char hex first segment) so API consumers get JSON
     // errors instead of HTML.
     if let Some(ref dir) = state.config.static_dir {
         use axum::response::IntoResponse;
@@ -148,7 +148,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
             let spa = spa.clone();
             async move {
                 let path = req.uri().path();
-                if is_api_or_poster_path(path) {
+                if is_api_or_image_path(path) {
                     // Constant-time-ish: always return the same JSON 404
                     // regardless of whether the key exists, to avoid leaking
                     // valid key prefixes via timing.
@@ -200,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn redact_path_poster_route_hides_key() {
+    fn redact_path_image_route_hides_key() {
         assert_eq!(
             redact_path("/abc123def456/imdb/poster-default/tt1234567.jpg"),
             "/[REDACTED]/imdb/poster-default/tt1234567.jpg"
@@ -220,41 +220,41 @@ mod tests {
 
     #[test]
     fn is_api_path() {
-        assert!(is_api_or_poster_path("/api/auth/login"));
-        assert!(is_api_or_poster_path("/api/keys"));
-        assert!(is_api_or_poster_path("/api"));
+        assert!(is_api_or_image_path("/api/auth/login"));
+        assert!(is_api_or_image_path("/api/keys"));
+        assert!(is_api_or_image_path("/api"));
     }
 
     #[test]
-    fn is_poster_path_valid_key() {
+    fn is_image_path_valid_key() {
         let key = "a".repeat(64);
-        assert!(is_api_or_poster_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
-        assert!(is_api_or_poster_path(&format!("/{key}/bad-path")));
+        assert!(is_api_or_image_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
+        assert!(is_api_or_image_path(&format!("/{key}/bad-path")));
         // Key alone (no trailing path)
-        assert!(is_api_or_poster_path(&format!("/{key}")));
+        assert!(is_api_or_image_path(&format!("/{key}")));
     }
 
     #[test]
-    fn is_poster_path_invalid_key() {
+    fn is_image_path_invalid_key() {
         // Too short
-        assert!(!is_api_or_poster_path("/abcdef/imdb/poster-default/tt123.jpg"));
+        assert!(!is_api_or_image_path("/abcdef/imdb/poster-default/tt123.jpg"));
         // Not hex
         let key = "g".repeat(64);
-        assert!(!is_api_or_poster_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
+        assert!(!is_api_or_image_path(&format!("/{key}/imdb/poster-default/tt123.jpg")));
     }
 
     #[test]
     fn spa_paths_not_matched() {
-        assert!(!is_api_or_poster_path("/"));
-        assert!(!is_api_or_poster_path("/login"));
-        assert!(!is_api_or_poster_path("/settings"));
-        assert!(!is_api_or_poster_path("/posters"));
+        assert!(!is_api_or_image_path("/"));
+        assert!(!is_api_or_image_path("/login"));
+        assert!(!is_api_or_image_path("/settings"));
+        assert!(!is_api_or_image_path("/posters"));
     }
 
     #[test]
     fn cdn_paths_matched() {
-        assert!(is_api_or_poster_path("/c/a1b2c3d4e5f6/imdb/poster-default/tt123.jpg"));
-        assert!(is_api_or_poster_path("/c/abc123/tmdb/logo-default/12345.png"));
+        assert!(is_api_or_image_path("/c/a1b2c3d4e5f6/imdb/poster-default/tt123.jpg"));
+        assert!(is_api_or_image_path("/c/abc123/tmdb/logo-default/12345.png"));
     }
 
     #[test]

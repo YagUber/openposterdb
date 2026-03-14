@@ -7,7 +7,7 @@ use tokio::sync::Semaphore;
 
 use crate::cache;
 use crate::error::AppError;
-use crate::poster::badge;
+use crate::image::badge;
 use crate::services::db::STYLE_VERTICAL;
 use crate::services::ratings::RatingBadge;
 use crate::services::tmdb::TmdbClient;
@@ -24,7 +24,7 @@ const BADGE_VERT_SPACING: u32 = 7;
 const MAX_BADGES_PER_ROW: usize = 3;
 const MAX_VERT_BADGES_PER_ROW: usize = 5;
 
-pub struct PosterParams<'a> {
+pub struct ImageParams<'a> {
     pub poster_path: &'a str,
     pub badges: &'a [RatingBadge],
     pub tmdb: &'a TmdbClient,
@@ -32,7 +32,7 @@ pub struct PosterParams<'a> {
     pub font: &'a FontArc,
     pub quality: u8,
     pub cache_dir: &'a str,
-    pub poster_stale_secs: u64,
+    pub image_stale_secs: u64,
     pub poster_bytes_override: Option<Vec<u8>>,
     /// Badge position: "bc" (default), "tc", "l", "r", "tl", "tr", "bl", "br"
     pub poster_position: Arc<str>,
@@ -50,15 +50,15 @@ pub struct PosterParams<'a> {
     pub external_cache_only: bool,
 }
 
-pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppError> {
-    let PosterParams {
+pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppError> {
+    let ImageParams {
         poster_path,
         badges,
         tmdb,
         font,
         quality,
         cache_dir,
-        poster_stale_secs,
+        image_stale_secs,
         poster_bytes_override,
         poster_position,
         badge_style,
@@ -79,7 +79,7 @@ pub async fn generate_poster(params: PosterParams<'_>) -> Result<Vec<u8>, AppErr
     } else {
         // Fetch base poster from TMDB, using cache
         let poster_cache = cache::base_poster_path(cache_dir, poster_path, &tmdb_size)?;
-        if let Some(entry) = cache::read(&poster_cache, poster_stale_secs).await {
+        if let Some(entry) = cache::read(&poster_cache, image_stale_secs).await {
             if entry.is_stale {
                 // Conditional fetch — send If-Modified-Since to avoid re-downloading unchanged images
                 let modified = tokio::fs::metadata(&poster_cache).await.ok()
@@ -904,7 +904,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(2));
         let tmdb = dummy_tmdb();
 
-        let result = generate_poster(PosterParams {
+        let result = generate_poster(ImageParams {
             poster_bytes_override: Some(png),
             poster_path: "",
             badges: &[],
@@ -912,7 +912,7 @@ mod tests {
             font: &font,
             quality: 85,
             cache_dir: "/tmp",
-            poster_stale_secs: 3600,
+            image_stale_secs: 3600,
             poster_position: Arc::from("bc"),
             badge_style: Arc::from("h"),
             label_style: Arc::from("t"),
@@ -938,7 +938,7 @@ mod tests {
         sem.close();
         let tmdb = dummy_tmdb();
 
-        let result = generate_poster(PosterParams {
+        let result = generate_poster(ImageParams {
             poster_bytes_override: Some(png),
             poster_path: "",
             badges: &[],
@@ -946,7 +946,7 @@ mod tests {
             font: &font,
             quality: 85,
             cache_dir: "/tmp",
-            poster_stale_secs: 3600,
+            image_stale_secs: 3600,
             poster_position: Arc::from("bc"),
             badge_style: Arc::from("h"),
             label_style: Arc::from("t"),

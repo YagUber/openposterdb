@@ -319,8 +319,8 @@ pub fn validate_fanart_lang(lang: &str) -> Result<(), AppError> {
     }
 }
 
-/// Common poster settings fields shared between per-key and global update requests.
-pub trait PosterSettingsInput {
+/// Common render settings fields shared between per-key and global update requests.
+pub trait RenderSettingsInput {
     fn poster_source(&self) -> &str;
     fn fanart_lang(&self) -> &str;
     fn ratings_limit(&self) -> i32;
@@ -337,8 +337,8 @@ pub trait PosterSettingsInput {
     fn poster_badge_direction(&self) -> &str;
 }
 
-/// Validate all poster settings fields at once.
-pub fn validate_poster_settings_input(input: &dyn PosterSettingsInput) -> Result<(), AppError> {
+/// Validate all render settings fields at once.
+pub fn validate_render_settings_input(input: &dyn RenderSettingsInput) -> Result<(), AppError> {
     validate_poster_source(input.poster_source())?;
     validate_fanart_lang(input.fanart_lang())?;
     validate_ratings_limit(input.ratings_limit())?;
@@ -1040,12 +1040,12 @@ pub async fn delete_api_key(db: &impl ConnectionTrait, id: i32) -> Result<(), Ap
     Ok(())
 }
 
-// --- Poster meta queries ---
+// --- Image meta queries ---
 
-pub async fn count_poster_meta(db: &impl ConnectionTrait) -> Result<u64, AppError> {
-    use crate::entity::poster_meta;
+pub async fn count_image_meta(db: &impl ConnectionTrait) -> Result<u64, AppError> {
+    use crate::entity::image_meta;
     use sea_orm::PaginatorTrait;
-    poster_meta::Entity::find()
+    image_meta::Entity::find()
         .count(db)
         .await
         .map_err(|e| AppError::DbError(e.to_string()))
@@ -1059,17 +1059,17 @@ pub async fn count_api_keys(db: &impl ConnectionTrait) -> Result<u64, AppError> 
         .map_err(|e| AppError::DbError(e.to_string()))
 }
 
-pub async fn list_poster_meta_by_kind(
+pub async fn list_image_meta_by_kind(
     db: &impl ConnectionTrait,
     image_type: crate::cache::ImageType,
     page: u64,
     page_size: u64,
-) -> Result<(Vec<crate::entity::poster_meta::Model>, u64), AppError> {
-    use crate::entity::poster_meta;
+) -> Result<(Vec<crate::entity::image_meta::Model>, u64), AppError> {
+    use crate::entity::image_meta;
     use sea_orm::{PaginatorTrait, QueryFilter, ColumnTrait};
 
-    let paginator = poster_meta::Entity::find()
-        .filter(poster_meta::Column::ImageType.eq(image_type.db_value()))
+    let paginator = image_meta::Entity::find()
+        .filter(image_meta::Column::ImageType.eq(image_type.db_value()))
         .paginate(db, page_size);
     let total = paginator.num_items().await.map_err(|e| AppError::DbError(e.to_string()))?;
     let items = paginator
@@ -1224,10 +1224,10 @@ pub async fn delete_api_key_settings(
     Ok(())
 }
 
-// --- Effective poster settings ---
+// --- Effective render settings ---
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct PosterSettings {
+pub struct RenderSettings {
     pub poster_source: Arc<str>,
     pub fanart_lang: Arc<str>,
     pub fanart_textless: bool,
@@ -1249,7 +1249,7 @@ pub struct PosterSettings {
     pub lang_override: bool,
 }
 
-impl Default for PosterSettings {
+impl Default for RenderSettings {
     fn default() -> Self {
         Self {
             poster_source: Arc::from(SOURCE_TMDB),
@@ -1273,16 +1273,16 @@ impl Default for PosterSettings {
     }
 }
 
-/// Parse raw global settings (key-value HashMap) into a PosterSettings struct.
-pub fn parse_global_poster_settings(globals: &HashMap<String, String>) -> PosterSettings {
+/// Parse raw global settings (key-value HashMap) into a `RenderSettings` struct.
+pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> RenderSettings {
     if globals.is_empty() {
-        return PosterSettings::default();
+        return RenderSettings::default();
     }
-    let defaults = PosterSettings::default();
+    let defaults = RenderSettings::default();
     let arc_or = |key: &str, default: Arc<str>| -> Arc<str> {
         globals.get(key).map(|s| Arc::from(s.as_str())).unwrap_or(default)
     };
-    PosterSettings {
+    RenderSettings {
         poster_source: arc_or("poster_source", defaults.poster_source),
         fanart_lang: arc_or("fanart_lang", defaults.fanart_lang),
         fanart_textless: globals
@@ -1315,15 +1315,15 @@ pub fn parse_global_poster_settings(globals: &HashMap<String, String>) -> Poster
     }
 }
 
-pub async fn get_effective_poster_settings(
+pub async fn get_effective_render_settings(
     db: &impl ConnectionTrait,
     api_key_id: i32,
-    cached_globals: Option<&PosterSettings>,
-) -> PosterSettings {
+    cached_globals: Option<&RenderSettings>,
+) -> RenderSettings {
     // Check per-key settings first
     match get_api_key_settings(db, api_key_id).await {
         Ok(Some(s)) => {
-            return PosterSettings {
+            return RenderSettings {
                 poster_source: Arc::from(s.poster_source.as_str()),
                 fanart_lang: Arc::from(s.fanart_lang.as_str()),
                 fanart_textless: s.fanart_textless,
@@ -1354,10 +1354,10 @@ pub async fn get_effective_poster_settings(
     }
     // Otherwise load from DB
     match get_global_settings(db).await {
-        Ok(ref globals) => parse_global_poster_settings(globals),
+        Ok(ref globals) => parse_global_render_settings(globals),
         Err(e) => {
             tracing::warn!(error = %e, "failed to load global settings, using defaults");
-            PosterSettings::default()
+            RenderSettings::default()
         }
     }
 }

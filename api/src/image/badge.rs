@@ -3,7 +3,7 @@ use image::{imageops, Rgba, RgbaImage};
 use imageproc::drawing::{draw_filled_rect_mut, draw_text_mut};
 use imageproc::rect::Rect;
 
-use crate::poster::icons;
+use crate::image::icons;
 use crate::services::db::LABEL_ICON;
 use crate::services::ratings::RatingBadge;
 

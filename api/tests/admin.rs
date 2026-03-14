@@ -35,12 +35,12 @@ async fn stats_returns_counts() {
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(json["total_posters"], 0);
+    assert_eq!(json["total_images"], 0);
     assert_eq!(json["total_api_keys"], 0);
     assert!(json["mem_cache_entries"].is_number());
     assert!(json["id_cache_entries"].is_number());
     assert!(json["ratings_cache_entries"].is_number());
-    assert!(json["poster_mem_cache_mb"].is_number());
+    assert!(json["image_mem_cache_mb"].is_number());
 }
 
 #[tokio::test]

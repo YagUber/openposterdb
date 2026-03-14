@@ -4,7 +4,7 @@ pub mod entity;
 pub mod error;
 pub mod handlers;
 pub mod id;
-pub mod poster;
+pub mod image;
 pub mod routes;
 pub mod services;
 
@@ -18,7 +18,7 @@ use zeroize::Zeroizing;
 use cache::MemCacheEntry;
 use config::Config;
 use id::ResolvedId;
-use services::db::PosterSettings;
+use services::db::RenderSettings;
 use services::fanart::{FanartClient, FanartImages};
 use services::mdblist::MdblistClient;
 use services::omdb::OmdbClient;
@@ -39,27 +39,27 @@ pub struct AppState {
     pub jwt_secret: Zeroizing<Vec<u8>>,
     pub secure_cookies: bool,
     pub api_key_cache: moka::future::Cache<String, Option<i32>>,
-    pub poster_inflight: moka::future::Cache<String, bytes::Bytes>,
+    pub image_inflight: moka::future::Cache<String, bytes::Bytes>,
     pub id_cache: moka::future::Cache<String, ResolvedId>,
     pub ratings_cache: moka::future::Cache<String, services::ratings::RatingsResult>,
-    pub poster_mem_cache: moka::future::Cache<String, MemCacheEntry>,
+    pub image_mem_cache: moka::future::Cache<String, MemCacheEntry>,
     pub pending_last_used: Arc<DashMap<i32, ()>>,
     pub fanart: Option<FanartClient>,
     pub fanart_cache: moka::future::Cache<String, Arc<FanartImages>>,
     /// Tracks negative fanart results — e.g. "movie:123:textless" means no textless poster exists.
     /// Entries expire after the same TTL as fanart_cache so we recheck periodically.
     pub fanart_negative: moka::future::Cache<String, ()>,
-    pub settings_cache: moka::future::Cache<i32, Arc<PosterSettings>>,
-    pub global_settings_cache: moka::future::Cache<(), Arc<PosterSettings>>,
+    pub settings_cache: moka::future::Cache<i32, Arc<RenderSettings>>,
+    pub global_settings_cache: moka::future::Cache<(), Arc<RenderSettings>>,
     pub preview_cache: moka::future::Cache<String, bytes::Bytes>,
     pub free_api_key_cache: moka::future::Cache<(), bool>,
     pub render_semaphore: Arc<tokio::sync::Semaphore>,
     pub cross_id_semaphore: Arc<tokio::sync::Semaphore>,
-    /// Maps settings hash → PosterSettings for content-addressed `/c/` CDN routes.
+    /// Maps settings hash → RenderSettings for content-addressed `/c/` CDN routes.
     /// Populated lazily when API key requests produce redirects.
-    pub settings_hash_registry: moka::future::Cache<String, Arc<PosterSettings>>,
+    pub settings_hash_registry: moka::future::Cache<String, Arc<RenderSettings>>,
     /// In-memory cache for `available_ratings` SQLite lookups.
-    /// Avoids hitting the database on every poster request when the entry is already known.
+    /// Avoids hitting the database on every image request when the entry is already known.
     pub available_ratings_cache: moka::future::Cache<String, Option<String>>,
 }
 
@@ -84,7 +84,7 @@ pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
 pub static OPENAPI_SPEC_TEMPLATE: &str = include_str!("openapi.json");
 
 pub const SCHEMA_SQL: &[&str] = &[
-    "CREATE TABLE IF NOT EXISTS poster_meta (
+    "CREATE TABLE IF NOT EXISTS image_meta (
         cache_key TEXT PRIMARY KEY,
         release_date TEXT,
         created_at INTEGER NOT NULL,
@@ -155,7 +155,11 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "duplicate column",
     ),
     (
-        "ALTER TABLE poster_meta ADD COLUMN image_type TEXT NOT NULL DEFAULT 'poster'",
+        "ALTER TABLE poster_meta RENAME TO image_meta",
+        "no such table",
+    ),
+    (
+        "ALTER TABLE image_meta ADD COLUMN image_type TEXT NOT NULL DEFAULT 'poster'",
         "duplicate column",
     ),
     (

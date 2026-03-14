@@ -6,12 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface Stats {
-  total_posters: number
+  total_images: number
   total_api_keys: number
   mem_cache_entries: number
   id_cache_entries: number
   ratings_cache_entries: number
-  poster_mem_cache_mb: number
+  image_mem_cache_mb: number
 }
 
 const { data: stats, isPending, isFetching, refetch } = useQuery<Stats>({
@@ -24,12 +24,12 @@ const { data: stats, isPending, isFetching, refetch } = useQuery<Stats>({
 })
 
 const cards = [
-  { key: 'total_posters', label: 'Total Posters' },
+  { key: 'total_images', label: 'Total Images' },
   { key: 'total_api_keys', label: 'API Keys' },
   { key: 'mem_cache_entries', label: 'Memory Cache Entries' },
   { key: 'id_cache_entries', label: 'ID Cache Entries' },
   { key: 'ratings_cache_entries', label: 'Ratings Cache Entries' },
-  { key: 'poster_mem_cache_mb', label: 'Poster Cache (MB)' },
+  { key: 'image_mem_cache_mb', label: 'Image Cache (MB)' },
 ] as const
 </script>
 

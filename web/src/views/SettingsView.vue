@@ -4,10 +4,10 @@ import { useQuery } from '@tanstack/vue-query'
 import { adminApi, type SaveSettingsPayload } from '@/lib/api'
 import { FREE_API_KEY } from '@/lib/constants'
 import RefreshButton from '@/components/RefreshButton.vue'
-import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
-import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
+import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
+import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
 
-type SettingsResponse = PosterSettings & { free_api_key_enabled: boolean; free_api_key_locked: boolean }
+type SettingsResponse = RenderSettings & { free_api_key_enabled: boolean; free_api_key_locked: boolean }
 
 const freeApiKeyEnabled = ref(false)
 const freeKeyLoading = ref(false)
@@ -30,7 +30,7 @@ watch(settings, (s) => {
   if (s) freeApiKeyEnabled.value = s.free_api_key_enabled
 }, { immediate: true })
 
-async function loadSettings(): Promise<PosterSettings | null> {
+async function loadSettings(): Promise<RenderSettings | null> {
   const res = await adminApi.getSettings()
   if (!res.ok) return null
   return res.json()
@@ -120,7 +120,7 @@ async function toggleFreeApiKey() {
           These defaults apply to all API keys unless overridden per-key.
         </p>
 
-        <PosterSettingsForm
+        <RenderSettingsForm
           v-if="settings"
           :settings="settings"
           uid="global"

@@ -3,8 +3,8 @@ import { ref, reactive } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { keysApi, adminApi, type SaveSettingsPayload } from '@/lib/api'
 import RefreshButton from '@/components/RefreshButton.vue'
-import PosterSettingsForm from '@/components/PosterSettingsForm.vue'
-import type { PosterSettings } from '@/components/PosterSettingsForm.vue'
+import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
+import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Settings, Plus, Loader2, Check } from 'lucide-vue-next'
@@ -38,7 +38,7 @@ let createCheckTimeout: ReturnType<typeof setTimeout> | null = null
 
 // Per-key settings state
 const expandedKey = ref<number | null>(null)
-const keySettings = reactive<Record<number, PosterSettings>>({})
+const keySettings = reactive<Record<number, RenderSettings>>({})
 const settingsLoading = reactive<Record<number, boolean>>({})
 
 async function toggleSettings(id: number) {
@@ -52,13 +52,13 @@ async function toggleSettings(id: number) {
   }
 }
 
-async function fetchSettings(id: number): Promise<PosterSettings | null> {
+async function fetchSettings(id: number): Promise<RenderSettings | null> {
   const isInitialLoad = !keySettings[id]
   if (isInitialLoad) settingsLoading[id] = true
   try {
     const res = await keysApi.getSettings(id)
     if (res.ok) {
-      const data: PosterSettings = await res.json()
+      const data: RenderSettings = await res.json()
       keySettings[id] = data
       return data
     }
@@ -204,7 +204,7 @@ async function deleteKey(id: number) {
         <!-- Inline settings panel -->
         <div v-if="expandedKey === key.id" class="border-t px-3 py-4 bg-muted/30">
           <div v-if="settingsLoading[key.id]" class="text-sm text-muted-foreground">Loading settings...</div>
-          <PosterSettingsForm
+          <RenderSettingsForm
             v-else-if="keySettings[key.id]"
             :settings="keySettings[key.id]!"
             :uid="String(key.id)"

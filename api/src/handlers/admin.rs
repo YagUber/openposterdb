@@ -7,41 +7,41 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache;
 use crate::error::AppError;
-use crate::poster::serve::{self, FanartImageKind};
-use crate::services::db::{self, validate_poster_settings_input, PosterSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction};
+use crate::image::serve::{self, FanartImageKind};
+use crate::services::db::{self, validate_render_settings_input, RenderSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction};
 use crate::AppState;
 
 #[derive(Serialize)]
 pub struct StatsResponse {
-    pub total_posters: u64,
+    pub total_images: u64,
     pub total_api_keys: u64,
     pub mem_cache_entries: u64,
     pub id_cache_entries: u64,
     pub ratings_cache_entries: u64,
-    pub poster_mem_cache_mb: u64,
+    pub image_mem_cache_mb: u64,
 }
 
 pub async fn stats(State(state): State<Arc<AppState>>) -> Result<Json<StatsResponse>, AppError> {
-    let total_posters = db::count_poster_meta(&state.db).await?;
+    let total_images = db::count_image_meta(&state.db).await?;
     let total_api_keys = db::count_api_keys(&state.db).await?;
 
-    let mem_cache_entries = state.poster_mem_cache.entry_count();
+    let mem_cache_entries = state.image_mem_cache.entry_count();
     let id_cache_entries = state.id_cache.entry_count();
     let ratings_cache_entries = state.ratings_cache.entry_count();
-    let poster_mem_cache_mb = state.poster_mem_cache.weighted_size() / (1024 * 1024);
+    let image_mem_cache_mb = state.image_mem_cache.weighted_size() / (1024 * 1024);
 
     Ok(Json(StatsResponse {
-        total_posters,
+        total_images,
         total_api_keys,
         mem_cache_entries,
         id_cache_entries,
         ratings_cache_entries,
-        poster_mem_cache_mb,
+        image_mem_cache_mb,
     }))
 }
 
 #[derive(Deserialize)]
-pub struct ListPostersQuery {
+pub struct ListImagesQuery {
     #[serde(default = "default_page")]
     pub page: u64,
     #[serde(default = "default_page_size")]
@@ -56,7 +56,7 @@ fn default_page_size() -> u64 {
 }
 
 #[derive(Serialize)]
-pub struct PosterMetaItem {
+pub struct ImageMetaItem {
     pub cache_key: String,
     pub release_date: Option<String>,
     pub created_at: i64,
@@ -64,8 +64,8 @@ pub struct PosterMetaItem {
 }
 
 #[derive(Serialize)]
-pub struct ListPostersResponse {
-    pub items: Vec<PosterMetaItem>,
+pub struct ListImagesResponse {
+    pub items: Vec<ImageMetaItem>,
     pub total: u64,
     pub page: u64,
     pub page_size: u64,
@@ -73,17 +73,17 @@ pub struct ListPostersResponse {
 
 async fn list_images(
     state: &AppState,
-    query: &ListPostersQuery,
+    query: &ListImagesQuery,
     image_type: cache::ImageType,
-) -> Result<Json<ListPostersResponse>, AppError> {
+) -> Result<Json<ListImagesResponse>, AppError> {
     let page = query.page.max(1);
     let page_size = query.page_size.clamp(1, 100);
 
-    let (items, total) = db::list_poster_meta_by_kind(&state.db, image_type, page, page_size).await?;
+    let (items, total) = db::list_image_meta_by_kind(&state.db, image_type, page, page_size).await?;
 
     let items = items
         .into_iter()
-        .map(|m| PosterMetaItem {
+        .map(|m| ImageMetaItem {
             cache_key: m.cache_key,
             release_date: m.release_date,
             created_at: m.created_at,
@@ -91,13 +91,13 @@ async fn list_images(
         })
         .collect();
 
-    Ok(Json(ListPostersResponse { items, total, page, page_size }))
+    Ok(Json(ListImagesResponse { items, total, page, page_size }))
 }
 
 pub async fn list_posters(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ListPostersQuery>,
-) -> Result<Json<ListPostersResponse>, AppError> {
+    Query(query): Query<ListImagesQuery>,
+) -> Result<Json<ListImagesResponse>, AppError> {
     list_images(&state, &query, cache::ImageType::Poster).await
 }
 
@@ -138,7 +138,7 @@ pub async fn get_settings(
         .global_settings_cache
         .try_get_with((), async move {
             let globals = db::get_global_settings(&db_ref).await?;
-            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&globals)))
+            Ok::<_, AppError>(Arc::new(db::parse_global_render_settings(&globals)))
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -200,7 +200,7 @@ pub struct UpdateGlobalSettingsRequest {
     pub poster_badge_direction: String,
 }
 
-impl PosterSettingsInput for UpdateGlobalSettingsRequest {
+impl RenderSettingsInput for UpdateGlobalSettingsRequest {
     fn poster_source(&self) -> &str { &self.poster_source }
     fn fanart_lang(&self) -> &str { &self.fanart_lang }
     fn ratings_limit(&self) -> i32 { self.ratings_limit }
@@ -221,7 +221,7 @@ pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    validate_poster_settings_input(&req)?;
+    validate_render_settings_input(&req)?;
     let textless_str = if req.fanart_textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
@@ -273,21 +273,21 @@ pub async fn fetch_poster(
         .global_settings_cache
         .try_get_with((), async move {
             let globals = db::get_global_settings(&db_ref).await?;
-            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&globals)))
+            Ok::<_, AppError>(Arc::new(db::parse_global_render_settings(&globals)))
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
     let (bytes, _) = serve::handle_inner(&state, &id_type, &id_value, (*settings).clone(), None).await?;
-    Ok(serve::jpeg_response(bytes))
+    Ok(serve::image_response(bytes, "image/jpeg"))
 }
 
 // --- Logos ---
 
 pub async fn list_logos(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ListPostersQuery>,
-) -> Result<Json<ListPostersResponse>, AppError> {
+    Query(query): Query<ListImagesQuery>,
+) -> Result<Json<ListImagesResponse>, AppError> {
     list_images(&state, &query, cache::ImageType::Logo).await
 }
 
@@ -309,8 +309,8 @@ pub async fn fetch_logo(
 
 pub async fn list_backdrops(
     State(state): State<Arc<AppState>>,
-    Query(query): Query<ListPostersQuery>,
-) -> Result<Json<ListPostersResponse>, AppError> {
+    Query(query): Query<ListImagesQuery>,
+) -> Result<Json<ListImagesResponse>, AppError> {
     list_images(&state, &query, cache::ImageType::Backdrop).await
 }
 
@@ -388,7 +388,7 @@ async fn fetch_fanart_image(
         .global_settings_cache
         .try_get_with((), async move {
             let globals = db::get_global_settings(&db_ref).await?;
-            Ok::<_, AppError>(Arc::new(db::parse_global_poster_settings(&globals)))
+            Ok::<_, AppError>(Arc::new(db::parse_global_render_settings(&globals)))
         })
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;

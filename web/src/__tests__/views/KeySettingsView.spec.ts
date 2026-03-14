@@ -47,8 +47,8 @@ function mountView() {
             '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
           props: ['modelValue', 'type', 'placeholder'],
         },
-        PosterSettingsForm: {
-          template: '<div data-testid="settings-form">PosterSettingsForm</div>',
+        RenderSettingsForm: {
+          template: '<div data-testid="settings-form">RenderSettingsForm</div>',
           props: ['settings', 'uid', 'loadSettings', 'saveSettings', 'resetSettings'],
         },
       },

@@ -418,7 +418,7 @@ Use the same Caddy + OpenPosterDB compose setup from the [reverse proxy section]
    - The SPA's `index.html` is served without a file extension on all non-API routes, so Cloudflare will not cache it by default without a rule (see below).
 
 6. **Web Console (origin-down resilience)**: The origin sets `Cache-Control: public, max-age=60, stale-while-revalidate=3600, stale-if-error=86400` on all SPA responses (HTML and static files). Add a cache rule to let Cloudflare respect these headers for the HTML shell:
-   - **When**: Hostname equals the domain **AND** URI Path does not match `/api/*`, `/c/*`, or `/assets/*`
+   - **When**: Hostname equals the domain **AND** URI Path does not start with `/api/` **AND** URI Path does not start with `/c/` **AND** URI Path does not start with `/assets/`
    - **Then**: **Eligible for cache**, **Edge TTL** = **Respect origin**
    - This keeps `index.html` fresh (60 s browser TTL) during normal operation, but allows Cloudflare to serve a stale copy for up to 24 hours (`stale-if-error`) when the origin is unreachable — making the full web console available from cache during outages. Hashed `/assets/` files are already cached by the rule above.
 

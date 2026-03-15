@@ -50,27 +50,25 @@ test.describe('key settings (self-service)', () => {
 
     await loginWithApiKey(page, request)
 
-    await expect(page.locator('h1')).toContainText('Poster Settings')
+    await expect(page.locator('h1')).toContainText('Image Settings')
     await expect(page.locator('text=settings-test-key')).toBeVisible()
 
-    // Settings form should be present with defaults
-    const select = page.getByTestId('poster-source-select')
-    await expect(select).toBeVisible()
-    await expect(select).toHaveValue('t')
+    // Settings form should be present with fanart checkbox
+    await expect(page.getByTestId('fanart-checkbox')).toBeVisible()
   })
 
   test('auto-saves and shows confirmation', async ({ page, request }) => {
     await loginWithApiKey(page, request)
 
     // Change a setting to trigger auto-save
-    await page.getByTestId('poster-source-select').selectOption('f')
+    await page.getByTestId('fanart-checkbox').check()
 
     // Wait for auto-save confirmation
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
   })
 
-  test('fanart options appear when fanart is selected', async ({ page, request }) => {
-    // Ensure global source is "tmdb" so fanart options start hidden
+  test('fanart options enabled when fanart is checked', async ({ page, request }) => {
+    // Ensure global source is "tmdb" so fanart is unchecked
     const adminToken = await ensureAdmin(request)
     await request.put('/api/admin/settings', {
       headers: {
@@ -82,32 +80,33 @@ test.describe('key settings (self-service)', () => {
 
     await loginWithApiKey(page, request)
 
-    // Language should not be visible initially
-    await expect(page.locator('label:has-text("Language")')).not.toBeVisible()
+    // Language and textless should be visible but disabled initially
+    await expect(page.getByTestId('fanart-lang-select')).toBeDisabled()
+    await expect(page.getByTestId('textless-checkbox')).toBeDisabled()
 
-    // Select fanart
-    await page.getByTestId('poster-source-select').selectOption('f')
+    // Check fanart
+    await page.getByTestId('fanart-checkbox').check()
 
-    // Now language and textless should appear
-    await expect(page.locator('label:has-text("Language")')).toBeVisible()
-    await expect(page.locator('label:has-text("Prefer textless")')).toBeVisible()
+    // Now language and textless should be enabled
+    await expect(page.getByTestId('fanart-lang-select')).toBeEnabled()
+    await expect(page.getByTestId('textless-checkbox')).toBeEnabled()
   })
 
   test('settings persist after auto-save and reload', async ({ page, request }) => {
     await loginWithApiKey(page, request)
 
-    // Change to fanart
-    await page.getByTestId('poster-source-select').selectOption('f')
+    // Enable fanart
+    await page.getByTestId('fanart-checkbox').check()
 
     // Wait for auto-save confirmation
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     // Reload
     await page.reload()
-    await expect(page.locator('h1')).toContainText('Poster Settings')
+    await expect(page.locator('h1')).toContainText('Image Settings')
 
     // Settings should persist
-    await expect(page.getByTestId('poster-source-select')).toHaveValue('f')
+    await expect(page.getByTestId('fanart-checkbox')).toBeChecked()
   })
 
   test('rating display section is visible', async ({ page, request }) => {
@@ -140,11 +139,11 @@ test.describe('key settings (self-service)', () => {
 
     await loginWithApiKey(page, request)
 
-    // Global is now "tmdb", key has no overrides → should show "tmdb"
-    await expect(page.getByTestId('poster-source-select')).toHaveValue('t')
+    // Global is now "tmdb", key has no overrides → fanart should be unchecked
+    await expect(page.getByTestId('fanart-checkbox')).not.toBeChecked()
 
-    // Change to fanart — auto-save triggers
-    await page.getByTestId('poster-source-select').selectOption('f')
+    // Enable fanart — auto-save triggers
+    await page.getByTestId('fanart-checkbox').check()
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     // Wait for "Using defaults" badge to disappear (confirms custom settings saved)
@@ -153,9 +152,9 @@ test.describe('key settings (self-service)', () => {
     // Reset to defaults
     await page.locator('button:has-text("Reset to defaults")').click()
 
-    // Should be back to global default ("tmdb")
+    // Should be back to global default (fanart unchecked)
     await expect(page.locator('text=Using defaults')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByTestId('poster-source-select')).toHaveValue('t')
+    await expect(page.getByTestId('fanart-checkbox')).not.toBeChecked()
   })
 
   test('reset to defaults does not trigger a spurious auto-save', async ({ page, request }) => {
@@ -171,13 +170,13 @@ test.describe('key settings (self-service)', () => {
     await loginWithApiKey(page, request)
 
     // Change a setting so we have custom overrides
-    await page.getByTestId('poster-source-select').selectOption('f')
+    await page.getByTestId('fanart-checkbox').check()
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
     await expect(page.locator('text=Using defaults')).not.toBeVisible()
 
     // Start tracking network requests after clicking reset
     const requestsAfterReset: string[] = []
-    await page.route('**/api/self/settings', (route) => {
+    await page.route('**/api/key/me/settings', (route) => {
       requestsAfterReset.push(route.request().method())
       route.continue()
     })
@@ -188,8 +187,8 @@ test.describe('key settings (self-service)', () => {
     // Should show "Using defaults" badge
     await expect(page.locator('text=Using defaults')).toBeVisible({ timeout: 10000 })
 
-    // Wait long enough for any debounced auto-save to fire (600ms debounce + margin)
-    await page.waitForTimeout(2000)
+    // Wait for any auto-save to fire
+    await page.waitForTimeout(1000)
 
     // Should have seen DELETE + GET, but no PUT
     const putCount = requestsAfterReset.filter(m => m === 'PUT').length
@@ -219,7 +218,7 @@ test.describe('key settings (self-service)', () => {
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     await page.reload()
-    await expect(page.locator('h1')).toContainText('Poster Settings')
+    await expect(page.locator('h1')).toContainText('Image Settings')
     await expect(page.getByTestId('poster-badge-direction-select')).toHaveValue('h')
   })
 
@@ -248,7 +247,7 @@ test.describe('key settings (self-service)', () => {
 
     // Reload and verify persistence
     await page.reload()
-    await expect(page.locator('h1')).toContainText('Poster Settings')
+    await expect(page.locator('h1')).toContainText('Image Settings')
 
     const reloadedSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
     await expect(reloadedSelects.first()).toHaveValue('t')

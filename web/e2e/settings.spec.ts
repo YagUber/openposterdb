@@ -164,8 +164,8 @@ test.describe('settings', () => {
     const newValue = currentValue === '7' ? '2' : '7'
     await limitInput.fill(newValue)
 
-    // Wait for debounced update (500ms) + network
-    await page.waitForTimeout(1500)
+    // Wait for network
+    await page.waitForTimeout(1000)
 
     const newSrc = await previewImg.getAttribute('src')
     // Blob URL should change when preview is re-fetched

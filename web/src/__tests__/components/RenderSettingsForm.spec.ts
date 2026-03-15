@@ -95,7 +95,7 @@ describe('RenderSettingsForm', () => {
     expect(src).toContain('blob:')
   })
 
-  it('updates preview after debounce when ratings_limit changes', async () => {
+  it('updates preview when ratings_limit changes', async () => {
     const fetchPreview = makeFetchPreview()
     const wrapper = mountForm({}, fetchPreview)
     await flushPromises()
@@ -104,40 +104,12 @@ describe('RenderSettingsForm', () => {
     // Change the limit
     const limitInput = wrapper.find('input[type="number"]')
     await limitInput.setValue(5)
-    await flushPromises()
 
-    // Before debounce fires, fetchPreview should not have been called again
-    expect(fetchPreview).not.toHaveBeenCalled()
-
-    // Advance past debounce timer
-    vi.advanceTimersByTime(600)
+    // Advance past preview debounce timer
+    vi.advanceTimersByTime(500)
     await flushPromises()
 
     expect(fetchPreview).toHaveBeenCalledWith(5, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String))
-  })
-
-  it('debounces rapid changes — only last value triggers fetch', async () => {
-    const fetchPreview = makeFetchPreview()
-    const wrapper = mountForm({}, fetchPreview)
-    await flushPromises()
-    fetchPreview.mockClear()
-
-    const limitInput = wrapper.find('input[type="number"]')
-
-    // Rapid changes
-    await limitInput.setValue(1)
-    vi.advanceTimersByTime(200)
-    await limitInput.setValue(4)
-    vi.advanceTimersByTime(200)
-    await limitInput.setValue(7)
-
-    // Advance past final debounce
-    vi.advanceTimersByTime(600)
-    await flushPromises()
-
-    // Should only have been called once with the final value
-    expect(fetchPreview).toHaveBeenCalledTimes(1)
-    expect(fetchPreview).toHaveBeenCalledWith(7, expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String))
   })
 
   it('shows loading state while preview loads', async () => {

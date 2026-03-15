@@ -38,7 +38,7 @@ test.describe('API key login flow', () => {
     await page.click('button[type="submit"]')
 
     await expect(page).toHaveURL(/\/key-settings/)
-    await expect(page.locator('h1')).toContainText('Poster Settings')
+    await expect(page.locator('h1')).toContainText('Image Settings')
     await expect(page.locator('text=e2e-test-key')).toBeVisible()
   })
 

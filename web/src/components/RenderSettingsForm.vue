@@ -153,8 +153,6 @@ watch(() => props.settings, (s) => {
   applySettings(s)
   nextTick(() => {
     syncing = false
-    // Cancel any save timer queued by watchers during the sync
-    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   })
 })
 
@@ -164,8 +162,13 @@ function revertEdits() {
   nextTick(() => { syncing = false })
 }
 
+let pendingSave = false
+
 async function autoSave() {
-  if (saving.value) return
+  if (saving.value) {
+    pendingSave = true
+    return
+  }
   saving.value = true
   error.value = ''
   showCheck.value = false
@@ -204,25 +207,25 @@ async function autoSave() {
     revertEdits()
   } finally {
     saving.value = false
+    if (pendingSave) {
+      pendingSave = false
+      autoSave()
+    }
   }
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-
-// Auto-save on any setting change (debounced)
+// Auto-save on any setting change
 watch(
   [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection],
   () => {
     if (syncing) return
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(autoSave, 600)
+    autoSave()
   },
   { deep: true },
 )
 
 async function handleReset() {
   if (!props.resetSettings) return
-  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
   saving.value = true
   error.value = ''
   showCheck.value = false
@@ -230,17 +233,7 @@ async function handleReset() {
   try {
     const ok = await props.resetSettings()
     if (ok) {
-      const updated = await props.loadSettings()
-      if (updated) {
-        syncing = true
-        currentSettings.value = updated
-        applySettings(updated)
-        nextTick(() => {
-          syncing = false
-          // Cancel any save timer queued by watchers during the sync
-          if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
-        })
-      }
+      await props.loadSettings()
       showCheck.value = true
       checkTimeout = setTimeout(() => (showCheck.value = false), 1500)
     } else {
@@ -373,7 +366,6 @@ onBeforeUnmount(() => {
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
-  if (saveTimer) clearTimeout(saveTimer)
   if (posterPreview.value.src) URL.revokeObjectURL(posterPreview.value.src)
   if (logoPreview.value.src) URL.revokeObjectURL(logoPreview.value.src)
   if (backdropPreview.value.src) URL.revokeObjectURL(backdropPreview.value.src)

@@ -10,7 +10,7 @@ use crate::cache::{self, MemCacheEntry};
 use crate::error::AppError;
 use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
-use crate::services::db::{resolve_badge_direction, resolve_badge_style, ImageSize, RenderSettings, POS_BOTTOM_CENTER, SOURCE_FANART};
+use crate::services::db::{resolve_badge_direction, resolve_badge_style, BadgeSize, ImageSize, RenderSettings, POS_BOTTOM_CENTER, SOURCE_FANART};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::ratings;
 use crate::AppState;
@@ -120,6 +120,9 @@ pub fn settings_cache_suffix_with_ratings(
         logo_label_style,
         backdrop_label_style,
         poster_badge_direction,
+        poster_badge_size,
+        logo_badge_size,
+        backdrop_badge_size,
         lang_override: _,       // handled by code path, not suffix
     } = settings;
 
@@ -133,17 +136,20 @@ pub fn settings_cache_suffix_with_ratings(
             let bs = badge_style_cache_suffix(poster_badge_style);
             let ls = label_style_cache_suffix(poster_label_style);
             let bd = badge_direction_cache_suffix(poster_badge_direction);
-            format!("{rs}{ps}{bs}{ls}{bd}{is_suffix}")
+            let bsz = BadgeSize::parse(poster_badge_size).cache_suffix();
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{is_suffix}")
         }
         cache::ImageType::Logo => {
             let bs = badge_style_cache_suffix(logo_badge_style);
             let ls = label_style_cache_suffix(logo_label_style);
-            format!("{rs}{bs}{ls}{is_suffix}")
+            let bsz = BadgeSize::parse(logo_badge_size).cache_suffix();
+            format!("{rs}{bs}{ls}{bsz}{is_suffix}")
         }
         cache::ImageType::Backdrop => {
             let bs = badge_style_cache_suffix(backdrop_badge_style);
             let ls = label_style_cache_suffix(backdrop_label_style);
-            format!("{rs}{bs}{ls}{is_suffix}")
+            let bsz = BadgeSize::parse(backdrop_badge_size).cache_suffix();
+            format!("{rs}{bs}{ls}{bsz}{is_suffix}")
         }
     }
 }
@@ -982,14 +988,18 @@ fn trigger_fanart_background_refresh(
         };
 
         let resolved_size = resolve_image_size(image_size);
+        let badge_size_factor = match fanart_kind {
+            FanartImageKind::Logo => BadgeSize::parse(&settings.logo_badge_size).scale_factor(),
+            FanartImageKind::Backdrop => BadgeSize::parse(&settings.backdrop_badge_size).scale_factor(),
+        };
         let (target_width, badge_scale) = match fanart_kind {
             FanartImageKind::Logo => (
                 resolved_size.logo_target_width(),
-                resolved_size.badge_scale(cache::ImageType::Logo),
+                resolved_size.badge_scale(cache::ImageType::Logo) * badge_size_factor,
             ),
             FanartImageKind::Backdrop => (
                 resolved_size.backdrop_target_width(),
-                resolved_size.badge_scale(cache::ImageType::Backdrop),
+                resolved_size.badge_scale(cache::ImageType::Backdrop) * badge_size_factor,
             ),
         };
         let bytes = match fanart_kind {
@@ -1049,7 +1059,7 @@ async fn generate_poster_with_source(
 
     let resolved_size = resolve_image_size(image_size);
     let target_width = resolved_size.poster_target_width();
-    let badge_scale = resolved_size.badge_scale(cache::ImageType::Poster);
+    let badge_scale = resolved_size.badge_scale(cache::ImageType::Poster) * BadgeSize::parse(&settings.poster_badge_size).scale_factor();
     let tmdb_size: Arc<str> = resolved_size.tmdb_size().into();
 
     let bytes = generate::generate_poster(generate::ImageParams {
@@ -1068,6 +1078,7 @@ async fn generate_poster_with_source(
         render_semaphore: state.render_semaphore.clone(),
         target_width,
         badge_scale,
+        badge_size: settings.poster_badge_size.clone(),
         tmdb_size,
         external_cache_only: state.config.external_cache_only,
     })
@@ -1350,6 +1361,7 @@ pub async fn handle_fanart_image_inner(
         neg_lang_key: String,
         type_badge_style: Arc<str>,
         type_label_style: Arc<str>,
+        badge_size_factor: f32,
         label: &'static str,
         resolved: id::ResolvedId,
         badges: Vec<ratings::RatingBadge>,
@@ -1365,6 +1377,10 @@ pub async fn handle_fanart_image_inner(
         neg_lang_key,
         type_badge_style: type_badge_style.clone(),
         type_label_style: type_label_style.clone(),
+        badge_size_factor: match fanart_kind {
+            FanartImageKind::Logo => BadgeSize::parse(&settings.logo_badge_size).scale_factor(),
+            FanartImageKind::Backdrop => BadgeSize::parse(&settings.backdrop_badge_size).scale_factor(),
+        },
         label,
         resolved: resolved.clone(),
         badges,
@@ -1408,11 +1424,11 @@ pub async fn handle_fanart_image_inner(
             let (target_width, badge_scale) = match fanart_kind {
                 FanartImageKind::Logo => (
                     resolved_size.logo_target_width(),
-                    resolved_size.badge_scale(cache::ImageType::Logo),
+                    resolved_size.badge_scale(cache::ImageType::Logo) * ctx.badge_size_factor,
                 ),
                 FanartImageKind::Backdrop => (
                     resolved_size.backdrop_target_width(),
-                    resolved_size.badge_scale(cache::ImageType::Backdrop),
+                    resolved_size.badge_scale(cache::ImageType::Backdrop) * ctx.badge_size_factor,
                 ),
             };
             let bytes = match fanart_kind {

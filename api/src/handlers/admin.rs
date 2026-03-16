@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, FanartImageKind};
-use crate::services::db::{self, validate_render_settings_input, RenderSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction};
+use crate::services::db::{self, validate_render_settings_input, RenderSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction, default_badge_size};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -128,6 +128,9 @@ pub struct GlobalSettingsResponse {
     pub logo_label_style: String,
     pub backdrop_label_style: String,
     pub poster_badge_direction: String,
+    pub poster_badge_size: String,
+    pub logo_badge_size: String,
+    pub backdrop_badge_size: String,
 }
 
 pub async fn get_settings(
@@ -163,6 +166,9 @@ pub async fn get_settings(
         logo_label_style: settings.logo_label_style.to_string(),
         backdrop_label_style: settings.backdrop_label_style.to_string(),
         poster_badge_direction: settings.poster_badge_direction.to_string(),
+        poster_badge_size: settings.poster_badge_size.to_string(),
+        logo_badge_size: settings.logo_badge_size.to_string(),
+        backdrop_badge_size: settings.backdrop_badge_size.to_string(),
     }))
 }
 
@@ -198,6 +204,12 @@ pub struct UpdateGlobalSettingsRequest {
     pub backdrop_label_style: String,
     #[serde(default = "default_poster_badge_direction")]
     pub poster_badge_direction: String,
+    #[serde(default = "default_badge_size")]
+    pub poster_badge_size: String,
+    #[serde(default = "default_badge_size")]
+    pub logo_badge_size: String,
+    #[serde(default = "default_badge_size")]
+    pub backdrop_badge_size: String,
 }
 
 impl RenderSettingsInput for UpdateGlobalSettingsRequest {
@@ -215,6 +227,9 @@ impl RenderSettingsInput for UpdateGlobalSettingsRequest {
     fn logo_label_style(&self) -> &str { &self.logo_label_style }
     fn backdrop_label_style(&self) -> &str { &self.backdrop_label_style }
     fn poster_badge_direction(&self) -> &str { &self.poster_badge_direction }
+    fn poster_badge_size(&self) -> &str { &self.poster_badge_size }
+    fn logo_badge_size(&self) -> &str { &self.logo_badge_size }
+    fn backdrop_badge_size(&self) -> &str { &self.backdrop_badge_size }
 }
 
 pub async fn update_settings(
@@ -242,6 +257,9 @@ pub async fn update_settings(
         ("logo_label_style", &req.logo_label_style),
         ("backdrop_label_style", &req.backdrop_label_style),
         ("poster_badge_direction", &req.poster_badge_direction),
+        ("poster_badge_size", &req.poster_badge_size),
+        ("logo_badge_size", &req.logo_badge_size),
+        ("backdrop_badge_size", &req.backdrop_badge_size),
     ];
     let free_key_str;
     if state.config.free_key_enabled.is_none() {

@@ -196,6 +196,65 @@ pub fn default_poster_badge_direction() -> String {
     DIRECTION_DEFAULT.to_string()
 }
 
+// --- Badge size ---
+
+pub const BADGE_SIZE_MEDIUM: &str = "m";
+
+pub fn default_badge_size() -> String {
+    BADGE_SIZE_MEDIUM.to_string()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BadgeSize {
+    ExtraSmall,
+    Small,
+    Medium,
+    Large,
+    ExtraLarge,
+}
+
+impl BadgeSize {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "xs" => Self::ExtraSmall,
+            "s" => Self::Small,
+            "l" => Self::Large,
+            "xl" => Self::ExtraLarge,
+            _ => Self::Medium,
+        }
+    }
+
+    pub fn scale_factor(self) -> f32 {
+        match self {
+            Self::ExtraSmall => 0.5,
+            Self::Small => 0.75,
+            Self::Medium => 1.0,
+            Self::Large => 1.25,
+            Self::ExtraLarge => 1.5,
+        }
+    }
+
+    pub fn cache_suffix(self) -> &'static str {
+        match self {
+            Self::ExtraSmall => ".bxs",
+            Self::Small => ".bs",
+            Self::Medium => ".bm",
+            Self::Large => ".bl",
+            Self::ExtraLarge => ".bxl",
+        }
+    }
+}
+
+pub fn validate_badge_size(s: &str) -> Result<(), AppError> {
+    match s {
+        "xs" | "s" | "m" | "l" | "xl" => Ok(()),
+        _ => Err(AppError::BadRequest(
+            "badge_size must be 'xs', 's', 'm', 'l', or 'xl'".into(),
+        )),
+    }
+}
+
+
 /// Resolve a badge direction of `"default"` to `"h"` or `"v"`
 /// based on the poster position. Center positions use horizontal; everything
 /// else (left, right, corners) uses vertical. Non-default values pass through.
@@ -335,6 +394,9 @@ pub trait RenderSettingsInput {
     fn logo_label_style(&self) -> &str;
     fn backdrop_label_style(&self) -> &str;
     fn poster_badge_direction(&self) -> &str;
+    fn poster_badge_size(&self) -> &str;
+    fn logo_badge_size(&self) -> &str;
+    fn backdrop_badge_size(&self) -> &str;
 }
 
 /// Validate all render settings fields at once.
@@ -353,6 +415,9 @@ pub fn validate_render_settings_input(input: &dyn RenderSettingsInput) -> Result
     validate_label_style(input.logo_label_style())?;
     validate_label_style(input.backdrop_label_style())?;
     validate_badge_direction(input.poster_badge_direction())?;
+    validate_badge_size(input.poster_badge_size())?;
+    validate_badge_size(input.logo_badge_size())?;
+    validate_badge_size(input.backdrop_badge_size())?;
     Ok(())
 }
 
@@ -1161,6 +1226,9 @@ pub struct UpsertApiKeySettings<'a> {
     pub logo_label_style: &'a str,
     pub backdrop_label_style: &'a str,
     pub poster_badge_direction: &'a str,
+    pub poster_badge_size: &'a str,
+    pub logo_badge_size: &'a str,
+    pub backdrop_badge_size: &'a str,
 }
 
 pub async fn upsert_api_key_settings(
@@ -1184,6 +1252,9 @@ pub async fn upsert_api_key_settings(
         logo_label_style: Set(params.logo_label_style.to_string()),
         backdrop_label_style: Set(params.backdrop_label_style.to_string()),
         poster_badge_direction: Set(params.poster_badge_direction.to_string()),
+        poster_badge_size: Set(params.poster_badge_size.to_string()),
+        logo_badge_size: Set(params.logo_badge_size.to_string()),
+        backdrop_badge_size: Set(params.backdrop_badge_size.to_string()),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -1204,6 +1275,9 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::LogoLabelStyle,
                     api_key_settings::Column::BackdropLabelStyle,
                     api_key_settings::Column::PosterBadgeDirection,
+                    api_key_settings::Column::PosterBadgeSize,
+                    api_key_settings::Column::LogoBadgeSize,
+                    api_key_settings::Column::BackdropBadgeSize,
                 ])
                 .to_owned(),
         )
@@ -1244,6 +1318,9 @@ pub struct RenderSettings {
     pub logo_label_style: Arc<str>,
     pub backdrop_label_style: Arc<str>,
     pub poster_badge_direction: Arc<str>,
+    pub poster_badge_size: Arc<str>,
+    pub logo_badge_size: Arc<str>,
+    pub backdrop_badge_size: Arc<str>,
     /// Set when `?lang=` query param overrides the stored fanart_lang at request time.
     #[serde(skip)]
     pub lang_override: bool,
@@ -1268,6 +1345,9 @@ impl Default for RenderSettings {
             logo_label_style: Arc::from(LABEL_ICON),
             backdrop_label_style: Arc::from(LABEL_ICON),
             poster_badge_direction: Arc::from(DIRECTION_DEFAULT),
+            poster_badge_size: Arc::from(BADGE_SIZE_MEDIUM),
+            logo_badge_size: Arc::from(BADGE_SIZE_MEDIUM),
+            backdrop_badge_size: Arc::from(BADGE_SIZE_MEDIUM),
             lang_override: false,
         }
     }
@@ -1311,6 +1391,9 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         logo_label_style: arc_or("logo_label_style", defaults.logo_label_style),
         backdrop_label_style: arc_or("backdrop_label_style", defaults.backdrop_label_style),
         poster_badge_direction: arc_or("poster_badge_direction", defaults.poster_badge_direction),
+        poster_badge_size: arc_or("poster_badge_size", defaults.poster_badge_size),
+        logo_badge_size: arc_or("logo_badge_size", defaults.logo_badge_size),
+        backdrop_badge_size: arc_or("backdrop_badge_size", defaults.backdrop_badge_size),
         lang_override: false,
     }
 }
@@ -1340,6 +1423,9 @@ pub async fn get_effective_render_settings(
                 logo_label_style: Arc::from(s.logo_label_style.as_str()),
                 backdrop_label_style: Arc::from(s.backdrop_label_style.as_str()),
                 poster_badge_direction: Arc::from(s.poster_badge_direction.as_str()),
+                poster_badge_size: Arc::from(s.poster_badge_size.as_str()),
+                logo_badge_size: Arc::from(s.logo_badge_size.as_str()),
+                backdrop_badge_size: Arc::from(s.backdrop_badge_size.as_str()),
                 lang_override: false,
             };
         }

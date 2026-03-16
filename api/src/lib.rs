@@ -257,4 +257,16 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "CREATE INDEX IF NOT EXISTS idx_available_ratings_updated_at ON available_ratings(updated_at)",
         "already exists",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN poster_badge_size TEXT NOT NULL DEFAULT 'm'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_badge_size TEXT NOT NULL DEFAULT 'm'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_size TEXT NOT NULL DEFAULT 'm'",
+        "duplicate column",
+    ),
 ];

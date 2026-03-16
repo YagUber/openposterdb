@@ -33,6 +33,9 @@ export interface RenderSettings {
   logo_label_style: string
   backdrop_label_style: string
   poster_badge_direction: string
+  poster_badge_size: string
+  logo_badge_size: string
+  backdrop_badge_size: string
 }
 
 const ALL_RATING_SOURCES = [
@@ -52,9 +55,9 @@ const props = defineProps<{
   loadSettings: () => Promise<RenderSettings | null>
   saveSettings: (s: SaveSettingsPayload) => Promise<string | null>
   resetSettings?: () => Promise<boolean>
-  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string) => Promise<Response>
-  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string) => Promise<Response>
-  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string) => Promise<Response>
+  fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>
+  fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
 }>()
 
 const editFanart = ref(props.settings.poster_source === 'f')
@@ -73,6 +76,9 @@ const editPosterLabelStyle = ref(props.settings.poster_label_style || 'i')
 const editLogoLabelStyle = ref(props.settings.logo_label_style || 'i')
 const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'i')
 const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd')
+const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
+const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
+const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 
 function applySettings(s: RenderSettings) {
   editFanart.value = s.poster_source === 'f'
@@ -90,6 +96,9 @@ function applySettings(s: RenderSettings) {
   editLogoLabelStyle.value = s.logo_label_style || 'i'
   editBackdropLabelStyle.value = s.backdrop_label_style || 'i'
   editPosterBadgeDirection.value = s.poster_badge_direction || 'd'
+  editPosterBadgeSize.value = s.poster_badge_size || 'm'
+  editLogoBadgeSize.value = s.logo_badge_size || 'm'
+  editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
 }
 const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
@@ -162,6 +171,9 @@ async function autoSave() {
       logo_label_style: editLogoLabelStyle.value,
       backdrop_label_style: editBackdropLabelStyle.value,
       poster_badge_direction: editPosterBadgeDirection.value,
+      poster_badge_size: editPosterBadgeSize.value,
+      logo_badge_size: editLogoBadgeSize.value,
+      backdrop_badge_size: editBackdropBadgeSize.value,
     })
     if (err) {
       error.value = err
@@ -188,7 +200,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize],
   () => {
     if (syncing) return
     autoSave()
@@ -246,15 +258,15 @@ function onPreviewLoad(state: PreviewState, e: Event) {
 
 async function fetchPreviewImage(
   state: PreviewState,
-  fetcher: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string) => Promise<Response>,
-  extraArgs?: { posterPosition?: string; badgeStyle?: string; labelStyle?: string; badgeDirection?: string },
+  fetcher: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>,
+  extraArgs?: { posterPosition?: string; badgeStyle?: string; labelStyle?: string; badgeDirection?: string; badgeSize?: string },
 ) {
   state.loading = true
   state.error = false
   const generation = ++state.generation
 
   try {
-    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection)
+    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize)
     if (generation !== state.generation) return
     if (!res.ok) {
       state.error = true
@@ -278,18 +290,18 @@ let logoPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let backdropPreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 function updatePosterPreview() {
-  fetchPreviewImage(posterPreview.value, props.fetchPreview, { posterPosition: editPosterPosition.value, badgeStyle: editPosterBadgeStyle.value, labelStyle: editPosterLabelStyle.value, badgeDirection: editPosterBadgeDirection.value })
+  fetchPreviewImage(posterPreview.value, props.fetchPreview, { posterPosition: editPosterPosition.value, badgeStyle: editPosterBadgeStyle.value, labelStyle: editPosterLabelStyle.value, badgeDirection: editPosterBadgeDirection.value, badgeSize: editPosterBadgeSize.value })
 }
 
 function updateLogoPreview() {
   if (props.fetchLogoPreview) {
-    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value))
+    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value))
   }
 }
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value))
   }
 }
 
@@ -311,21 +323,21 @@ watch([editRatingsOrder], () => {
 }, { deep: true })
 
 // Poster-only settings
-watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection], () => {
+watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSize], () => {
   if (syncing) return
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   posterPreviewTimer = setTimeout(updatePosterPreview, 500)
 })
 
 // Logo-only settings
-watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle], () => {
+watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBadgeSize], () => {
   if (syncing) return
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   logoPreviewTimer = setTimeout(updateLogoPreview, 500)
 })
 
 // Backdrop-only settings
-watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle], () => {
+watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize], () => {
   if (syncing) return
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
@@ -447,25 +459,22 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
 
     <!-- Section 2: Poster -->
     <div class="rounded-md border p-4 space-y-3">
-      <div class="flex gap-4 items-start">
-        <div class="space-y-1 shrink-0">
-          <p class="text-sm font-semibold">Poster</p>
-          <div class="relative w-[170px]" :style="posterPreview.size ? { aspectRatio: `${posterPreview.size.w} / ${posterPreview.size.h}` } : undefined">
-            <img
-              v-show="posterPreview.src && !posterPreview.error"
-              :src="posterPreview.src"
-              alt="Poster preview"
-              class="rounded border w-full"
-              @load="(e: Event) => onPreviewLoad(posterPreview, e)"
-              @error="posterPreview.loading = false; posterPreview.error = true"
-            />
-            <p v-if="posterPreview.error && !posterPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
-            <div v-if="posterPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
-              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
-            </div>
-          </div>
+      <p class="text-sm font-semibold">Poster</p>
+      <div class="relative w-[170px]" :style="posterPreview.size ? { aspectRatio: `${posterPreview.size.w} / ${posterPreview.size.h}` } : undefined">
+        <img
+          v-show="posterPreview.src && !posterPreview.error"
+          :src="posterPreview.src"
+          alt="Poster preview"
+          class="rounded border w-full"
+          @load="(e: Event) => onPreviewLoad(posterPreview, e)"
+          @error="posterPreview.loading = false; posterPreview.error = true"
+        />
+        <p v-if="posterPreview.error && !posterPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+        <div v-if="posterPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+          <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
         </div>
-        <div class="space-y-3 flex-1 min-w-0">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
           <div class="space-y-2">
             <Label :for="inputId('poster-position')">Badge position</Label>
             <Select
@@ -534,6 +543,24 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
+          <div class="space-y-2">
+            <Label :for="inputId('poster-badge-size')">Badge size</Label>
+            <Select
+              :model-value="editPosterBadgeSize"
+              @update:model-value="editPosterBadgeSize = $event as string"
+            >
+              <SelectTrigger :id="inputId('poster-badge-size')" class="max-w-xs" data-testid="poster-badge-size-select">
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xs">Extra Small</SelectItem>
+                <SelectItem value="s">Small</SelectItem>
+                <SelectItem value="m">Medium</SelectItem>
+                <SelectItem value="l">Large</SelectItem>
+                <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div class="space-y-1">
             <div class="flex items-center gap-3">
               <Label :for="inputId('ratings-limit')">Max ratings</Label>
@@ -549,31 +576,27 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
             </div>
             <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
           </div>
-        </div>
       </div>
     </div>
 
     <!-- Section 3: Logo -->
     <div v-if="fetchLogoPreview" class="rounded-md border p-4 space-y-3">
-      <div class="flex gap-4 items-start">
-        <div class="space-y-1 shrink-0">
-          <p class="text-sm font-semibold">Logo</p>
-          <div class="relative w-[170px]" :style="logoPreview.size ? { aspectRatio: `${logoPreview.size.w} / ${logoPreview.size.h}` } : undefined">
-            <img
-              v-show="logoPreview.src && !logoPreview.error"
-              :src="logoPreview.src"
-              alt="Logo preview"
-              class="rounded border w-full bg-neutral-900"
-              @load="(e: Event) => onPreviewLoad(logoPreview, e)"
-              @error="logoPreview.loading = false; logoPreview.error = true"
-            />
-            <p v-if="logoPreview.error && !logoPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
-            <div v-if="logoPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
-              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
-            </div>
-          </div>
+      <p class="text-sm font-semibold">Logo</p>
+      <div class="relative w-[170px]" :style="logoPreview.size ? { aspectRatio: `${logoPreview.size.w} / ${logoPreview.size.h}` } : undefined">
+        <img
+          v-show="logoPreview.src && !logoPreview.error"
+          :src="logoPreview.src"
+          alt="Logo preview"
+          class="rounded border w-full bg-neutral-900"
+          @load="(e: Event) => onPreviewLoad(logoPreview, e)"
+          @error="logoPreview.loading = false; logoPreview.error = true"
+        />
+        <p v-if="logoPreview.error && !logoPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+        <div v-if="logoPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+          <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
         </div>
-        <div class="space-y-3 flex-1 min-w-0">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
           <div class="space-y-2">
             <Label :for="inputId('logo-badge-style')">Badge style</Label>
             <Select
@@ -604,43 +627,60 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="flex items-center gap-3">
-            <Label :for="inputId('logo-ratings-limit')">Max ratings</Label>
-            <Input
-              :id="inputId('logo-ratings-limit')"
-              v-model.number="editLogoRatingsLimit"
-              type="number"
-              :min="0"
-              :max="8"
-              class="w-[80px]"
-              title="0 = show all"
-            />
+          <div class="space-y-2">
+            <Label :for="inputId('logo-badge-size')">Badge size</Label>
+            <Select
+              :model-value="editLogoBadgeSize"
+              @update:model-value="editLogoBadgeSize = $event as string"
+            >
+              <SelectTrigger :id="inputId('logo-badge-size')" class="max-w-xs" data-testid="logo-badge-size-select">
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xs">Extra Small</SelectItem>
+                <SelectItem value="s">Small</SelectItem>
+                <SelectItem value="m">Medium</SelectItem>
+                <SelectItem value="l">Large</SelectItem>
+                <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <Label :for="inputId('logo-ratings-limit')">Max ratings</Label>
+              <Input
+                :id="inputId('logo-ratings-limit')"
+                v-model.number="editLogoRatingsLimit"
+                type="number"
+                :min="0"
+                :max="8"
+                class="w-[80px]"
+                title="0 = show all"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+          </div>
       </div>
     </div>
 
     <!-- Section 4: Backdrop -->
     <div v-if="fetchBackdropPreview" class="rounded-md border p-4 space-y-3">
-      <div class="flex gap-4 items-start">
-        <div class="space-y-1 shrink-0">
-          <p class="text-sm font-semibold">Backdrop</p>
-          <div class="relative w-[280px]" :style="backdropPreview.size ? { aspectRatio: `${backdropPreview.size.w} / ${backdropPreview.size.h}` } : undefined">
-            <img
-              v-show="backdropPreview.src && !backdropPreview.error"
-              :src="backdropPreview.src"
-              alt="Backdrop preview"
-              class="rounded border w-full"
-              @load="(e: Event) => onPreviewLoad(backdropPreview, e)"
-              @error="backdropPreview.loading = false; backdropPreview.error = true"
-            />
-            <p v-if="backdropPreview.error && !backdropPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
-            <div v-if="backdropPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
-              <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
-            </div>
-          </div>
+      <p class="text-sm font-semibold">Backdrop</p>
+      <div class="relative w-[280px]" :style="backdropPreview.size ? { aspectRatio: `${backdropPreview.size.w} / ${backdropPreview.size.h}` } : undefined">
+        <img
+          v-show="backdropPreview.src && !backdropPreview.error"
+          :src="backdropPreview.src"
+          alt="Backdrop preview"
+          class="rounded border w-full"
+          @load="(e: Event) => onPreviewLoad(backdropPreview, e)"
+          @error="backdropPreview.loading = false; backdropPreview.error = true"
+        />
+        <p v-if="backdropPreview.error && !backdropPreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+        <div v-if="backdropPreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+          <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
         </div>
-        <div class="space-y-3 flex-1 min-w-0">
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
           <div class="space-y-2">
             <Label :for="inputId('backdrop-badge-style')">Badge style</Label>
             <Select
@@ -671,19 +711,39 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="flex items-center gap-3">
-            <Label :for="inputId('backdrop-ratings-limit')">Max ratings</Label>
-            <Input
-              :id="inputId('backdrop-ratings-limit')"
-              v-model.number="editBackdropRatingsLimit"
-              type="number"
-              :min="0"
-              :max="8"
-              class="w-[80px]"
-              title="0 = show all"
-            />
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-badge-size')">Badge size</Label>
+            <Select
+              :model-value="editBackdropBadgeSize"
+              @update:model-value="editBackdropBadgeSize = $event as string"
+            >
+              <SelectTrigger :id="inputId('backdrop-badge-size')" class="max-w-xs" data-testid="backdrop-badge-size-select">
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xs">Extra Small</SelectItem>
+                <SelectItem value="s">Small</SelectItem>
+                <SelectItem value="m">Medium</SelectItem>
+                <SelectItem value="l">Large</SelectItem>
+                <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <Label :for="inputId('backdrop-ratings-limit')">Max ratings</Label>
+              <Input
+                :id="inputId('backdrop-ratings-limit')"
+                v-model.number="editBackdropRatingsLimit"
+                type="number"
+                :min="0"
+                :max="8"
+                class="w-[80px]"
+                title="0 = show all"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+          </div>
       </div>
     </div>
 

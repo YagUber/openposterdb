@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 use crate::cache;
 use crate::error::AppError;
 use crate::image::badge;
-use crate::services::db::STYLE_VERTICAL;
+use crate::services::db::{BadgeSize, STYLE_HORIZONTAL, STYLE_VERTICAL};
 use crate::services::ratings::RatingBadge;
 use crate::services::tmdb::TmdbClient;
 
@@ -46,6 +46,8 @@ pub struct ImageParams<'a> {
     pub badge_scale: f32,
     /// TMDB CDN size string (e.g. "w500", "w780", "original").
     pub tmdb_size: Arc<str>,
+    /// Badge size key (e.g. "xs", "s", "m", "l", "xl") — used to adjust max badges per row.
+    pub badge_size: Arc<str>,
     /// When true, skip writing base poster images to disk (CDN handles caching).
     pub external_cache_only: bool,
 }
@@ -67,6 +69,7 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
         render_semaphore,
         target_width,
         badge_scale,
+        badge_size,
         tmdb_size,
         external_cache_only,
     } = params;
@@ -121,7 +124,7 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
     let badges = badges.to_vec();
     let font = font.clone();
     let buf = tokio::task::spawn_blocking(move || {
-        render_poster_sync(&poster_bytes, &badges, &font, quality, &poster_position, &badge_style, &label_style, &badge_direction, target_width, badge_scale)
+        render_poster_sync(&poster_bytes, &badges, &font, quality, &poster_position, &badge_style, &label_style, &badge_direction, target_width, badge_scale, &badge_size)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -246,6 +249,7 @@ pub fn render_poster_sync(
     badge_direction: &str,
     target_width: u32,
     badge_scale: f32,
+    badge_size: &str,
 ) -> Result<Vec<u8>, AppError> {
     let base = image::load_from_memory(poster_bytes)
         .map_err(AppError::Image)?;
@@ -269,7 +273,14 @@ pub fn render_poster_sync(
         if badge_direction == STYLE_VERTICAL {
             overlay_vertical_stack(&mut canvas, &badge_images, poster_position, badge_scale);
         } else {
-            let max_per_row = if badge_style == STYLE_VERTICAL { MAX_VERT_BADGES_PER_ROW } else { MAX_BADGES_PER_ROW };
+            let max_per_row = match BadgeSize::parse(badge_size) {
+                BadgeSize::Large | BadgeSize::ExtraLarge => {
+                    if badge_style == STYLE_HORIZONTAL { 2 } else { 4 }
+                }
+                _ => {
+                    if badge_style == STYLE_VERTICAL { MAX_VERT_BADGES_PER_ROW } else { MAX_BADGES_PER_ROW }
+                }
+            };
             overlay_horizontal_rows(&mut canvas, &badge_images, poster_position, max_per_row, badge_scale);
         }
     }
@@ -603,7 +614,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = render_poster_sync(&png_bytes, &[], &font, 85, "bc", "h", "t", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &[], &font, 85, "bc", "h", "t", "h", 500, 1.0, "m").unwrap();
         assert!(!result.is_empty());
         // Should be valid JPEG
         assert_eq!(result[0], 0xFF);
@@ -646,7 +657,7 @@ mod tests {
             },
         ];
 
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "h", 500, 1.0, "m").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -655,7 +666,7 @@ mod tests {
     #[test]
     fn render_poster_invalid_image_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(b"not an image", &[], &font, 85, "bc", "h", "t", "h", 500, 1.0);
+        let result = render_poster_sync(b"not an image", &[], &font, 85, "bc", "h", "t", "h", 500, 1.0, "m");
         assert!(result.is_err());
     }
 
@@ -782,7 +793,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tc", "h", "t", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tc", "h", "t", "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -799,7 +810,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "l", "h", "t", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "l", "h", "t", "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -816,7 +827,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "r", "h", "t", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "r", "h", "t", "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -831,7 +842,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "i", "h", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "i", "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -847,17 +858,17 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
         // vertical direction at bottom-center
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "v", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at top-left corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tl", "h", "t", "v", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tl", "h", "t", "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at bottom-right corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "br", "h", "t", "v", 500, 1.0).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "br", "h", "t", "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -921,6 +932,7 @@ mod tests {
             target_width: 500,
             badge_scale: 1.0,
             tmdb_size: Arc::from("w500"),
+            badge_size: Arc::from("m"),
             external_cache_only: false,
         })
         .await;
@@ -955,6 +967,7 @@ mod tests {
             target_width: 500,
             badge_scale: 1.0,
             tmdb_size: Arc::from("w500"),
+            badge_size: Arc::from("m"),
             external_cache_only: false,
         })
         .await;
@@ -1041,7 +1054,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(500, 750);
         // Render at large size (1280 width, ~2.2x badge scale)
-        let result = render_poster_sync(&png, &[], &font, 85, "bc", "h", "t", "h", 1280, 2.2).unwrap();
+        let result = render_poster_sync(&png, &[], &font, 85, "bc", "h", "t", "h", 1280, 2.2, "m").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1059,9 +1072,30 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", "t", "h", 1280, 2.2).unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", "t", "h", 1280, 2.2, "m").unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert_eq!(img.width(), 1280);
+    }
+
+    #[test]
+    fn render_poster_with_large_badge_size() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(500, 750);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
+            RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
+        ];
+        // Large badge size with horizontal style — should use max 2 per row
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", "t", "h", 500, 1.0, "l").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+
+        // Extra-large badge size with vertical style — should use max 4 per row
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "v", "t", "h", 500, 1.0, "xl").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
     }
 
     #[test]

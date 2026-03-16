@@ -201,17 +201,17 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 
 **Poster:**
 ```
-{id_type}/{id_value}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{size_suffix}
+{id_type}/{id_value}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{size_suffix}
 ```
 
 **Fanart poster:**
 ```
-{id_type}/{id_value}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{size_suffix}
+{id_type}/{id_value}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{size_suffix}
 ```
 
 **Logo / Backdrop:**
 ```
-{id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{style_suffix}{label_suffix}{size_suffix}
+{id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{style_suffix}{label_suffix}{badge_size_suffix}{size_suffix}
 ```
 
 ### Suffix Reference
@@ -223,6 +223,7 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 | Badge style | `.s{style}` | `.sh`, `.sv` | `h` = horizontal, `v` = vertical |
 | Label style | `.l{style}` | `.lt`, `.li` | `t` = text labels, `i` = icon labels |
 | Badge direction | `.d{dir}` | `.dh`, `.dv` | `h` = horizontal, `v` = vertical (resolved from `d` = default) |
+| Badge size | `.b{size}` | `.bm`, `.bxl` | `xs` = extra-small, `s` = small, `m` = medium (default), `l` = large, `xl` = extra-large |
 | Image size | `.z{size}` | `.zm`, `.zl` | `s` = small, `m` = medium (default), `l` = large, `vl` = very-large |
 
 ### Image Kind Prefixes
@@ -266,25 +267,26 @@ Settings are stored as short single-character or two-character codes:
 | `badge_style` | `h`, `v` | Horizontal, Vertical |
 | `label_style` | `t`, `i` | Text, Icon |
 | `badge_direction` | `d`, `h`, `v` | Default (auto-resolved by position), Horizontal, Vertical |
+| `badge_size` | `xs`, `s`, `m`, `l`, `xl` | Extra-small (0.5×), Small (0.75×), Medium (1.0×), Large (1.25×), Extra-large (1.5×) |
 | `poster_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Bottom-center, Top-center, Left, Right, corners |
 
 ### Example Cache Keys
 
 ```
-# TMDB poster, 3 ratings (MAL, IMDb, Letterboxd), bottom-center, horizontal badges, icon labels, horizontal direction, medium (default)
-imdb/tt0111161@mil.pbc.sh.li.dh.zm
+# TMDB poster, 3 ratings (MAL, IMDb, Letterboxd), bottom-center, horizontal badges, icon labels, horizontal direction, medium badge size, medium image
+imdb/tt0111161@mil.pbc.sh.li.dh.bm.zm
 
-# Same poster at large size
-imdb/tt0111161@mil.pbc.sh.li.dh.zl
+# Same poster at large image size with large badge size
+imdb/tt0111161@mil.pbc.sh.li.dh.bl.zl
 
 # Fanart textless poster
-imdb/tt0111161_f_tl@mil.pbc.sh.li.dh.zm
+imdb/tt0111161_f_tl@mil.pbc.sh.li.dh.bm.zm
 
-# Logo with 3 ratings, horizontal badges, text labels
-imdb/tt0111161_l_f_en@mil.sh.lt.zm
+# Logo with 3 ratings, horizontal badges, text labels, medium badge size
+imdb/tt0111161_l_f_en@mil.sh.lt.bm.zm
 
-# Backdrop with vertical badges, icon labels, large size
-imdb/tt0111161_b@mil.sv.li.zl
+# Backdrop with vertical badges, icon labels, extra-large badge size, large image
+imdb/tt0111161_b@mil.sv.li.bxl.zl
 ```
 
 ### Cross-ID Cache

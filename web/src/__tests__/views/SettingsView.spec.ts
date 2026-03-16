@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import SettingsView from '@/views/SettingsView.vue'
+import { shadcnStubs } from '@/__tests__/stubs'
 
 const mockAdminApi = vi.hoisted(() => ({
   getSettings: vi.fn(),
@@ -44,10 +45,7 @@ function mountView() {
     global: {
       plugins: [createPinia(), [VueQueryPlugin, { queryClient }]],
       stubs: {
-        Button: {
-          template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
-          props: ['disabled', 'variant', 'size'],
-        },
+        ...shadcnStubs,
         Input: {
           template:
             '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',

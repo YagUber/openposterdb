@@ -3,6 +3,8 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -49,36 +51,33 @@ async function handleSetup() {
 
       <form class="space-y-4" @submit.prevent="handleSetup">
         <div>
-          <label class="block text-sm font-medium mb-1" for="username">Username</label>
-          <input
+          <Label for="username" class="mb-1">Username</Label>
+          <Input
             id="username"
             v-model="username"
             type="text"
             autocomplete="username"
             required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1" for="password">Password</label>
-          <input
+          <Label for="password" class="mb-1">Password</Label>
+          <Input
             id="password"
             v-model="password"
             type="password"
             autocomplete="new-password"
             required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium mb-1" for="confirm-password">Confirm Password</label>
-          <input
+          <Label for="confirm-password" class="mb-1">Confirm Password</Label>
+          <Input
             id="confirm-password"
             v-model="confirmPassword"
             type="password"
             autocomplete="new-password"
             required
-            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           />
         </div>
         <p v-if="error" class="text-sm text-destructive">{{ error }}</p>

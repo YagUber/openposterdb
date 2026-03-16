@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { selectOption } from './helpers'
 
 test.describe('settings', () => {
   test.beforeEach(async ({ page, request }) => {
@@ -175,66 +176,68 @@ test.describe('settings', () => {
   test('poster position dropdown is visible with default', async ({ page }) => {
     await expect(page.locator('text=Badge position')).toBeVisible()
     const posSelect = page.getByTestId('poster-position-select')
-    await expect(posSelect).toHaveValue('bc')
+    await expect(posSelect).toContainText('Bottom Center')
   })
 
   test('poster position persists after change and reload', async ({ page }) => {
     const posSelect = page.getByTestId('poster-position-select')
-    await posSelect.selectOption('l')
+    await selectOption(page, posSelect, 'Left')
 
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     await page.reload()
     await expect(page.locator('h1')).toContainText('Settings')
-    await expect(page.getByTestId('poster-position-select')).toHaveValue('l')
+    await expect(page.getByTestId('poster-position-select')).toContainText('Left')
   })
 
   test('badge direction dropdown is visible with default', async ({ page }) => {
     const dirSelect = page.getByTestId('poster-badge-direction-select')
     await expect(dirSelect).toBeVisible()
-    await expect(dirSelect).toHaveValue('d')
+    await expect(dirSelect).toContainText('Default')
   })
 
   test('badge direction persists after change and reload', async ({ page }) => {
     const dirSelect = page.getByTestId('poster-badge-direction-select')
-    await dirSelect.selectOption('v')
+    await selectOption(page, dirSelect, 'Vertical')
 
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     await page.reload()
     await expect(page.locator('h1')).toContainText('Settings')
-    await expect(page.getByTestId('poster-badge-direction-select')).toHaveValue('v')
+    await expect(page.getByTestId('poster-badge-direction-select')).toContainText('Vertical')
   })
 
   test('new poster position options are available', async ({ page }) => {
     const posSelect = page.getByTestId('poster-position-select')
-    for (const value of ['tl', 'tr', 'bl', 'br']) {
-      await expect(posSelect.locator(`option[value="${value}"]`)).toBeAttached()
+    await posSelect.click()
+
+    for (const label of ['Top Left', 'Top Right', 'Bottom Left', 'Bottom Right']) {
+      await expect(page.getByRole('option', { name: label })).toBeVisible()
     }
+
+    // Close the dropdown by pressing Escape
+    await page.keyboard.press('Escape')
   })
 
   test('label style dropdowns are visible with default icon', async ({ page }) => {
-    const labelSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    // There should be 3 label style selects (poster, logo, backdrop)
-    await expect(labelSelects).toHaveCount(3)
-
-    // All should default to "icon"
-    for (const select of await labelSelects.all()) {
-      await expect(select).toHaveValue('i')
+    // Check poster, logo, and backdrop label style selects
+    for (const testId of ['poster-label-style-select', 'logo-label-style-select', 'backdrop-label-style-select']) {
+      const select = page.getByTestId(testId)
+      await expect(select).toBeVisible()
+      await expect(select).toContainText('Icon')
     }
   })
 
   test('label style persists after change and reload', async ({ page }) => {
-    // Find the first label style select (poster) and change to text
-    const labelSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    await labelSelects.first().selectOption('t')
+    // Change poster label style to Text
+    const labelSelect = page.getByTestId('poster-label-style-select')
+    await selectOption(page, labelSelect, 'Text')
 
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
 
     await page.reload()
     await expect(page.locator('h1')).toContainText('Settings')
 
-    const reloadedSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    await expect(reloadedSelects.first()).toHaveValue('t')
+    await expect(page.getByTestId('poster-label-style-select')).toContainText('Text')
   })
 })

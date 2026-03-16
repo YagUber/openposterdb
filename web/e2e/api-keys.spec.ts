@@ -127,12 +127,11 @@ test.describe('api keys', () => {
   test('per-key label style dropdowns are visible with default icon', async ({ page }) => {
     await createKeyAndOpenSettings(page)
 
-    const labelSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    // There should be 3 label style selects (poster, logo, backdrop)
-    await expect(labelSelects).toHaveCount(3)
-
-    for (const select of await labelSelects.all()) {
-      await expect(select).toHaveValue('i')
+    // Check poster, logo, and backdrop label style selects via data-testid
+    for (const testId of ['poster-label-style-select', 'logo-label-style-select', 'backdrop-label-style-select']) {
+      const select = page.getByTestId(testId)
+      await expect(select).toBeVisible()
+      await expect(select).toContainText('Icon')
     }
   })
 
@@ -140,8 +139,9 @@ test.describe('api keys', () => {
     const keyName = await createKeyAndOpenSettings(page)
 
     // Change poster label style to text (default is icon)
-    const labelSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    await labelSelects.first().selectOption('t')
+    const labelSelect = page.getByTestId('poster-label-style-select')
+    await labelSelect.click()
+    await page.getByRole('option', { name: 'Text', exact: true }).click()
 
     // Wait for auto-save confirmation
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
@@ -154,8 +154,7 @@ test.describe('api keys', () => {
     await keyRow.locator('button:not(:has-text("Delete"))').first().click()
     await expect(page.locator('text=Rating Display')).toBeVisible()
 
-    const reloadedSelects = page.locator('select').filter({ has: page.locator('option[value="i"]') })
-    await expect(reloadedSelects.first()).toHaveValue('t')
+    await expect(page.getByTestId('poster-label-style-select')).toContainText('Text')
   })
 
   test('delete a key removes it from list', async ({ page }) => {

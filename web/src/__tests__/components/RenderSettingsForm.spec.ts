@@ -3,6 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
 import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
+import { shadcnStubs } from '@/__tests__/stubs'
 
 vi.mock('@/lib/api', () => ({}))
 
@@ -43,12 +44,7 @@ function mountForm(overrides: Partial<RenderSettings> = {}, fetchPreview = makeF
     },
     global: {
       plugins: [createPinia()],
-      stubs: {
-        Button: {
-          template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
-          props: ['disabled', 'variant', 'size'],
-        },
-      },
+      stubs: shadcnStubs,
     },
   })
 }
@@ -157,12 +153,8 @@ describe('RenderSettingsForm', () => {
 
   it('renders poster position dropdown', () => {
     const wrapper = mountForm()
-    const select = wrapper.findAll('select')
-    const positionSelect = select.find(s => {
-      const options = s.findAll('option')
-      return options.some(o => o.attributes('value') === 'l')
-    })
-    expect(positionSelect).toBeDefined()
+    const select = wrapper.find('[data-testid="poster-position-select"]')
+    expect(select.exists()).toBe(true)
   })
 
   it('calls fetchPreview with posterPosition', async () => {
@@ -202,10 +194,29 @@ describe('RenderSettingsForm', () => {
     expect((wrapper.find('[data-testid="fanart-lang-select"]').element as HTMLInputElement).disabled).toBe(true)
   })
 
-  it('defaults language to en when fanart_lang is empty', () => {
-    const wrapper = mountForm({ poster_source: 'f', fanart_lang: '' })
-    const langSelect = wrapper.find('[data-testid="fanart-lang-select"]')
-    expect((langSelect.element as HTMLSelectElement).value).toBe('en')
+  it('defaults language to en when fanart_lang is empty', async () => {
+    const saveSettings = vi.fn().mockResolvedValue(null)
+    const settings = { ...defaultSettings, poster_source: 'f', fanart_lang: '' }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings,
+        fetchPreview: makeFetchPreview(),
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+
+    // Trigger auto-save by toggling textless to verify lang defaults to 'en'
+    await wrapper.find('[data-testid="textless-checkbox"]').setValue(true)
+    await flushPromises()
+
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ fanart_lang: 'en' }),
+    )
   })
 
   it('renders badge direction dropdown', () => {

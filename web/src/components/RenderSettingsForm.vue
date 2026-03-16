@@ -2,7 +2,16 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { Loader2, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { SaveSettingsPayload } from '@/lib/api'
 import { LANGUAGES } from '@/lib/constants'
 
@@ -87,6 +96,7 @@ const saving = ref(false)
 const error = ref('')
 const showCheck = ref(false)
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
+let syncing = false
 function parseOrder(order: string): string[] {
   const keys = order ? order.split(',').map(k => k.trim()).filter(Boolean) : []
   // Ensure all sources are present — add any missing ones at the end
@@ -333,10 +343,7 @@ onBeforeUnmount(() => {
   if (backdropPreview.value.src) URL.revokeObjectURL(backdropPreview.value.src)
 })
 
-let syncing = false
 const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
-const selectBaseClass = 'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-const selectClass = selectBaseClass + ' max-w-xs'
 </script>
 
 <template>
@@ -354,46 +361,46 @@ const selectClass = selectBaseClass + ' max-w-xs'
     <!-- Fanart options -->
     <template v-if="currentSettings.fanart_available">
       <div class="flex items-center gap-2">
-        <input
+        <Checkbox
           :id="inputId('fanart')"
-          v-model="editFanart"
-          type="checkbox"
-          class="h-4 w-4 rounded border-input"
+          :model-value="editFanart"
           data-testid="fanart-checkbox"
+          @update:model-value="(v) => editFanart = !!v"
         />
-        <label :for="inputId('fanart')" class="text-sm font-medium">Use Fanart.tv for custom language and textless posters</label>
+        <Label :for="inputId('fanart')">Use Fanart.tv for custom language and textless posters</Label>
       </div>
 
       <div class="pl-6 space-y-3" :class="{ 'opacity-50': !editFanart }">
         <div class="space-y-1">
           <div class="flex items-center gap-3">
-            <label :for="inputId('fanart-lang')" class="text-sm font-medium">Language</label>
-            <select
-              :id="inputId('fanart-lang')"
-              v-model="editLang"
-              :class="selectBaseClass"
-              class="max-w-[200px]"
+            <Label :for="inputId('fanart-lang')">Language</Label>
+            <Select
+              :model-value="editLang"
               :disabled="!editFanart"
-              data-testid="fanart-lang-select"
+              @update:model-value="editLang = $event as string"
             >
-              <option v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
-                {{ lang.code }} - {{ lang.name }}
-              </option>
-            </select>
+              <SelectTrigger :id="inputId('fanart-lang')" class="max-w-[200px]" data-testid="fanart-lang-select">
+                <SelectValue placeholder="Select language" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
+                  {{ lang.code }} - {{ lang.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <p class="text-xs text-muted-foreground">Best effort — falls back to English if unavailable.</p>
         </div>
 
         <div class="flex items-center gap-2">
-          <input
+          <Checkbox
             :id="inputId('textless')"
-            v-model="editTextless"
-            type="checkbox"
-            class="h-4 w-4 rounded border-input"
+            :model-value="editTextless"
             :disabled="!editFanart"
             data-testid="textless-checkbox"
+            @update:model-value="(v) => editTextless = !!v"
           />
-          <label :for="inputId('textless')" class="text-sm font-medium">Prefer textless posters</label>
+          <Label :for="inputId('textless')">Prefer textless posters</Label>
         </div>
       </div>
     </template>
@@ -405,7 +412,7 @@ const selectClass = selectBaseClass + ' max-w-xs'
       <p class="text-sm font-semibold">Rating Display</p>
 
       <div class="space-y-2">
-        <label class="text-sm font-medium">Rating order</label>
+        <Label>Rating order</Label>
         <p class="text-xs text-muted-foreground">Use the arrows to reorder. Higher items have priority.</p>
         <div class="space-y-1 max-w-sm">
           <div
@@ -460,62 +467,76 @@ const selectClass = selectBaseClass + ' max-w-xs'
         </div>
         <div class="space-y-3 flex-1 min-w-0">
           <div class="space-y-2">
-            <label :for="inputId('poster-position')" class="text-sm font-medium">Badge position</label>
-            <select
-              :id="inputId('poster-position')"
-              v-model="editPosterPosition"
-              data-testid="poster-position-select"
-              :class="selectClass"
+            <Label :for="inputId('poster-position')">Badge position</Label>
+            <Select
+              :model-value="editPosterPosition"
+              @update:model-value="editPosterPosition = $event as string"
             >
-              <option value="bc">Bottom Center</option>
-              <option value="tc">Top Center</option>
-              <option value="l">Left</option>
-              <option value="r">Right</option>
-              <option value="tl">Top Left</option>
-              <option value="tr">Top Right</option>
-              <option value="bl">Bottom Left</option>
-              <option value="br">Bottom Right</option>
-            </select>
+              <SelectTrigger :id="inputId('poster-position')" class="max-w-xs" data-testid="poster-position-select">
+                <SelectValue placeholder="Select position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bc">Bottom Center</SelectItem>
+                <SelectItem value="tc">Top Center</SelectItem>
+                <SelectItem value="l">Left</SelectItem>
+                <SelectItem value="r">Right</SelectItem>
+                <SelectItem value="tl">Top Left</SelectItem>
+                <SelectItem value="tr">Top Right</SelectItem>
+                <SelectItem value="bl">Bottom Left</SelectItem>
+                <SelectItem value="br">Bottom Right</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label :for="inputId('poster-badge-direction')" class="text-sm font-medium">Badge direction</label>
-            <select
-              :id="inputId('poster-badge-direction')"
-              v-model="editPosterBadgeDirection"
-              data-testid="poster-badge-direction-select"
-              :class="selectClass"
+            <Label :for="inputId('poster-badge-direction')">Badge direction</Label>
+            <Select
+              :model-value="editPosterBadgeDirection"
+              @update:model-value="editPosterBadgeDirection = $event as string"
             >
-              <option value="d">Default</option>
-              <option value="h">Horizontal</option>
-              <option value="v">Vertical</option>
-            </select>
+              <SelectTrigger :id="inputId('poster-badge-direction')" class="max-w-xs" data-testid="poster-badge-direction-select">
+                <SelectValue placeholder="Select direction" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label :for="inputId('poster-badge-style')" class="text-sm font-medium">Badge style</label>
-            <select
-              :id="inputId('poster-badge-style')"
-              v-model="editPosterBadgeStyle"
-              :class="selectClass"
+            <Label :for="inputId('poster-badge-style')">Badge style</Label>
+            <Select
+              :model-value="editPosterBadgeStyle"
+              @update:model-value="editPosterBadgeStyle = $event as string"
             >
-              <option value="d">Default</option>
-              <option value="h">Horizontal</option>
-              <option value="v">Vertical</option>
-            </select>
+              <SelectTrigger :id="inputId('poster-badge-style')" class="max-w-xs" data-testid="poster-badge-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label :for="inputId('poster-label-style')" class="text-sm font-medium">Label style</label>
-            <select
-              :id="inputId('poster-label-style')"
-              v-model="editPosterLabelStyle"
-              :class="selectClass"
+            <Label :for="inputId('poster-label-style')">Label style</Label>
+            <Select
+              :model-value="editPosterLabelStyle"
+              @update:model-value="editPosterLabelStyle = $event as string"
             >
-              <option value="t">Text</option>
-              <option value="i">Icon</option>
-            </select>
+              <SelectTrigger :id="inputId('poster-label-style')" class="max-w-xs" data-testid="poster-label-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="t">Text</SelectItem>
+                <SelectItem value="i">Icon</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-1">
             <div class="flex items-center gap-3">
-              <label :for="inputId('ratings-limit')" class="text-sm font-medium">Max ratings</label>
+              <Label :for="inputId('ratings-limit')">Max ratings</Label>
               <Input
                 :id="inputId('ratings-limit')"
                 v-model.number="editRatingsLimit"
@@ -554,29 +575,37 @@ const selectClass = selectBaseClass + ' max-w-xs'
         </div>
         <div class="space-y-3 flex-1 min-w-0">
           <div class="space-y-2">
-            <label :for="inputId('logo-badge-style')" class="text-sm font-medium">Badge style</label>
-            <select
-              :id="inputId('logo-badge-style')"
-              v-model="editLogoBadgeStyle"
-              :class="selectClass"
+            <Label :for="inputId('logo-badge-style')">Badge style</Label>
+            <Select
+              :model-value="editLogoBadgeStyle"
+              @update:model-value="editLogoBadgeStyle = $event as string"
             >
-              <option value="h">Horizontal</option>
-              <option value="v">Vertical</option>
-            </select>
+              <SelectTrigger :id="inputId('logo-badge-style')" class="max-w-xs" data-testid="logo-badge-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label :for="inputId('logo-label-style')" class="text-sm font-medium">Label style</label>
-            <select
-              :id="inputId('logo-label-style')"
-              v-model="editLogoLabelStyle"
-              :class="selectClass"
+            <Label :for="inputId('logo-label-style')">Label style</Label>
+            <Select
+              :model-value="editLogoLabelStyle"
+              @update:model-value="editLogoLabelStyle = $event as string"
             >
-              <option value="t">Text</option>
-              <option value="i">Icon</option>
-            </select>
+              <SelectTrigger :id="inputId('logo-label-style')" class="max-w-xs" data-testid="logo-label-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="t">Text</SelectItem>
+                <SelectItem value="i">Icon</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="flex items-center gap-3">
-            <label :for="inputId('logo-ratings-limit')" class="text-sm font-medium">Max ratings</label>
+            <Label :for="inputId('logo-ratings-limit')">Max ratings</Label>
             <Input
               :id="inputId('logo-ratings-limit')"
               v-model.number="editLogoRatingsLimit"
@@ -613,29 +642,37 @@ const selectClass = selectBaseClass + ' max-w-xs'
         </div>
         <div class="space-y-3 flex-1 min-w-0">
           <div class="space-y-2">
-            <label :for="inputId('backdrop-badge-style')" class="text-sm font-medium">Badge style</label>
-            <select
-              :id="inputId('backdrop-badge-style')"
-              v-model="editBackdropBadgeStyle"
-              :class="selectClass"
+            <Label :for="inputId('backdrop-badge-style')">Badge style</Label>
+            <Select
+              :model-value="editBackdropBadgeStyle"
+              @update:model-value="editBackdropBadgeStyle = $event as string"
             >
-              <option value="h">Horizontal</option>
-              <option value="v">Vertical</option>
-            </select>
+              <SelectTrigger :id="inputId('backdrop-badge-style')" class="max-w-xs" data-testid="backdrop-badge-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label :for="inputId('backdrop-label-style')" class="text-sm font-medium">Label style</label>
-            <select
-              :id="inputId('backdrop-label-style')"
-              v-model="editBackdropLabelStyle"
-              :class="selectClass"
+            <Label :for="inputId('backdrop-label-style')">Label style</Label>
+            <Select
+              :model-value="editBackdropLabelStyle"
+              @update:model-value="editBackdropLabelStyle = $event as string"
             >
-              <option value="t">Text</option>
-              <option value="i">Icon</option>
-            </select>
+              <SelectTrigger :id="inputId('backdrop-label-style')" class="max-w-xs" data-testid="backdrop-label-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="t">Text</SelectItem>
+                <SelectItem value="i">Icon</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="flex items-center gap-3">
-            <label :for="inputId('backdrop-ratings-limit')" class="text-sm font-medium">Max ratings</label>
+            <Label :for="inputId('backdrop-ratings-limit')">Max ratings</Label>
             <Input
               :id="inputId('backdrop-ratings-limit')"
               v-model.number="editBackdropRatingsLimit"

@@ -3,6 +3,16 @@ import { ref, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { FREE_API_KEY, LANGUAGES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronRight, Loader2 } from 'lucide-vue-next'
 
@@ -14,8 +24,8 @@ const idType = ref<'imdb' | 'tmdb' | 'tvdb'>('imdb')
 const imageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
 const idValue = ref('tt0013442')
 const fallback = ref(false)
-const lang = ref('')
-const imageSize = ref<'' | 'small' | 'medium' | 'large' | 'verylarge'>('')
+const lang = ref('any')
+const imageSize = ref<'default' | 'small' | 'medium' | 'large' | 'verylarge'>('default')
 const fetchError = ref('')
 const fetchLoading = ref(false)
 const resultUrl = ref('')
@@ -36,8 +46,10 @@ const idPlaceholder = computed(() => {
 const queryString = computed(() => {
   const params = new URLSearchParams()
   if (fallback.value) params.set('fallback', 'true')
-  if (lang.value.trim()) params.set('lang', lang.value.trim())
-  if (imageSize.value) params.set('imageSize', imageSize.value)
+  const langVal = lang.value === 'any' ? '' : lang.value
+  if (langVal.trim()) params.set('lang', langVal.trim())
+  const sizeVal = imageSize.value === 'default' ? '' : imageSize.value
+  if (sizeVal) params.set('imageSize', sizeVal)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -100,69 +112,69 @@ async function handleFetch() {
       <CollapsibleContent class="pt-3 space-y-3">
       <form class="flex flex-col gap-2" @submit.prevent="handleFetch">
         <div class="flex flex-col sm:flex-row gap-2">
-          <select
-            id="free-id-type"
-            v-model="idType"
-            aria-label="ID type"
-            class="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="imdb">IMDb</option>
-            <option value="tmdb">TMDb</option>
-            <option value="tvdb">TVDB</option>
-          </select>
-          <select
-            id="free-image-type"
-            v-model="imageType"
-            aria-label="Image type"
-            class="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="poster">Poster</option>
-            <option value="logo">Logo</option>
-            <option value="backdrop">Backdrop</option>
-          </select>
-          <input
+          <Select v-model="idType">
+            <SelectTrigger id="free-id-type" aria-label="ID type" class="bg-background">
+              <SelectValue placeholder="ID type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="imdb">IMDb</SelectItem>
+              <SelectItem value="tmdb">TMDb</SelectItem>
+              <SelectItem value="tvdb">TVDB</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="imageType">
+            <SelectTrigger id="free-image-type" aria-label="Image type" class="bg-background">
+              <SelectValue placeholder="Image type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="poster">Poster</SelectItem>
+              <SelectItem value="logo">Logo</SelectItem>
+              <SelectItem value="backdrop">Backdrop</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
             id="free-id-value"
             v-model="idValue"
             type="text"
             :placeholder="idPlaceholder"
             required
-            class="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+            class="flex-1 min-w-0 font-mono bg-background"
           />
         </div>
         <div class="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-          <select
-            id="free-image-size"
-            v-model="imageSize"
-            aria-label="Image size"
-            class="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Size: default</option>
-            <option value="small">Small</option>
-            <option value="medium">Medium</option>
-            <option value="large">Large</option>
-            <option value="verylarge">Very Large</option>
-          </select>
-          <select
-            id="free-lang"
-            v-model="lang"
-            aria-label="Language"
-            class="rounded-md border border-input bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Language: any</option>
-            <option v-for="l in LANGUAGES" :key="l.code" :value="l.code">
-              {{ l.code }} - {{ l.name }}
-            </option>
-          </select>
-          <label class="flex items-center gap-1.5 text-sm cursor-pointer">
-            <input
+          <Select v-model="imageSize">
+            <SelectTrigger id="free-image-size" aria-label="Image size" class="bg-background">
+              <SelectValue placeholder="Size: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Size: default</SelectItem>
+              <SelectItem value="small">Small</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="large">Large</SelectItem>
+              <SelectItem value="verylarge">Very Large</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="lang">
+            <SelectTrigger id="free-lang" aria-label="Language" class="bg-background">
+              <SelectValue placeholder="Language: any" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="any">Language: any</SelectItem>
+              <SelectItem v-for="l in LANGUAGES" :key="l.code" :value="l.code">
+                {{ l.code }} - {{ l.name }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Label class="flex items-center gap-1.5 cursor-pointer">
+            <Checkbox
               id="free-fallback"
-              v-model="fallback"
-              type="checkbox"
+              :model-value="fallback"
               aria-label="Enable fallback"
-              class="rounded border-input"
+              class="bg-background"
+              @update:model-value="(v) => fallback = !!v"
             />
             Fallback
-          </label>
+          </Label>
         </div>
         <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
         <div class="flex justify-center">

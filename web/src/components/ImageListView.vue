@@ -6,6 +6,14 @@ import { Eye, Loader2, Download } from 'lucide-vue-next'
 import RefreshButton from '@/components/RefreshButton.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Dialog,
@@ -245,15 +253,20 @@ const skeletonClass = computed(() => {
         </DialogHeader>
         <form class="space-y-4" @submit.prevent="fetchImage">
           <div class="space-y-2">
-            <label class="text-sm font-medium">ID Type</label>
-            <select v-model="fetchIdType" class="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <option value="imdb">IMDb</option>
-              <option value="tmdb">TMDb</option>
-              <option value="tvdb">TVDB</option>
-            </select>
+            <Label>ID Type</Label>
+            <Select v-model="fetchIdType">
+              <SelectTrigger data-testid="fetch-id-type-select">
+                <SelectValue placeholder="Select ID type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="imdb">IMDb</SelectItem>
+                <SelectItem value="tmdb">TMDb</SelectItem>
+                <SelectItem value="tvdb">TVDB</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
-            <label class="text-sm font-medium">ID Value</label>
+            <Label>ID Value</Label>
             <Input v-model="fetchIdValue" placeholder="e.g. tt1234567" />
           </div>
           <p v-if="fetchError" class="text-sm text-destructive">{{ fetchError }}</p>

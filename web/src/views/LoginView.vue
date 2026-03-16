@@ -4,6 +4,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import FreeApiKeyCard from '@/components/FreeApiKeyCard.vue'
 
 const auth = useAuthStore()
@@ -73,39 +75,37 @@ function toggleMode() {
       <form class="space-y-4" @submit.prevent="handleLogin">
         <template v-if="mode === 'admin'">
           <div>
-            <label class="block text-sm font-medium mb-1" for="username">Username</label>
-            <input
+            <Label for="username" class="mb-1">Username</Label>
+            <Input
               id="username"
               v-model="username"
               type="text"
               autocomplete="username"
               required
-              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1" for="password">Password</label>
-            <input
+            <Label for="password" class="mb-1">Password</Label>
+            <Input
               id="password"
               v-model="password"
               type="password"
               autocomplete="current-password"
               required
-              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
           </div>
         </template>
 
         <template v-else>
           <div>
-            <label class="block text-sm font-medium mb-1" for="apikey">API Key</label>
-            <input
+            <Label for="apikey" class="mb-1">API Key</Label>
+            <Input
               id="apikey"
               v-model="apiKeyInput"
               type="password"
               autocomplete="off"
               required
-              class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+              class="font-mono"
             />
           </div>
         </template>

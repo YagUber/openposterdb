@@ -48,16 +48,19 @@ test.describe('posters page', () => {
     const modal = page.getByRole('dialog')
     await expect(modal.getByText('ID Type')).toBeVisible()
     await expect(modal.getByText('ID Value')).toBeVisible()
-    await expect(modal.locator('select')).toBeVisible()
+    await expect(modal.getByTestId('fetch-id-type-select')).toBeVisible()
     await expect(modal.locator('input[placeholder="e.g. tt1234567"]')).toBeVisible()
   })
 
   test('fetch modal has correct id type options', async ({ page }) => {
     await page.click('button:has-text("Fetch")')
-    const select = page.locator('select')
-    await expect(select.locator('option[value="imdb"]')).toHaveText('IMDb')
-    await expect(select.locator('option[value="tmdb"]')).toHaveText('TMDb')
-    await expect(select.locator('option[value="tvdb"]')).toHaveText('TVDB')
+    const trigger = page.getByTestId('fetch-id-type-select')
+    await expect(trigger).toContainText('IMDb')
+    await trigger.click()
+    await expect(page.getByRole('option', { name: 'IMDb' })).toBeVisible()
+    await expect(page.getByRole('option', { name: 'TMDb' })).toBeVisible()
+    await expect(page.getByRole('option', { name: 'TVDB' })).toBeVisible()
+    await page.keyboard.press('Escape')
   })
 
   test('fetch submit button is disabled when input is empty', async ({ page }) => {

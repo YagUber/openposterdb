@@ -1,6 +1,9 @@
 > [!NOTE]
 > This project is developed with the assistance of AI code generation tools. AI-generated code is reviewed and tested before being merged, but if you encounter any issues, please feel free to open an issue or submit a pull request.
 
+> [!WARNING]
+> This project is in active development. Expect breaking changes to the database schema and cache key format until we reach a stable release. You may need to delete your database or cache after updating in order to not retain orphaned cache items.
+
 # OpenPosterDB
 
 A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters, logos, and backdrops with rating badges from multiple sources overlaid on them. Fetches art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.

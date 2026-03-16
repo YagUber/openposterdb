@@ -146,7 +146,7 @@ impl ImageSize {
 pub fn validate_image_size(size_str: &str, kind: crate::cache::ImageType) -> Result<ImageSize, AppError> {
     let size = ImageSize::from_query_str(size_str)
         .ok_or_else(|| AppError::BadRequest(
-            "imageSize must be 'small', 'medium', 'large', or 'very-large'".into(),
+            "imageSize must be 'small', 'medium', 'large', 'very-large', or 'verylarge'".into(),
         ))?;
     if size == ImageSize::Small && kind != crate::cache::ImageType::Backdrop {
         return Err(AppError::BadRequest(

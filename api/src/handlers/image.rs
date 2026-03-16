@@ -20,7 +20,7 @@ pub const FREE_API_KEY: &str = "t0-free-rpdb";
 #[derive(utoipa::ToSchema)]
 #[schema(rename_all = "lowercase")]
 #[allow(dead_code)]
-enum IdTypeParam {
+pub enum IdTypeParam {
     Imdb,
     Tmdb,
     Tvdb,
@@ -29,7 +29,7 @@ enum IdTypeParam {
 /// OpenAPI-only enum for the `fallback` query parameter.
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
-enum FallbackParam {
+pub enum FallbackParam {
     #[schema(rename = "true")]
     True,
 }
@@ -37,7 +37,7 @@ enum FallbackParam {
 /// OpenAPI-only enum for the `imageSize` query parameter.
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
-enum ImageSizeParam {
+pub enum ImageSizeParam {
     #[schema(rename = "small")]
     Small,
     #[schema(rename = "medium")]
@@ -46,6 +46,8 @@ enum ImageSizeParam {
     Large,
     #[schema(rename = "very-large")]
     VeryLarge,
+    #[schema(rename = "verylarge")]
+    VeryLargeAlt,
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -370,7 +372,7 @@ async fn image_handler_inner(
         ImageQuery,
     ),
     responses(
-        (status = 200, description = "Poster image", content_type = "image/jpeg", body = Vec<u8>,
+        (status = 200, description = "Poster image", content_type = "image/jpeg",
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
@@ -399,7 +401,7 @@ pub async fn handler(
         ImageQuery,
     ),
     responses(
-        (status = 200, description = "Logo image", content_type = "image/png", body = Vec<u8>,
+        (status = 200, description = "Logo image", content_type = "image/png",
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
@@ -429,7 +431,7 @@ pub async fn logo_handler(
         ImageQuery,
     ),
     responses(
-        (status = 200, description = "Backdrop image", content_type = "image/jpeg", body = Vec<u8>,
+        (status = 200, description = "Backdrop image", content_type = "image/jpeg",
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),

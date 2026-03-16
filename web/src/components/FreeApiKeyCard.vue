@@ -3,7 +3,10 @@ import { ref, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { FREE_API_KEY, LANGUAGES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-vue-next'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { ChevronRight, Loader2 } from 'lucide-vue-next'
+
+const isOpen = ref(false)
 
 const auth = useAuthStore()
 
@@ -87,8 +90,14 @@ async function handleFetch() {
       Use the following key for poster serving (read-only, global defaults):
     </p>
     <code class="block text-sm font-mono bg-muted px-3 py-2 rounded select-all">{{ FREE_API_KEY }}</code>
-    <div class="pt-2 space-y-3">
-      <p class="text-sm font-medium">Try it out</p>
+    <Collapsible v-model:open="isOpen">
+      <CollapsibleTrigger as-child>
+        <button class="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+          <ChevronRight class="h-4 w-4 shrink-0 transition-transform duration-200" :class="{ 'rotate-90': isOpen }" />
+          Try it out
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent class="pt-3 space-y-3">
       <form class="flex flex-col gap-2" @submit.prevent="handleFetch">
         <div class="flex flex-col sm:flex-row gap-2">
           <select
@@ -155,14 +164,14 @@ async function handleFetch() {
             Fallback
           </label>
         </div>
+        <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
+        <div class="flex justify-center">
+          <Button type="submit" size="lg" :disabled="fetchLoading">
+            <Loader2 v-if="fetchLoading" class="h-4 w-4 animate-spin" />
+            <span v-else>Fetch</span>
+          </Button>
+        </div>
       </form>
-      <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
-      <div class="flex justify-center">
-        <Button size="lg" :disabled="fetchLoading" @click="handleFetch">
-          <Loader2 v-if="fetchLoading" class="h-4 w-4 animate-spin" />
-          <span v-else>Fetch</span>
-        </Button>
-      </div>
       <p v-if="fetchError" class="text-sm text-destructive">{{ fetchError }}</p>
       <div v-if="resultUrl" class="flex justify-center pt-2 overflow-hidden">
         <img
@@ -171,6 +180,7 @@ async function handleFetch() {
           :class="['w-full', resultClass]"
         />
       </div>
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   </div>
 </template>

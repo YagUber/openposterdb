@@ -67,7 +67,7 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 |---|---|
 | `medium` *(default)* | 580 × 859 |
 | `large` | 1280 × 1896 |
-| `very-large` | 2000 × 2962 |
+| `very-large` / `verylarge` | 2000 × 2962 |
 
 **Logo sizes:**
 
@@ -75,7 +75,7 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 |---|---|
 | `medium` *(default)* | 780 × 244 |
 | `large` | 1722 × 539 |
-| `very-large` | 2689 × 841 |
+| `very-large` / `verylarge` | 2689 × 841 |
 
 **Backdrop sizes:**
 

@@ -4,6 +4,7 @@ import { Loader2, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { SaveSettingsPayload } from '@/lib/api'
+import { LANGUAGES } from '@/lib/constants'
 
 export interface RenderSettings {
   poster_source: string
@@ -24,45 +25,6 @@ export interface RenderSettings {
   backdrop_label_style: string
   poster_badge_direction: string
 }
-
-const LANGUAGES = [
-  { code: 'ar', name: 'Arabic' },
-  { code: 'bg', name: 'Bulgarian' },
-  { code: 'ca', name: 'Catalan' },
-  { code: 'zh', name: 'Chinese' },
-  { code: 'hr', name: 'Croatian' },
-  { code: 'cs', name: 'Czech' },
-  { code: 'da', name: 'Danish' },
-  { code: 'nl', name: 'Dutch' },
-  { code: 'en', name: 'English' },
-  { code: 'fi', name: 'Finnish' },
-  { code: 'fr', name: 'French' },
-  { code: 'de', name: 'German' },
-  { code: 'el', name: 'Greek' },
-  { code: 'he', name: 'Hebrew' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'hu', name: 'Hungarian' },
-  { code: 'id', name: 'Indonesian' },
-  { code: 'it', name: 'Italian' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'ko', name: 'Korean' },
-  { code: 'ms', name: 'Malay' },
-  { code: 'no', name: 'Norwegian' },
-  { code: 'fa', name: 'Persian' },
-  { code: 'pl', name: 'Polish' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'ro', name: 'Romanian' },
-  { code: 'ru', name: 'Russian' },
-  { code: 'sr', name: 'Serbian' },
-  { code: 'sk', name: 'Slovak' },
-  { code: 'sl', name: 'Slovenian' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'sv', name: 'Swedish' },
-  { code: 'th', name: 'Thai' },
-  { code: 'tr', name: 'Turkish' },
-  { code: 'uk', name: 'Ukrainian' },
-  { code: 'vi', name: 'Vietnamese' },
-] as const
 
 const ALL_RATING_SOURCES = [
   { key: 'imdb', label: 'IMDb', color: '#b4910f' },

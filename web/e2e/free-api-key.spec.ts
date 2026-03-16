@@ -168,17 +168,32 @@ test.describe('free API key card', () => {
     await expect(page.locator('text=Try it out')).toBeVisible()
 
     // ID type select
-    const idTypeSelect = page.locator('select').first()
+    const idTypeSelect = page.locator('#free-id-type')
     await expect(idTypeSelect).toBeVisible()
     await expect(idTypeSelect).toHaveValue('imdb')
 
     // Image type select
-    const imageTypeSelect = page.locator('select').nth(1)
+    const imageTypeSelect = page.locator('#free-image-type')
     await expect(imageTypeSelect).toBeVisible()
     await expect(imageTypeSelect).toHaveValue('poster')
 
+    // Image size select
+    const imageSizeSelect = page.locator('#free-image-size')
+    await expect(imageSizeSelect).toBeVisible()
+    await expect(imageSizeSelect).toHaveValue('')
+
+    // Language select
+    const langSelect = page.locator('#free-lang')
+    await expect(langSelect).toBeVisible()
+    await expect(langSelect).toHaveValue('')
+
+    // Fallback checkbox
+    const fallbackCheckbox = page.locator('#free-fallback')
+    await expect(fallbackCheckbox).toBeVisible()
+    await expect(fallbackCheckbox).not.toBeChecked()
+
     // ID input pre-filled with Nosferatu
-    const idInput = page.locator('input[type="text"]')
+    const idInput = page.locator('#free-id-value')
     await expect(idInput).toBeVisible()
     await expect(idInput).toHaveValue('tt0013442')
 
@@ -196,18 +211,30 @@ test.describe('free API key card', () => {
     await expect(curlBlock).toContainText('imdb/poster-default/tt0013442.jpg')
 
     // Change ID type to TMDB
-    await page.locator('select').first().selectOption('tmdb')
+    await page.locator('#free-id-type').selectOption('tmdb')
     await expect(curlBlock).toContainText('tmdb/poster-default/tt0013442.jpg')
 
     // Change image type to logo
-    await page.locator('select').nth(1).selectOption('logo')
+    await page.locator('#free-image-type').selectOption('logo')
     await expect(curlBlock).toContainText('tmdb/logo-default/tt0013442.png')
 
     // Change ID value
-    const idInput = page.locator('input[type="text"]')
+    const idInput = page.locator('#free-id-value')
     await idInput.clear()
     await idInput.fill('movie-278')
     await expect(curlBlock).toContainText('tmdb/logo-default/movie-278.png')
+
+    // Change image size
+    await page.locator('#free-image-size').selectOption('large')
+    await expect(curlBlock).toContainText('imageSize=large')
+
+    // Set language
+    await page.locator('#free-lang').selectOption('en')
+    await expect(curlBlock).toContainText('lang=en')
+
+    // Enable fallback
+    await page.locator('#free-fallback').check()
+    await expect(curlBlock).toContainText('fallback=true')
   })
 
   test('fetch poster shows image result', async ({ page, request }) => {
@@ -221,7 +248,7 @@ test.describe('free API key card', () => {
     await page.goto('/')
 
     // Fill in a known IMDB ID
-    const idInput = page.locator('input[type="text"]')
+    const idInput = page.locator('#free-id-value')
     await idInput.clear()
     await idInput.fill(TEST_IMDB_ID)
 
@@ -243,7 +270,7 @@ test.describe('free API key card', () => {
 
     await page.goto('/')
 
-    const idInput = page.locator('input[type="text"]')
+    const idInput = page.locator('#free-id-value')
     await idInput.clear()
     await idInput.fill('tt9999999')
 
@@ -285,7 +312,7 @@ test.describe('free API key card', () => {
 
     await page.goto('/')
 
-    const idInput = page.locator('input[type="text"]')
+    const idInput = page.locator('#free-id-value')
     await idInput.clear()
     await idInput.fill(TEST_IMDB_ID)
 
@@ -295,7 +322,7 @@ test.describe('free API key card', () => {
     await expect(resultImg).toBeVisible({ timeout: 60_000 })
 
     // Switch to backdrop and fetch again
-    await page.locator('select').nth(1).selectOption('backdrop')
+    await page.locator('#free-image-type').selectOption('backdrop')
     await page.locator('button:has-text("Fetch")').click()
 
     // Image should still be visible (old stays until new loads)

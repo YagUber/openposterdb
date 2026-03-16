@@ -7,12 +7,12 @@ use crate::image::icons;
 use crate::services::db::LABEL_ICON;
 use crate::services::ratings::RatingBadge;
 
-const BASE_BADGE_HEIGHT: u32 = 50;
+const BASE_BADGE_HEIGHT: u32 = 58;
 const BASE_BADGE_PADDING_H: u32 = 14;
 const BASE_BADGE_VALUE_PADDING_H: u32 = 10;
 const BASE_BADGE_RADIUS: u32 = 10;
-const BASE_FONT_SIZE: f32 = 28.0;
-const BASE_LABEL_FONT_SIZE: f32 = 21.0;
+const BASE_FONT_SIZE: f32 = 34.0;
+const BASE_LABEL_FONT_SIZE: f32 = 26.0;
 const BASE_ICON_HEIGHT: u32 = 48;
 
 /// Compute the width of an icon when scaled to the given target height, preserving aspect ratio.
@@ -208,10 +208,10 @@ fn render_badge_inner(
     img
 }
 
-const BASE_VERT_BADGE_WIDTH: u32 = 76;
+const BASE_VERT_BADGE_WIDTH: u32 = 88;
 const BASE_VERT_BADGE_PADDING_V: u32 = 8;
-const BASE_VERT_LABEL_FONT_SIZE: f32 = 21.0;
-const BASE_VERT_VALUE_FONT_SIZE: f32 = 28.0;
+const BASE_VERT_LABEL_FONT_SIZE: f32 = 26.0;
+const BASE_VERT_VALUE_FONT_SIZE: f32 = 34.0;
 
 /// Render a vertical badge: source label on top, rating value below.
 /// Used for left/right poster positions.

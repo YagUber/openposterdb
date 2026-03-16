@@ -46,7 +46,9 @@ export default function placeholdersPlugin(): Plugin {
           .toBuffer()
 
         const b64 = `data:${mime};base64,${buf.toString('base64')}`
-        entries.push(`  ${JSON.stringify('/examples/' + file)}: ${JSON.stringify(b64)}`)
+        // Key by .webp extension to match the paths used in components
+        const webpKey = file.replace(/\.(jpe?g|png)$/i, '.webp')
+        entries.push(`  ${JSON.stringify('/examples/' + webpKey)}: ${JSON.stringify(b64)}`)
       }
 
       return `export const placeholders = {\n${entries.join(',\n')}\n};\n`

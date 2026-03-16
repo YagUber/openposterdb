@@ -5,11 +5,13 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 import placeholdersPlugin from './vite-plugin-placeholders'
+import optimizeExamplesPlugin from './vite-plugin-optimize-examples'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     placeholdersPlugin(),
+    optimizeExamplesPlugin(),
     vue(),
     vueDevTools(),
     tailwindcss(),

@@ -30,46 +30,46 @@ const features = [
 ];
 
 const posters = [
-  { src: "/examples/nosferatu.jpg", label: "Nosferatu (1922)" },
-  { src: "/examples/metropolis.jpg", label: "Metropolis (1927)" },
+  { src: "/examples/nosferatu.webp", label: "Nosferatu (1922)" },
+  { src: "/examples/metropolis.webp", label: "Metropolis (1927)" },
   {
-    src: "/examples/caligari.jpg",
+    src: "/examples/caligari.webp",
     alt: "The Cabinet of Dr. Caligari (1920)",
     label: "Dr. Caligari (1920)",
   },
   {
-    src: "/examples/phantom.jpg",
+    src: "/examples/phantom.webp",
     alt: "The Phantom of the Opera (1925)",
     label: "Phantom of the Opera (1925)",
   },
   {
-    src: "/examples/trip-to-moon.jpg",
+    src: "/examples/trip-to-moon.webp",
     alt: "A Trip to the Moon (1902)",
     label: "A Trip to the Moon (1902)",
   },
-  { src: "/examples/safety-last.jpg", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
-  { src: "/examples/the-general.jpg", label: "The General (1926)" },
+  { src: "/examples/safety-last.webp", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
+  { src: "/examples/the-general.webp", label: "The General (1926)" },
 ];
 
 const positions = [
-  { src: "/examples/pos-tl.jpg", label: "Top left" },
-  { src: "/examples/pos-tc.jpg", label: "Top center" },
-  { src: "/examples/pos-tr.jpg", label: "Top right" },
-  { src: "/examples/pos-r.jpg", label: "Right" },
-  { src: "/examples/pos-bl.jpg", label: "Bottom left" },
-  { src: "/examples/pos-bc.jpg", label: "Bottom center" },
-  { src: "/examples/pos-br.jpg", label: "Bottom right" },
-  { src: "/examples/pos-l.jpg", label: "Left" },
+  { src: "/examples/pos-tl.webp", label: "Top left" },
+  { src: "/examples/pos-tc.webp", label: "Top center" },
+  { src: "/examples/pos-tr.webp", label: "Top right" },
+  { src: "/examples/pos-r.webp", label: "Right" },
+  { src: "/examples/pos-bl.webp", label: "Bottom left" },
+  { src: "/examples/pos-bc.webp", label: "Bottom center" },
+  { src: "/examples/pos-br.webp", label: "Bottom right" },
+  { src: "/examples/pos-l.webp", label: "Left" },
 ];
 
 const styles = [
-  { src: "/examples/style-h.jpg", label: "Horizontal" },
-  { src: "/examples/style-v.jpg", label: "Vertical" },
+  { src: "/examples/style-h.webp", label: "Horizontal" },
+  { src: "/examples/style-v.webp", label: "Vertical" },
 ];
 
 const labels = [
-  { src: "/examples/label-icon.jpg", label: "Icons" },
-  { src: "/examples/label-text.jpg", label: "Text" },
+  { src: "/examples/label-icon.webp", label: "Icons" },
+  { src: "/examples/label-text.webp", label: "Text" },
 ];
 
 const dataProviders = [
@@ -90,19 +90,19 @@ const ratingSources = [
 ];
 
 const logos = [
-  { src: "/examples/logo-nosferatu.png", label: "Nosferatu (1922)" },
-  { src: "/examples/logo-metropolis.png", label: "Metropolis (1927)" },
-  { src: "/examples/logo-caligari.png", alt: "The Cabinet of Dr. Caligari (1920)", label: "Dr. Caligari (1920)" },
-  { src: "/examples/logo-phantom.png", alt: "The Phantom of the Opera (1925)", label: "Phantom of the Opera (1925)" },
-  { src: "/examples/logo-trip-to-moon.png", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
-  { src: "/examples/logo-safety-last.png", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
-  { src: "/examples/logo-the-general.png", label: "The General (1926)" },
+  { src: "/examples/logo-nosferatu.webp", label: "Nosferatu (1922)" },
+  { src: "/examples/logo-metropolis.webp", label: "Metropolis (1927)" },
+  { src: "/examples/logo-caligari.webp", alt: "The Cabinet of Dr. Caligari (1920)", label: "Dr. Caligari (1920)" },
+  { src: "/examples/logo-phantom.webp", alt: "The Phantom of the Opera (1925)", label: "Phantom of the Opera (1925)" },
+  { src: "/examples/logo-trip-to-moon.webp", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
+  { src: "/examples/logo-safety-last.webp", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
+  { src: "/examples/logo-the-general.webp", label: "The General (1926)" },
 ];
 
 const backdrops = [
-  { src: "/examples/backdrop-nosferatu.jpg", label: "Nosferatu (1922)" },
-  { src: "/examples/backdrop-metropolis.jpg", label: "Metropolis (1927)" },
-  { src: "/examples/backdrop-trip-to-moon.jpg", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
+  { src: "/examples/backdrop-nosferatu.webp", label: "Nosferatu (1922)" },
+  { src: "/examples/backdrop-metropolis.webp", label: "Metropolis (1927)" },
+  { src: "/examples/backdrop-trip-to-moon.webp", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
 ];
 </script>
 
@@ -177,6 +177,7 @@ const backdrops = [
                   :alt="l.alt || l.label"
                   :width="200"
                   :height="122"
+                  fit="contain"
                 />
               </div>
               <p class="text-xs text-muted-foreground">{{ l.label }}</p>

@@ -2,12 +2,15 @@
 import { ref, computed } from "vue";
 import { placeholders } from "virtual:placeholders";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   src: string;
   alt: string;
   width: number;
   height: number;
-}>();
+  fit?: "cover" | "contain";
+}>(), {
+  fit: "cover",
+});
 
 const loaded = ref(false);
 const placeholder = computed(() => placeholders[props.src]);
@@ -21,8 +24,8 @@ const placeholder = computed(() => placeholders[props.src]);
       :alt="alt"
       :width="width"
       :height="height"
-      class="absolute inset-0 w-full h-full object-cover blur-sm scale-105 transition-opacity duration-300"
-      :class="loaded ? 'opacity-0' : 'opacity-100'"
+      class="absolute inset-0 w-full h-full blur-sm scale-105 transition-opacity duration-300"
+      :class="[loaded ? 'opacity-0' : 'opacity-100', fit === 'contain' ? 'object-contain' : 'object-cover']"
       aria-hidden="true"
     />
     <img
@@ -31,8 +34,8 @@ const placeholder = computed(() => placeholders[props.src]);
       :width="width"
       :height="height"
       loading="lazy"
-      class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
-      :class="loaded ? 'opacity-100' : 'opacity-0'"
+      class="absolute inset-0 w-full h-full transition-opacity duration-300"
+      :class="[loaded ? 'opacity-100' : 'opacity-0', fit === 'contain' ? 'object-contain' : 'object-cover']"
       @load="loaded = true"
     />
   </div>

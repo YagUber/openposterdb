@@ -71,3 +71,174 @@ impl Config {
         config
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::env;
+
+    /// Helper: remove all env vars that Config::from_env reads.
+    ///
+    /// # Safety
+    /// Tests using this must run serially (via `#[serial]`) to avoid races.
+    unsafe fn clear_config_env() {
+        for key in [
+            "TMDB_API_KEY",
+            "OMDB_API_KEY",
+            "MDBLIST_API_KEY",
+            "CACHE_DIR",
+            "DB_DIR",
+            "LISTEN_ADDR",
+            "RATINGS_STALE_SECS",
+            "RATINGS_MAX_AGE_SECS",
+            "IMAGE_STALE_SECS",
+            "IMAGE_QUALITY",
+            "IMAGE_MEM_CACHE_MB",
+            "STATIC_DIR",
+            "CORS_ORIGIN",
+            "FANART_API_KEY",
+            "ENABLE_CDN_REDIRECTS",
+            "EXTERNAL_CACHE_ONLY",
+            "FREE_KEY_ENABLED",
+        ] {
+            unsafe { env::remove_var(key) };
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_valid_config_with_omdb() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+
+        let cfg = Config::from_env();
+        assert_eq!(cfg.tmdb_api_key, "tmdb_test");
+        assert_eq!(cfg.omdb_api_key.as_deref(), Some("omdb_test"));
+        assert!(cfg.mdblist_api_key.is_none());
+        assert_eq!(cfg.cache_dir, "./cache");
+        assert_eq!(cfg.db_dir, "./db");
+        assert_eq!(cfg.listen_addr, "0.0.0.0:3000");
+        assert_eq!(cfg.ratings_min_stale_secs, 86400);
+        assert_eq!(cfg.ratings_max_age_secs, 31_536_000);
+        assert_eq!(cfg.image_stale_secs, 0);
+        assert_eq!(cfg.image_quality, 85);
+        assert_eq!(cfg.image_mem_cache_mb, 512);
+        assert!(!cfg.enable_cdn_redirects);
+        assert!(!cfg.external_cache_only);
+        assert!(cfg.free_key_enabled.is_none());
+    }
+
+    #[test]
+    #[serial]
+    fn test_valid_config_with_mdblist() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("MDBLIST_API_KEY", "mdblist_test") };
+
+        let cfg = Config::from_env();
+        assert!(cfg.omdb_api_key.is_none());
+        assert_eq!(cfg.mdblist_api_key.as_deref(), Some("mdblist_test"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_custom_numeric_overrides() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+        unsafe { env::set_var("RATINGS_STALE_SECS", "100") };
+        unsafe { env::set_var("RATINGS_MAX_AGE_SECS", "200") };
+        unsafe { env::set_var("IMAGE_STALE_SECS", "300") };
+        unsafe { env::set_var("IMAGE_QUALITY", "50") };
+        unsafe { env::set_var("IMAGE_MEM_CACHE_MB", "1024") };
+
+        let cfg = Config::from_env();
+        assert_eq!(cfg.ratings_min_stale_secs, 100);
+        assert_eq!(cfg.ratings_max_age_secs, 200);
+        assert_eq!(cfg.image_stale_secs, 300);
+        assert_eq!(cfg.image_quality, 50);
+        assert_eq!(cfg.image_mem_cache_mb, 1024);
+    }
+
+    #[test]
+    #[serial]
+    fn test_invalid_numeric_falls_back_to_default() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+        unsafe { env::set_var("IMAGE_QUALITY", "notanumber") };
+        unsafe { env::set_var("RATINGS_STALE_SECS", "abc") };
+
+        let cfg = Config::from_env();
+        assert_eq!(cfg.image_quality, 85);
+        assert_eq!(cfg.ratings_min_stale_secs, 86400);
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "TMDB_API_KEY must be set")]
+    fn test_panics_without_tmdb_key() {
+        unsafe { clear_config_env() };
+        Config::from_env();
+    }
+
+    #[test]
+    #[serial]
+    #[should_panic(expected = "at least one of OMDB_API_KEY or MDBLIST_API_KEY must be set")]
+    fn test_panics_without_ratings_provider() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        Config::from_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_boolean_env_true() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+        unsafe { env::set_var("ENABLE_CDN_REDIRECTS", "true") };
+        unsafe { env::set_var("EXTERNAL_CACHE_ONLY", "1") };
+
+        let cfg = Config::from_env();
+        assert!(cfg.enable_cdn_redirects);
+        assert!(cfg.external_cache_only);
+    }
+
+    #[test]
+    #[serial]
+    fn test_boolean_env_defaults_false() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+
+        let cfg = Config::from_env();
+        assert!(!cfg.enable_cdn_redirects);
+        assert!(!cfg.external_cache_only);
+    }
+
+    #[test]
+    #[serial]
+    fn test_free_key_enabled_some() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+        unsafe { env::set_var("FREE_KEY_ENABLED", "true") };
+
+        let cfg = Config::from_env();
+        assert_eq!(cfg.free_key_enabled, Some(true));
+    }
+
+    #[test]
+    #[serial]
+    fn test_free_key_enabled_none() {
+        unsafe { clear_config_env() };
+        unsafe { env::set_var("TMDB_API_KEY", "tmdb_test") };
+        unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
+
+        let cfg = Config::from_env();
+        assert!(cfg.free_key_enabled.is_none());
+    }
+}

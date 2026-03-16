@@ -138,4 +138,107 @@ describe('ApiKeysView', () => {
     // At minimum we should have some non-delete, non-create buttons (the settings gear buttons)
     expect(settingsButtons.length).toBeGreaterThanOrEqual(2)
   })
+
+  it('creates key and shows raw key value in yellow banner', async () => {
+    mockKeysApi.create.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ key: 'opdb_xxx123' }),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // Fill in key name and submit
+    const input = wrapper.find('input')
+    await input.setValue('my-new-key')
+    const form = wrapper.find('form')
+    await form.trigger('submit')
+    await flushPromises()
+
+    expect(mockKeysApi.create).toHaveBeenCalledWith('my-new-key')
+    const banner = wrapper.find('.border-yellow-500')
+    expect(banner.exists()).toBe(true)
+    expect(banner.text()).toContain('opdb_xxx123')
+  })
+
+  it('shows error when create fails', async () => {
+    mockKeysApi.create.mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ error: 'Name already taken' }),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const input = wrapper.find('input')
+    await input.setValue('duplicate-key')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('.text-destructive').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Name already taken')
+  })
+
+  it('dismisses newly created key', async () => {
+    mockKeysApi.create.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ key: 'opdb_dismiss' }),
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const input = wrapper.find('input')
+    await input.setValue('temp-key')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('.border-yellow-500').exists()).toBe(true)
+
+    // Click Dismiss
+    const dismissButton = wrapper.findAll('button').find((b) => b.text().includes('Dismiss'))
+    expect(dismissButton).toBeDefined()
+    await dismissButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.border-yellow-500').exists()).toBe(false)
+  })
+
+  it('deletes key after confirmation', async () => {
+    mockKeysApi.list.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleKeys),
+    })
+    mockKeysApi.delete.mockResolvedValue({ ok: true })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const deleteButton = wrapper.findAll('button').find((b) => b.text().includes('Delete'))
+    expect(deleteButton).toBeDefined()
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalled()
+    expect(mockKeysApi.delete).toHaveBeenCalledWith(sampleKeys[0].id)
+  })
+
+  it('cancels delete when confirmation declined', async () => {
+    mockKeysApi.list.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(sampleKeys),
+    })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const deleteButton = wrapper.findAll('button').find((b) => b.text().includes('Delete'))
+    await deleteButton!.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalled()
+    expect(mockKeysApi.delete).not.toHaveBeenCalled()
+  })
 })

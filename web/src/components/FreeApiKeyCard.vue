@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { FREE_API_KEY, LANGUAGES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,31 @@ const fetchError = ref('')
 const fetchLoading = ref(false)
 const resultUrl = ref('')
 const resultImageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
+
+const sizeOptions = computed(() => {
+  if (imageType.value === 'backdrop') {
+    return [
+      { value: 'default', label: 'Size: default' },
+      { value: 'small', label: 'Small' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'large', label: 'Large' },
+    ]
+  }
+  return [
+    { value: 'default', label: 'Size: default' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'large', label: 'Large' },
+    { value: 'verylarge', label: 'Very Large' },
+  ]
+})
+
+// Reset size when switching image type if the current size is invalid
+watch(imageType, () => {
+  const validValues = sizeOptions.value.map(o => o.value)
+  if (!validValues.includes(imageSize.value)) {
+    imageSize.value = 'default'
+  }
+})
 
 const apiBase = import.meta.env.VITE_API_URL || ''
 
@@ -147,11 +172,9 @@ async function handleFetch() {
               <SelectValue placeholder="Size: default" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Size: default</SelectItem>
-              <SelectItem value="small">Small</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="large">Large</SelectItem>
-              <SelectItem value="verylarge">Very Large</SelectItem>
+              <SelectItem v-for="opt in sizeOptions" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </SelectItem>
             </SelectContent>
           </Select>
           <Select v-model="lang">

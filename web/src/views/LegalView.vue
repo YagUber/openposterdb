@@ -5,7 +5,7 @@ import NavButtons from "@/components/NavButtons.vue";
 <template>
   <div class="min-h-screen flex flex-col">
     <main class="flex-1 flex flex-col items-center px-4 py-16">
-      <div class="max-w-2xl w-full space-y-10">
+      <div class="max-w-2xl w-full space-y-3">
         <div class="space-y-3">
           <router-link
             to="/"
@@ -19,8 +19,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </div>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Service Description</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Service Description</h2>
           <p class="text-sm text-muted-foreground">
             OpenPosterDB is an open-source service for generating and serving
             posters, logos, and backdrops with rating badge overlays for media
@@ -30,8 +30,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Disclaimer</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Disclaimer</h2>
           <p class="text-sm text-muted-foreground">
             OpenPosterDB is provided "as is" without warranty of any kind,
             express or implied. Ratings displayed are sourced from third-party
@@ -41,8 +41,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Intellectual Property</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Intellectual Property</h2>
           <p class="text-sm text-muted-foreground">
             All poster images, logos, backdrops, and metadata are sourced from
             third-party services (TMDB, Fanart.tv, etc.) and remain the property
@@ -57,8 +57,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">User Responsibilities</h2>
+        <section>
+          <h2 class="text-lg font-semibold">User Responsibilities</h2>
           <p class="text-sm text-muted-foreground">
             Users are responsible for ensuring their use of OpenPosterDB
             complies with the terms of service of all integrated third-party
@@ -68,8 +68,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Public Instance</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Public Instance</h2>
           <p class="text-sm text-muted-foreground">
             The public instance at openposterdb.com is provided as a convenience
             and may be subject to rate limits, usage restrictions, or downtime
@@ -80,8 +80,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Abuse</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Abuse</h2>
           <p class="text-sm text-muted-foreground">
             You may not use OpenPosterDB to engage in any activity that is
             abusive, or interferes with the operation of the service. Automated
@@ -91,8 +91,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Limitation of Liability</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Limitation of Liability</h2>
           <p class="text-sm text-muted-foreground">
             In no event shall OpenPosterDB or its contributors be liable for any
             direct, indirect, incidental, special, or consequential damages
@@ -101,8 +101,8 @@ import NavButtons from "@/components/NavButtons.vue";
           </p>
         </section>
 
-        <section class="space-y-1.5">
-          <h2 class="text-lg font-semibold pt-2">Changes to Terms</h2>
+        <section>
+          <h2 class="text-lg font-semibold">Changes to Terms</h2>
           <p class="text-sm text-muted-foreground">
             These terms may be updated at any time. Continued use of the service
             constitutes acceptance of any changes.

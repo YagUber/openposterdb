@@ -8,6 +8,21 @@
 
 A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://ratingposterdb.com). Generates movie and TV show posters, logos, and backdrops with rating badges from multiple sources overlaid on them. Fetches art from TMDB (or optionally [Fanart.tv](https://fanart.tv)), aggregates ratings from IMDb, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, MyAnimeList, and composites color-coded badges onto the image.
 
+[GitHub](https://github.com/pnrxa/openposterdb) | [Docker Hub](https://hub.docker.com/r/pnrxa/openposterdb) | [GitHub Packages](https://ghcr.io/pnrxa/openposterdb)
+
+## Quick Start
+
+### Docker
+
+```bash
+# Copy the example env to the project root and fill in your API keys
+cp api/.env.example .env
+# Edit .env — at minimum set TMDB_API_KEY, MDBLIST_API_KEY (or OMDB), and JWT_SECRET
+
+# Build and start
+docker compose up -d
+```
+
 ## API Endpoints
 
 ### Poster
@@ -102,7 +117,7 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 - **API**: Rust, Axum, SeaORM + SQLite, image/imageproc for rendering
 - **Web**: Vue 3, TypeScript, Tailwind CSS, Vite
 
-## Quick Start
+## Getting Started
 
 ### Docker
 

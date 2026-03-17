@@ -158,9 +158,6 @@ const backdrops = [
               <p class="text-xs text-muted-foreground">{{ p.label }}</p>
             </div>
           </div>
-          <p class="text-xs text-muted-foreground italic">
-            All films shown are in the public domain
-          </p>
         </div>
 
         <!-- Logos -->
@@ -325,5 +322,10 @@ const backdrops = [
 
       </div>
     </main>
+    <footer class="text-center py-6">
+      <router-link to="/legal" class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+        Terms of Service
+      </router-link>
+    </footer>
   </div>
 </template>

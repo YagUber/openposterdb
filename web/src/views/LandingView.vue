@@ -104,6 +104,30 @@ const backdrops = [
   { src: "/examples/backdrop-metropolis.webp", label: "Metropolis (1927)" },
   { src: "/examples/backdrop-trip-to-moon.webp", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
 ];
+
+const posterSizes = [
+  { src: "/examples/size-poster-xs.webp", label: "Extra Small" },
+  { src: "/examples/size-poster-s.webp", label: "Small" },
+  { src: "/examples/size-poster-m.webp", label: "Medium" },
+  { src: "/examples/size-poster-l.webp", label: "Large" },
+  { src: "/examples/size-poster-xl.webp", label: "Extra Large" },
+];
+
+const logoSizes = [
+  { src: "/examples/size-logo-xs.webp", label: "Extra Small" },
+  { src: "/examples/size-logo-s.webp", label: "Small" },
+  { src: "/examples/size-logo-m.webp", label: "Medium" },
+  { src: "/examples/size-logo-l.webp", label: "Large" },
+  { src: "/examples/size-logo-xl.webp", label: "Extra Large" },
+];
+
+const backdropSizes = [
+  { src: "/examples/size-backdrop-xs.webp", label: "Extra Small" },
+  { src: "/examples/size-backdrop-s.webp", label: "Small" },
+  { src: "/examples/size-backdrop-m.webp", label: "Medium" },
+  { src: "/examples/size-backdrop-l.webp", label: "Large" },
+  { src: "/examples/size-backdrop-xl.webp", label: "Extra Large" },
+];
 </script>
 
 <template>
@@ -259,6 +283,69 @@ const backdrops = [
                 class="rounded-lg shadow-md"
               />
               <p class="text-xs text-muted-foreground">{{ l.label }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Badge Size -->
+        <div class="space-y-8 text-center">
+          <div class="space-y-2">
+            <h2 class="text-2xl font-semibold">Badge Size</h2>
+            <p class="text-sm text-muted-foreground max-w-lg mx-auto">
+              Control how large the rating badges appear on your images.
+            </p>
+          </div>
+
+          <!-- Size: Posters -->
+          <div class="space-y-2">
+            <h3 class="text-lg font-medium">Posters</h3>
+            <div class="flex flex-wrap justify-center gap-4">
+              <div v-for="p in posterSizes" :key="p.src" class="space-y-1">
+                <BlurImage
+                  :src="p.src"
+                  :alt="p.label"
+                  :width="160"
+                  :height="240"
+                  class="rounded-lg shadow-md"
+                />
+                <p class="text-xs text-muted-foreground">{{ p.label }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Size: Logos -->
+          <div class="space-y-2">
+            <h3 class="text-lg font-medium">Logos</h3>
+            <div class="flex flex-wrap items-end justify-center gap-6">
+              <div v-for="l in logoSizes" :key="l.src" class="space-y-2">
+                <div class="rounded-lg shadow-md bg-neutral-900 p-3">
+                  <BlurImage
+                    :src="l.src"
+                    :alt="l.label"
+                    :width="200"
+                    :height="122"
+                    fit="contain"
+                  />
+                </div>
+                <p class="text-xs text-muted-foreground">{{ l.label }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Size: Backdrops -->
+          <div class="space-y-2">
+            <h3 class="text-lg font-medium">Backdrops</h3>
+            <div class="flex flex-wrap justify-center gap-4">
+              <div v-for="b in backdropSizes" :key="b.src" class="space-y-1">
+                <BlurImage
+                  :src="b.src"
+                  :alt="b.label"
+                  :width="360"
+                  :height="203"
+                  class="rounded-lg shadow-md"
+                />
+                <p class="text-xs text-muted-foreground">{{ b.label }}</p>
+              </div>
             </div>
           </div>
         </div>

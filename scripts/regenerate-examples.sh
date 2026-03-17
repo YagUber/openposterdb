@@ -136,5 +136,41 @@ for style in h v; do
   echo "OK"
 done
 
+# Badge size variants for posters
+echo "--- Poster Badge Sizes ---"
+for size in xs s m l xl; do
+  echo -n "size-poster-$size... "
+  extra=""
+  [[ "$size" == "l" || "$size" == "xl" ]] && extra="&ratings_limit=2"
+  curl -sf "${AUTH[@]}" \
+    "$PREVIEW/poster?badge_size=$size$extra" \
+    -o "$OUT/size-poster-$size.jpg"
+  echo "OK"
+done
+
+# Badge size variants for logos
+echo "--- Logo Badge Sizes ---"
+for size in xs s m l xl; do
+  echo -n "size-logo-$size... "
+  extra=""
+  [[ "$size" == "l" || "$size" == "xl" ]] && extra="&ratings_limit=2"
+  curl -sf "${AUTH[@]}" \
+    "$PREVIEW/logo?badge_size=$size$extra" \
+    -o "$OUT/size-logo-$size.png"
+  echo "OK"
+done
+
+# Badge size variants for backdrops
+echo "--- Backdrop Badge Sizes ---"
+for size in xs s m l xl; do
+  echo -n "size-backdrop-$size... "
+  extra=""
+  [[ "$size" == "l" || "$size" == "xl" ]] && extra="&ratings_limit=2"
+  curl -sf "${AUTH[@]}" \
+    "$PREVIEW/backdrop?badge_size=$size$extra" \
+    -o "$OUT/size-backdrop-$size.jpg"
+  echo "OK"
+done
+
 echo ""
 echo "Done!"

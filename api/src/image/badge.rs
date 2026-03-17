@@ -9,6 +9,7 @@ use crate::services::ratings::RatingBadge;
 
 const BASE_BADGE_HEIGHT: u32 = 58;
 const BASE_BADGE_PADDING_H: u32 = 14;
+const BASE_TEXT_LABEL_PADDING_H: u32 = 8;
 const BASE_BADGE_VALUE_PADDING_H: u32 = 10;
 const BASE_BADGE_RADIUS: u32 = 10;
 const BASE_FONT_SIZE: f32 = 34.0;
@@ -33,6 +34,7 @@ pub fn render_badge(badge: &RatingBadge, font: &FontArc, label_style: &str) -> R
 struct ScaledDims {
     badge_height: u32,
     badge_padding_h: u32,
+    text_label_padding_h: u32,
     badge_value_padding_h: u32,
     badge_radius: u32,
     icon_height: u32,
@@ -43,6 +45,7 @@ impl ScaledDims {
         Self {
             badge_height: (BASE_BADGE_HEIGHT as f32 * badge_scale).round() as u32,
             badge_padding_h: (BASE_BADGE_PADDING_H as f32 * badge_scale).round() as u32,
+            text_label_padding_h: (BASE_TEXT_LABEL_PADDING_H as f32 * badge_scale).round() as u32,
             badge_value_padding_h: (BASE_BADGE_VALUE_PADDING_H as f32 * badge_scale).round() as u32,
             badge_radius: (BASE_BADGE_RADIUS as f32 * badge_scale).round() as u32,
             icon_height: (BASE_ICON_HEIGHT as f32 * badge_scale).round() as u32,
@@ -140,27 +143,28 @@ fn render_badge_inner(
         uniform_label_width.unwrap_or_else(|| text_width(label, &fonts.label_scaled))
     };
     let value_width = uniform_value_width.unwrap_or_else(|| text_width(value, &fonts.scaled));
-    let total_width = label_width + value_width + dims.badge_padding_h * 2 + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2;
+    let label_pad = if use_icon { dims.badge_padding_h } else { dims.text_label_padding_h };
+    let total_width = label_width + value_width + label_pad * 2 + dims.badge_value_padding_h + dims.badge_value_padding_h / 2 + 2;
 
     let mut img = RgbaImage::new(total_width, dims.badge_height);
 
     // Draw label background (colored)
     let dark_bg = Rgba([0, 0, 0, 200]);
-    draw_rounded_rect(&mut img, 0, 0, label_width + dims.badge_padding_h * 2, dims.badge_height, dims.badge_radius, badge.source.color());
+    draw_rounded_rect(&mut img, 0, 0, label_width + label_pad * 2, dims.badge_height, dims.badge_radius, badge.source.color());
 
     // Draw value background (dark)
-    let value_x = label_width + dims.badge_padding_h * 2;
+    let value_x = label_width + label_pad * 2;
     draw_rounded_rect(&mut img, value_x, 0, total_width - value_x, dims.badge_height, dims.badge_radius, dark_bg);
 
     // Overdraw the inner corners to make a clean join
     draw_filled_rect_mut(
         &mut img,
-        Rect::at((label_width + dims.badge_padding_h) as i32, 0).of_size(dims.badge_padding_h, dims.badge_height),
+        Rect::at((label_width + label_pad) as i32, 0).of_size(label_pad, dims.badge_height),
         badge.source.color(),
     );
     draw_filled_rect_mut(
         &mut img,
-        Rect::at(value_x as i32, 0).of_size(dims.badge_padding_h, dims.badge_height),
+        Rect::at(value_x as i32, 0).of_size(label_pad, dims.badge_height),
         dark_bg,
     );
 
@@ -173,12 +177,12 @@ fn render_badge_inner(
         } else {
             imageops::resize(icon, icon_w, dims.icon_height, imageops::FilterType::Lanczos3)
         };
-        let ix = dims.badge_padding_h + (label_width.saturating_sub(icon_w)) / 2;
+        let ix = label_pad + (label_width.saturating_sub(icon_w)) / 2;
         let iy = (dims.badge_height.saturating_sub(dims.icon_height)) / 2;
         imageops::overlay(&mut img, &scaled_icon, ix as i64, iy as i64);
     } else {
         let actual_label_width = text_width(label, &fonts.label_scaled);
-        let label_x = dims.badge_padding_h + (label_width.saturating_sub(actual_label_width)) / 2;
+        let label_x = label_pad + (label_width.saturating_sub(actual_label_width)) / 2;
         let label_y = (dims.badge_height as i32 - fonts.label_scale.x as i32) / 2;
         draw_text_mut(
             &mut img,
@@ -523,6 +527,7 @@ mod tests {
         let dims = ScaledDims::new(1.0);
         assert_eq!(dims.badge_height, BASE_BADGE_HEIGHT);
         assert_eq!(dims.badge_padding_h, BASE_BADGE_PADDING_H);
+        assert_eq!(dims.text_label_padding_h, BASE_TEXT_LABEL_PADDING_H);
         assert_eq!(dims.badge_radius, BASE_BADGE_RADIUS);
         assert_eq!(dims.icon_height, BASE_ICON_HEIGHT);
     }

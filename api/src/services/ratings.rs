@@ -723,7 +723,7 @@ async fn fetch_mdblist_ratings(
             }),
             "trakt" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Trakt,
-                value: format!("{s}%"),
+                value: format!("{:.0}%", s),
             }),
             "letterboxd" => r.value.map(|v| RatingBadge {
                 source: RatingSource::Letterboxd,
@@ -731,19 +731,19 @@ async fn fetch_mdblist_ratings(
             }),
             "popcorn" => r.score.map(|s| RatingBadge {
                 source: RatingSource::RtAudience,
-                value: format!("{s}%"),
+                value: format!("{:.0}%", s),
             }),
             "tomatoes" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Rt,
-                value: format!("{s}%"),
+                value: format!("{:.0}%", s),
             }),
             "metacritic" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Metacritic,
-                value: s.to_string(),
+                value: format!("{:.0}", s),
             }),
             "myanimelist" => r.score.map(|s| RatingBadge {
                 source: RatingSource::Mal,
-                value: format!("{:.2}", s as f64 / 10.0),
+                value: format!("{:.2}", s / 10.0),
             }),
             _ => None,
         };

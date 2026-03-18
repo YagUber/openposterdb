@@ -31,7 +31,7 @@ pub struct MdblistIds {
 pub struct MdblistRating {
     pub source: String,
     pub value: Option<f64>,
-    pub score: Option<i32>,
+    pub score: Option<f64>,
     pub votes: Option<i64>,
 }
 

@@ -5,6 +5,9 @@ import type { Plugin } from 'vite'
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png'])
 const WEBP_QUALITY = 80
 
+/** Directories to process. */
+const IMAGE_DIRS = ['examples', 'icons'] as const
+
 /** Max widths at 2× retina for each image category on the landing page. */
 const MAX_WIDTHS: Record<string, number> = {
   'size-backdrop-': 720, // displayed at 360px
@@ -69,12 +72,13 @@ export default function optimizeExamplesPlugin(): Plugin {
       const cache = new Map<string, { mtime: number; buf: Buffer }>()
 
       server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/examples/') || !req.url.endsWith('.webp')) {
-          return next()
-        }
+        if (!req.url?.endsWith('.webp')) return next()
 
-        const webpName = req.url.slice('/examples/'.length)
-        const source = findSource(join(publicDir, 'examples'), webpName)
+        const dir = IMAGE_DIRS.find(d => req.url!.startsWith(`/${d}/`))
+        if (!dir) return next()
+
+        const webpName = req.url!.slice(`/${dir}/`.length)
+        const source = findSource(join(publicDir, dir), webpName)
         if (!source) return next()
 
         try {
@@ -98,38 +102,41 @@ export default function optimizeExamplesPlugin(): Plugin {
       })
     },
 
-    // Build: convert all example images to WebP, resize, and remove originals
+    // Build: convert all images to WebP, resize, and remove originals
     async closeBundle() {
-      const examplesOut = join(outDir, 'examples')
-      if (!existsSync(examplesOut)) return
-      const files = readdirSync(examplesOut).filter(f =>
-        IMAGE_EXTS.has(extname(f).toLowerCase())
-      )
+      for (const dir of IMAGE_DIRS) {
+        const dirOut = join(outDir, dir)
+        if (!existsSync(dirOut)) continue
+        const files = readdirSync(dirOut).filter(f =>
+          IMAGE_EXTS.has(extname(f).toLowerCase())
+        )
+        if (files.length === 0) continue
 
-      let totalBefore = 0
-      let totalAfter = 0
+        let totalBefore = 0
+        let totalAfter = 0
 
-      await Promise.all(files.map(async (file) => {
-        const filePath = join(examplesOut, file)
-        const origSize = statSync(filePath).size
+        await Promise.all(files.map(async (file) => {
+          const filePath = join(dirOut, file)
+          const origSize = statSync(filePath).size
 
-        const webpName = basename(file, extname(file)) + '.webp'
-        const webpPath = join(examplesOut, webpName)
+          const webpName = basename(file, extname(file)) + '.webp'
+          const webpPath = join(dirOut, webpName)
 
-        const buf = await toWebP(filePath)
+          const buf = await toWebP(filePath)
 
-        writeFileSync(webpPath, buf)
-        unlinkSync(filePath)
+          writeFileSync(webpPath, buf)
+          unlinkSync(filePath)
 
-        totalBefore += origSize
-        totalAfter += buf.length
-        const pct = ((1 - buf.length / origSize) * 100).toFixed(0)
-        console.log(`  ${file} → ${webpName}: ${formatBytes(origSize)} → ${formatBytes(buf.length)} (−${pct}%)`)
-      }))
+          totalBefore += origSize
+          totalAfter += buf.length
+          const pct = ((1 - buf.length / origSize) * 100).toFixed(0)
+          console.log(`  ${file} → ${webpName}: ${formatBytes(origSize)} → ${formatBytes(buf.length)} (−${pct}%)`)
+        }))
 
-      if (totalBefore > 0) {
-        const pct = ((1 - totalAfter / totalBefore) * 100).toFixed(0)
-        console.log(`  examples total: ${formatBytes(totalBefore)} → ${formatBytes(totalAfter)} (−${pct}%)`)
+        if (totalBefore > 0) {
+          const pct = ((1 - totalAfter / totalBefore) * 100).toFixed(0)
+          console.log(`  ${dir} total: ${formatBytes(totalBefore)} → ${formatBytes(totalAfter)} (−${pct}%)`)
+        }
       }
     },
   }

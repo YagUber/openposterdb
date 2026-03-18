@@ -5,6 +5,7 @@ import type { Plugin } from 'vite'
 const VIRTUAL_ID = 'virtual:placeholders'
 const RESOLVED_ID = '\0' + VIRTUAL_ID
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png'])
+const IMAGE_DIRS = ['examples', 'icons'] as const
 
 export default function placeholdersPlugin(): Plugin {
   let publicDir: string
@@ -23,49 +24,51 @@ export default function placeholdersPlugin(): Plugin {
     async load(id) {
       if (id !== RESOLVED_ID) return
 
-      const examplesDir = join(publicDir, 'examples')
-      if (!existsSync(examplesDir)) {
-        return `export const placeholders = {};\n`
-      }
-      const files = readdirSync(examplesDir).filter(f =>
-        IMAGE_EXTS.has(extname(f).toLowerCase())
-      )
-
       const sharp = (await import('sharp')).default
-
       const entries: string[] = []
-      for (const file of files) {
-        const filePath = join(examplesDir, file)
-        const ext = extname(file).toLowerCase()
-        const mime = ext === '.png' ? 'image/png' : 'image/jpeg'
-        const format = ext === '.png' ? 'png' : 'jpeg'
 
-        const buf = await sharp(filePath)
-          .resize({ width: 20 })
-          .toFormat(format, format === 'jpeg' ? { quality: 20 } : {})
-          .toBuffer()
+      for (const dir of IMAGE_DIRS) {
+        const dirPath = join(publicDir, dir)
+        if (!existsSync(dirPath)) continue
+        const files = readdirSync(dirPath).filter(f =>
+          IMAGE_EXTS.has(extname(f).toLowerCase())
+        )
 
-        const b64 = `data:${mime};base64,${buf.toString('base64')}`
-        // Key by .webp extension to match the paths used in components
-        const webpKey = file.replace(/\.(jpe?g|png)$/i, '.webp')
-        entries.push(`  ${JSON.stringify('/examples/' + webpKey)}: ${JSON.stringify(b64)}`)
+        for (const file of files) {
+          const filePath = join(dirPath, file)
+          const ext = extname(file).toLowerCase()
+          const mime = ext === '.png' ? 'image/png' : 'image/jpeg'
+          const format = ext === '.png' ? 'png' : 'jpeg'
+
+          const buf = await sharp(filePath)
+            .resize({ width: 20 })
+            .toFormat(format, format === 'jpeg' ? { quality: 20 } : {})
+            .toBuffer()
+
+          const b64 = `data:${mime};base64,${buf.toString('base64')}`
+          // Key by .webp extension to match the paths used in components
+          const webpKey = file.replace(/\.(jpe?g|png)$/i, '.webp')
+          entries.push(`  ${JSON.stringify('/' + dir + '/' + webpKey)}: ${JSON.stringify(b64)}`)
+        }
       }
 
       return `export const placeholders = {\n${entries.join(',\n')}\n};\n`
     },
 
     configureServer(server) {
-      const examplesDir = join(publicDir, 'examples')
-      server.watcher.add(examplesDir)
-      server.watcher.on('all', (event, path) => {
-        if (path.startsWith(examplesDir) && IMAGE_EXTS.has(extname(path).toLowerCase())) {
-          const mod = server.moduleGraph.getModuleById(RESOLVED_ID)
-          if (mod) {
-            server.moduleGraph.invalidateModule(mod)
-            server.hot.send({ type: 'full-reload' })
+      for (const dir of IMAGE_DIRS) {
+        const dirPath = join(publicDir, dir)
+        server.watcher.add(dirPath)
+        server.watcher.on('all', (event, path) => {
+          if (path.startsWith(dirPath) && IMAGE_EXTS.has(extname(path).toLowerCase())) {
+            const mod = server.moduleGraph.getModuleById(RESOLVED_ID)
+            if (mod) {
+              server.moduleGraph.invalidateModule(mod)
+              server.hot.send({ type: 'full-reload' })
+            }
           }
-        }
-      })
+        })
+      }
     },
   }
 }

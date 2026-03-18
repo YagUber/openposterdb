@@ -32,6 +32,7 @@ const features = [
 const posters = [
   { src: "/examples/nosferatu.webp", label: "Nosferatu (1922)" },
   { src: "/examples/metropolis.webp", label: "Metropolis (1927)" },
+  { src: "/examples/namakura-gatana.webp", alt: "Namakura Gatana (1917)", label: "Namakura Gatana (1917)" },
   {
     src: "/examples/caligari.webp",
     alt: "The Cabinet of Dr. Caligari (1920)",
@@ -78,15 +79,28 @@ const dataProviders = [
   { name: "OMDb", url: "https://www.omdbapi.com/", keyUrl: "https://www.omdbapi.com/apikey.aspx", desc: "Alternative ratings source" },
   { name: "Fanart.tv", url: "https://fanart.tv/", keyUrl: "https://fanart.tv/get-an-api-key/", desc: "Fan art, logos, and backdrops" },
   { name: "RPDB", url: "https://ratingposterdb.com/", desc: "The original inspiration for this project" },
+  { name: "Simple Icons", url: "https://simpleicons.org/", desc: "SVG icons for popular brands" },
 ];
 
 const ratingSources = [
   { name: "IMDb", url: "https://www.imdb.com/" },
+  { name: "TMDB", url: "https://www.themoviedb.org/" },
   { name: "Rotten Tomatoes", url: "https://www.rottentomatoes.com/" },
   { name: "Metacritic", url: "https://www.metacritic.com/" },
   { name: "Trakt", url: "https://trakt.tv/" },
   { name: "Letterboxd", url: "https://letterboxd.com/" },
   { name: "MyAnimeList", url: "https://myanimelist.net/" },
+];
+
+const ratingIcons = [
+  { src: "/icons/imdb.webp", label: "IMDb", color: "rgb(180, 145, 15)" },
+  { src: "/icons/tmdb.webp", label: "TMDB", color: "rgb(1, 155, 88)" },
+  { src: "/icons/rt.webp", label: "Rotten Tomatoes", color: "rgb(185, 35, 8)" },
+  { src: "/icons/rta.webp", label: "RT Audience", color: "rgb(185, 35, 8)" },
+  { src: "/icons/mc.webp", label: "Metacritic", color: "rgb(75, 150, 38)" },
+  { src: "/icons/trakt.webp", label: "Trakt", color: "rgb(175, 15, 45)" },
+  { src: "/icons/lb.webp", label: "Letterboxd", color: "rgb(0, 155, 88)" },
+  { src: "/icons/mal.webp", label: "MyAnimeList", color: "rgb(34, 60, 120)" },
 ];
 
 const logos = [
@@ -167,8 +181,33 @@ const backdropSizes = [
         <div class="space-y-4 text-center">
           <h2 class="text-2xl font-semibold">Rating Badges</h2>
           <p class="text-sm text-muted-foreground max-w-lg mx-auto">
-            Rating badges from IMDb, Letterboxd, Rotten Tomatoes, and more are overlaid directly
-            onto your media posters.
+            Aggregate ratings from IMDb, TMDB, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, and
+            MyAnimeList.
+          </p>
+          <div class="flex flex-wrap justify-center items-center gap-4" role="list" aria-label="Supported rating sources">
+            <div v-for="icon in ratingIcons" :key="icon.src" role="listitem" class="flex flex-col items-center">
+              <div
+                class="h-10 w-10 rounded-lg p-1.5"
+                :style="{ backgroundColor: icon.color }"
+                :title="icon.label"
+              >
+                <BlurImage
+                  :src="icon.src"
+                  :alt="icon.label"
+                  :width="28"
+                  :height="28"
+                  fit="contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Posters -->
+        <div class="space-y-4 text-center">
+          <h2 class="text-2xl font-semibold">Posters</h2>
+          <p class="text-sm text-muted-foreground max-w-lg mx-auto">
+            Rating badges are overlaid directly onto your movie and TV posters.
           </p>
           <div class="flex flex-wrap justify-center gap-4">
             <div v-for="p in posters" :key="p.src" class="space-y-1">

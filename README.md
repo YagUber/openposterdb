@@ -485,6 +485,7 @@ OpenPosterDB is made possible by these third-party services and projects:
 - **[OMDb (Open Movie Database)](https://www.omdbapi.com/)** ([get API key](https://www.omdbapi.com/apikey.aspx)) — Alternative ratings source for IMDb, Rotten Tomatoes, and Metacritic
 - **[Fanart.tv](https://fanart.tv/)** ([get API key](https://fanart.tv/get-an-api-key/)) — High-quality fan art, logos, and backdrops with language and textless support
 - **[RPDB (Rating Poster Database)](https://ratingposterdb.com/)** — The original project that inspired OpenPosterDB's API design
+- **[Simple Icons](https://simpleicons.org/)** — SVG icons for popular brands
 
 ### Rating Sources
 

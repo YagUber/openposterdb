@@ -6,6 +6,7 @@ KEY="t0-free-rpdb"
 OUT="$(dirname "$0")/../web/public/examples"
 
 declare -A POSTERS=(
+  [namakura-gatana]=tt0438075
   [nosferatu]=tt0013442
   [metropolis]=tt0017136
   [caligari]=tt0010323

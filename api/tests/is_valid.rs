@@ -97,7 +97,7 @@ async fn is_valid_free_key_rejected_when_disabled() {
 }
 
 #[tokio::test]
-async fn is_valid_returns_empty_body() {
+async fn is_valid_returns_json_body() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
 
@@ -122,7 +122,8 @@ async fn is_valid_returns_empty_body() {
     let res = app.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     let body = res.into_body().collect().await.unwrap().to_bytes();
-    assert!(body.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json, serde_json::json!({ "valid": true }));
 }
 
 #[tokio::test]

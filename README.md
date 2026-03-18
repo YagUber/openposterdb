@@ -12,7 +12,9 @@ A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://r
 
 ## Quick Start
 
-### Docker
+OpenPosterDB runs as a single Docker container.
+
+### Docker Compose
 
 ```bash
 # Copy the example env to the project root and fill in your API keys
@@ -22,6 +24,21 @@ cp api/.env.example .env
 # Build and start
 docker compose up -d
 ```
+
+### Docker
+
+```bash
+docker run -d \
+  -p 3000:3000 \
+  -e TMDB_API_KEY=your_key \
+  -e MDBLIST_API_KEY=your_key \
+  -e JWT_SECRET=$(openssl rand -hex 32) \
+  -v openposterdb-cache:/app/cache \
+  -v openposterdb-db:/app/db \
+  pnrxa/openposterdb
+```
+
+See [Configuration](#configuration) for additional environment variables.
 
 ## API Endpoints
 

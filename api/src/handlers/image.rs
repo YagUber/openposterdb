@@ -170,7 +170,7 @@ pub async fn is_valid_handler(
     Path(api_key): Path<String>,
 ) -> Response {
     match resolve_settings(&state, &api_key).await {
-        Ok(_) => StatusCode::OK.into_response(),
+        Ok(_) => axum::Json(serde_json::json!({ "valid": true })).into_response(),
         Err(resp) => resp,
     }
 }

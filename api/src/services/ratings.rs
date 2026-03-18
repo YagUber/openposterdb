@@ -252,7 +252,13 @@ async fn fetch_tmdb_rating(resolved: &ResolvedId, tmdb: &TmdbClient) -> Option<R
         MediaType::Tv => format!("/tv/{}", resolved.tmdb_id),
     };
 
-    let details: Details = tmdb.get(&path, &[]).await.ok()?;
+    let details: Details = match tmdb.get(&path, &[]).await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(tmdb_id = resolved.tmdb_id, "tmdb rating fetch failed: {e}");
+            return None;
+        }
+    };
     let score = details.vote_average?;
     if score <= 0.0 {
         return None;
@@ -267,7 +273,13 @@ async fn fetch_tmdb_rating(resolved: &ResolvedId, tmdb: &TmdbClient) -> Option<R
 async fn fetch_omdb_ratings(imdb_id: Option<&str>, omdb: Option<&OmdbClient>) -> Option<Vec<RatingBadge>> {
     let client = omdb?;
     let imdb_id = imdb_id?;
-    let resp = client.get_ratings(imdb_id).await.ok()?;
+    let resp = match client.get_ratings(imdb_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(imdb_id, "omdb rating fetch failed: {e}");
+            return None;
+        }
+    };
     let mut badges = Vec::new();
 
     // IMDb rating
@@ -693,10 +705,13 @@ async fn fetch_mdblist_ratings(
     let client = mdblist?;
     let imdb_id = resolved.imdb_id.as_deref()?;
 
-    let resp = client
-        .get_ratings(imdb_id, &resolved.media_type)
-        .await
-        .ok()?;
+    let resp = match client.get_ratings(imdb_id, &resolved.media_type).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(imdb_id, media_type = ?resolved.media_type, "mdblist rating fetch failed: {e}");
+            return None;
+        }
+    };
 
     let mut badges = Vec::new();
 

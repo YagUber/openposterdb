@@ -233,10 +233,10 @@ async fn backdrop_tracks_last_used_for_regular_key() {
     );
 }
 
-// --- Fallback returns placeholder images ---
+// --- Fallback param is accepted but has no effect (no placeholder) ---
 
 #[tokio::test]
-async fn logo_fallback_returns_png_placeholder() {
+async fn logo_fallback_returns_error() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "logo-fallback").await;
@@ -247,19 +247,13 @@ async fn logo_fallback_returns_png_placeholder() {
         .unwrap();
 
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(
-        res.headers().get("content-type").unwrap(),
-        "image/png"
-    );
-    let body = res.into_body().collect().await.unwrap().to_bytes();
-    assert!(!body.is_empty());
-    // PNG magic bytes
-    assert_eq!(&body[..4], &[0x89, b'P', b'N', b'G']);
+    // fallback=true is accepted but ignored — should return error, not 200 placeholder
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn backdrop_fallback_returns_jpeg_placeholder() {
+async fn backdrop_fallback_returns_error() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "backdrop-fallback").await;
@@ -270,16 +264,8 @@ async fn backdrop_fallback_returns_jpeg_placeholder() {
         .unwrap();
 
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(
-        res.headers().get("content-type").unwrap(),
-        "image/jpeg"
-    );
-    let body = res.into_body().collect().await.unwrap().to_bytes();
-    assert!(!body.is_empty());
-    // JPEG magic bytes
-    assert_eq!(body[0], 0xFF);
-    assert_eq!(body[1], 0xD8);
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 // --- Without fallback, errors return non-200 ---
@@ -358,7 +344,7 @@ async fn backdrop_negative_cache_short_circuits_request() {
 }
 
 #[tokio::test]
-async fn logo_negative_cache_with_fallback_returns_placeholder() {
+async fn logo_negative_cache_with_fallback_returns_error() {
     let (app, state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "logo-neg-fb").await;
@@ -366,14 +352,13 @@ async fn logo_negative_cache_with_fallback_returns_placeholder() {
     state.fanart_negative.insert("imdb/tt9999999_l_f_en_neg".to_string(), ()).await;
     state.fanart_negative.run_pending_tasks().await;
 
-    // With fallback=true, negative cache miss should still return placeholder PNG
+    // fallback=true is accepted but ignored — should return error
     let req = Request::builder()
         .uri(format!("/{api_key}/imdb/logo-default/tt9999999.png?fallback=true"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    assert_eq!(res.headers().get("content-type").unwrap(), "image/png");
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 // --- Language override on logo/backdrop ---
@@ -481,40 +466,3 @@ async fn backdrop_rejects_invalid_id_type() {
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
 }
 
-// --- Cache-Control header is set ---
-
-#[tokio::test]
-async fn logo_fallback_has_cache_control_header() {
-    let (app, _state) = common::setup_test_app().await;
-    let token = common::setup_admin(&app).await;
-    let api_key = create_api_key(&app, &token, "logo-cc").await;
-
-    let req = Request::builder()
-        .uri(format!("/{api_key}/imdb/logo-default/tt0000001.png?fallback=true"))
-        .body(Body::empty())
-        .unwrap();
-
-    let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let cc = res.headers().get("cache-control").unwrap().to_str().unwrap();
-    assert!(cc.contains("public"), "should have public cache-control");
-    assert!(cc.contains("max-age="), "should have max-age");
-}
-
-#[tokio::test]
-async fn backdrop_fallback_has_cache_control_header() {
-    let (app, _state) = common::setup_test_app().await;
-    let token = common::setup_admin(&app).await;
-    let api_key = create_api_key(&app, &token, "backdrop-cc").await;
-
-    let req = Request::builder()
-        .uri(format!("/{api_key}/imdb/backdrop-default/tt0000001.jpg?fallback=true"))
-        .body(Body::empty())
-        .unwrap();
-
-    let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let cc = res.headers().get("cache-control").unwrap().to_str().unwrap();
-    assert!(cc.contains("public"), "should have public cache-control");
-    assert!(cc.contains("max-age="), "should have max-age");
-}

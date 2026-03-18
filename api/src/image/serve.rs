@@ -15,9 +15,6 @@ use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMa
 use crate::services::ratings;
 use crate::AppState;
 
-/// Hardcoded CDN TTL for placeholder/fallback images (1 day).
-pub const PLACEHOLDER_CDN_MAX_AGE: u64 = 86400;
-
 /// Threshold (ms) above which requests are logged as slow.
 const SLOW_REQUEST_MS: u64 = 2000;
 

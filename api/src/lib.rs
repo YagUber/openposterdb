@@ -102,7 +102,6 @@ pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
     ),
     components(schemas(
         handlers::image::IdTypeParam,
-        handlers::image::FallbackParam,
         handlers::image::ImageSizeParam,
     )),
 )]

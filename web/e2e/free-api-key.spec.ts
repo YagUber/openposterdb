@@ -191,11 +191,6 @@ test.describe('free API key card', () => {
     await expect(langSelect).toBeVisible()
     await expect(langSelect).toContainText('Language: any')
 
-    // Fallback checkbox
-    const fallbackCheckbox = page.locator('#free-fallback')
-    await expect(fallbackCheckbox).toBeVisible()
-    await expect(fallbackCheckbox).not.toBeChecked()
-
     // ID input pre-filled with Nosferatu
     const idInput = page.locator('#free-id-value')
     await expect(idInput).toBeVisible()
@@ -239,9 +234,6 @@ test.describe('free API key card', () => {
     await selectOption(page, page.locator('#free-lang'), 'en - English')
     await expect(curlBlock).toContainText('lang=en')
 
-    // Enable fallback
-    await page.locator('#free-fallback').check()
-    await expect(curlBlock).toContainText('fallback=true')
   })
 
   test('fetch poster shows image result', async ({ page, request }) => {

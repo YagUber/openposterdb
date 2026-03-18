@@ -8,7 +8,6 @@ use std::sync::Arc;
 use crate::cache;
 use crate::error::AppError;
 use crate::handlers::auth::hash_api_key;
-use crate::image::generate;
 use crate::image::serve;
 use crate::services::db;
 use crate::services::db::RenderSettings;
@@ -24,14 +23,6 @@ pub enum IdTypeParam {
     Imdb,
     Tmdb,
     Tvdb,
-}
-
-/// OpenAPI-only enum for the `fallback` query parameter.
-#[derive(utoipa::ToSchema)]
-#[allow(dead_code)]
-pub enum FallbackParam {
-    #[schema(rename = "true")]
-    True,
 }
 
 /// OpenAPI-only enum for the `imageSize` query parameter.
@@ -52,9 +43,9 @@ pub enum ImageSizeParam {
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ImageQuery {
-    /// When set to `true`, returns a placeholder image instead of 404 when the media item is not found.
+    /// Accepted for RPDB compatibility but has no effect. OpenPosterDB uses TMDB as a fallback source instead of returning a 1x1 pixel placeholder.
     #[serde(default)]
-    #[param(value_type = Option<FallbackParam>, example = "true")]
+    #[param(value_type = Option<String>, example = "true")]
     pub fallback: Option<String>,
     /// Language code for Fanart.tv image selection (e.g. `en`, `de`, `pt-BR`). 2-5 alphanumeric characters or hyphens.
     #[serde(default)]
@@ -209,7 +200,6 @@ async fn try_cdn_redirect(
     id_type_str: &str,
     image_type_path: &str,
     id_value: &str,
-    fallback: Option<&str>,
     image_size: Option<db::ImageSize>,
 ) -> Option<Response> {
     if !state.config.enable_cdn_redirects {
@@ -221,13 +211,8 @@ async fn try_cdn_redirect(
         .insert(hash.clone(), settings.clone())
         .await;
     let mut url = format!("/c/{hash}/{id_type_str}/{image_type_path}/{id_value}");
-    let mut has_query = false;
-    if fallback == Some("true") {
-        url.push_str("?fallback=true");
-        has_query = true;
-    }
     if let Some(size) = image_size {
-        url.push(if has_query { '&' } else { '?' });
+        url.push('?');
         url.push_str("imageSize=");
         url.push_str(size.query_str());
     }
@@ -244,14 +229,6 @@ fn parse_image_size(
             .map(Some)
             .map_err(|e| e.into_response()),
         None => Ok(None),
-    }
-}
-
-fn placeholder_bytes(content_type: &str) -> Bytes {
-    if content_type == "image/png" {
-        generate::placeholder_png().into()
-    } else {
-        generate::placeholder_jpeg().into()
     }
 }
 
@@ -293,21 +270,13 @@ async fn serve_image(
     id_type_str: &str,
     id_value_raw: &str,
     settings: &db::RenderSettings,
-    use_fallback: bool,
     kind: cache::ImageType,
     image_size: Option<db::ImageSize>,
 ) -> Response {
     let content_type = kind.content_type();
     match dispatch_image(state, id_type_str, id_value_raw, settings, kind, image_size).await {
         Ok((bytes, _)) => serve::image_response(bytes, content_type),
-        Err(e) => {
-            if use_fallback {
-                tracing::warn!(error = %e, "returning fallback placeholder");
-                serve::image_response(placeholder_bytes(content_type), content_type)
-            } else {
-                e.into_response()
-            }
-        }
+        Err(e) => e.into_response(),
     }
 }
 
@@ -346,7 +315,6 @@ async fn image_handler_inner(
         id_type_str,
         cdn_route_segment(kind),
         id_value_raw,
-        query.fallback.as_deref(),
         image_size,
     )
     .await
@@ -354,8 +322,7 @@ async fn image_handler_inner(
         return redirect;
     }
 
-    let use_fallback = query.fallback.as_deref() == Some("true");
-    serve_image(&state, id_type_str, id_value_raw, &settings, use_fallback, kind, image_size).await
+    serve_image(&state, id_type_str, id_value_raw, &settings, kind, image_size).await
 }
 
 #[utoipa::path(
@@ -376,7 +343,7 @@ async fn image_handler_inner(
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
-        (status = 404, description = "Media item not found. Use `?fallback=true` to get a placeholder image instead."),
+        (status = 404, description = "Media item not found."),
     ),
 )]
 pub async fn handler(
@@ -405,7 +372,7 @@ pub async fn handler(
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
-        (status = 404, description = "Media item not found. Use `?fallback=true` to get a placeholder image instead."),
+        (status = 404, description = "Media item not found."),
         (status = 501, description = "Fanart.tv integration is not configured on this server. Logos and backdrops require a Fanart.tv API key."),
     ),
 )]
@@ -435,7 +402,7 @@ pub async fn logo_handler(
             headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
-        (status = 404, description = "Media item not found. Use `?fallback=true` to get a placeholder image instead."),
+        (status = 404, description = "Media item not found."),
         (status = 501, description = "Fanart.tv integration is not configured on this server. Logos and backdrops require a Fanart.tv API key."),
     ),
 )]
@@ -490,8 +457,6 @@ async fn cdn_handler_inner(
         }
     }
 
-    let use_fallback = query.fallback.as_deref() == Some("true");
-
     let image_size = match parse_image_size(&query.image_size, kind) {
         Ok(s) => s,
         Err(resp) => return resp,
@@ -504,14 +469,7 @@ async fn cdn_handler_inner(
             let max_age = serve::compute_cdn_max_age(release_date.as_deref(), state.config.ratings_min_stale_secs, state.config.ratings_max_age_secs);
             serve::cdn_image_response(bytes, max_age, content_type)
         }
-        Err(e) => {
-            if use_fallback {
-                tracing::warn!(error = %e, "returning fallback placeholder (cdn)");
-                serve::cdn_image_response(placeholder_bytes(content_type), serve::PLACEHOLDER_CDN_MAX_AGE, content_type)
-            } else {
-                cdn_error_response(e)
-            }
-        }
+        Err(e) => cdn_error_response(e),
     }
 }
 

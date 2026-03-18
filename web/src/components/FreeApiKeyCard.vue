@@ -3,9 +3,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { FREE_API_KEY, LANGUAGES } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -23,7 +21,6 @@ const auth = useAuthStore()
 const idType = ref<'imdb' | 'tmdb' | 'tvdb'>('imdb')
 const imageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
 const idValue = ref('tt0013442')
-const fallback = ref(false)
 const lang = ref('any')
 const imageSize = ref<'default' | 'small' | 'medium' | 'large' | 'verylarge'>('default')
 const fetchError = ref('')
@@ -70,7 +67,6 @@ const idPlaceholder = computed(() => {
 
 const queryString = computed(() => {
   const params = new URLSearchParams()
-  if (fallback.value) params.set('fallback', 'true')
   const langVal = lang.value === 'any' ? '' : lang.value
   if (langVal.trim()) params.set('lang', langVal.trim())
   const sizeVal = imageSize.value === 'default' ? '' : imageSize.value
@@ -188,16 +184,6 @@ async function handleFetch() {
               </SelectItem>
             </SelectContent>
           </Select>
-          <Label class="flex items-center gap-1.5 cursor-pointer">
-            <Checkbox
-              id="free-fallback"
-              :model-value="fallback"
-              aria-label="Enable fallback"
-              class="bg-background"
-              @update:model-value="(v) => fallback = !!v"
-            />
-            Fallback
-          </Label>
         </div>
         <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
         <div class="flex justify-center">

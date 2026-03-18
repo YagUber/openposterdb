@@ -131,7 +131,7 @@ async fn redirect_has_public_cache_control() {
 // --- Query parameter forwarding ---
 
 #[tokio::test]
-async fn redirect_forwards_fallback_param() {
+async fn redirect_does_not_forward_fallback_param() {
     let (app, _state) = setup_cdn_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "cdn-fallback").await;
@@ -144,7 +144,7 @@ async fn redirect_forwards_fallback_param() {
     let res = app.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::FOUND);
     let location = res.headers().get("location").unwrap().to_str().unwrap();
-    assert!(location.contains("?fallback=true"), "redirect should forward ?fallback=true: {location}");
+    assert!(!location.contains("fallback"), "redirect should not forward ?fallback=true: {location}");
 }
 
 #[tokio::test]
@@ -275,14 +275,14 @@ async fn cdn_backdrop_endpoint_unknown_hash_returns_404() {
 // --- /c/ endpoint: registered hash serves with CDN cache headers ---
 
 #[tokio::test]
-async fn cdn_endpoint_registered_hash_has_cdn_cache_headers() {
+async fn cdn_endpoint_registered_hash_returns_error_with_cache_headers() {
     let (app, state) = setup_cdn_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "cdn-headers").await;
 
     // First request: get the redirect to learn the hash
     let req = Request::builder()
-        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg?fallback=true"))
+        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg"))
         .body(Body::empty())
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
@@ -292,19 +292,17 @@ async fn cdn_endpoint_registered_hash_has_cdn_cache_headers() {
     // Ensure the moka cache has flushed
     state.settings_hash_registry.run_pending_tasks().await;
 
-    // Follow the redirect (with fallback so we get 200 even with fake TMDB key)
+    // Follow the redirect — with fake TMDB key, generation fails → error with CDN cache headers
     let req = Request::builder()
         .uri(&location)
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    // With fallback=true, should get 200 (placeholder) even if generation fails
-    assert_eq!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::OK, "should not get 200 with fake TMDB key");
 
     let cc = res.headers().get("cache-control").unwrap().to_str().unwrap();
-    assert!(cc.contains("public"), "CDN response should have public cache-control: {cc}");
-    assert!(cc.contains("max-age=86400"), "CDN response should have max-age=86400: {cc}");
-    assert!(cc.contains("stale-while-revalidate=604800"), "CDN response should have s-w-r: {cc}");
+    assert!(cc.contains("public"), "CDN error response should have public cache-control: {cc}");
+    assert!(cc.contains("max-age=3600"), "CDN error response should cache for 1 hour: {cc}");
 }
 
 // --- Free API key also redirects when CDN enabled ---

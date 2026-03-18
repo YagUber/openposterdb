@@ -295,31 +295,6 @@ pub fn render_poster_sync(
     Ok(buf)
 }
 
-/// Generate a 1x1 transparent placeholder JPEG
-pub fn placeholder_jpeg() -> Vec<u8> {
-    let img = image::RgbImage::from_pixel(1, 1, image::Rgb([0, 0, 0]));
-    let mut buf = Vec::new();
-    let encoder = JpegEncoder::new_with_quality(&mut buf, 50);
-    img.write_with_encoder(encoder).ok();
-    buf
-}
-
-/// Generate a 1x1 transparent placeholder PNG
-pub fn placeholder_png() -> Vec<u8> {
-    let img = RgbaImage::from_pixel(1, 1, image::Rgba([0, 0, 0, 0]));
-    let mut buf = Vec::new();
-    let encoder = image::codecs::png::PngEncoder::new(&mut buf);
-    image::ImageEncoder::write_image(
-        encoder,
-        img.as_raw(),
-        1,
-        1,
-        image::ExtendedColorType::Rgba8,
-    )
-    .ok();
-    buf
-}
-
 const LOGO_BADGE_ROW_SPACING: u32 = 7;
 const LOGO_BADGE_SPACING: u32 = 10;
 const LOGO_MAX_BADGES_PER_ROW: usize = 3;
@@ -590,15 +565,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn placeholder_jpeg_produces_valid_jpeg() {
-        let bytes = placeholder_jpeg();
-        assert!(!bytes.is_empty());
-        // JPEG files start with FF D8
-        assert_eq!(bytes[0], 0xFF);
-        assert_eq!(bytes[1], 0xD8);
-    }
-
-    #[test]
     fn render_poster_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a minimal valid PNG in memory
@@ -668,14 +634,6 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let result = render_poster_sync(b"not an image", &[], &font, 85, "bc", "h", "t", "h", 500, 1.0, "m");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn placeholder_png_produces_valid_png() {
-        let bytes = placeholder_png();
-        assert!(!bytes.is_empty());
-        // PNG files start with 0x89 P N G
-        assert_eq!(&bytes[..4], &[0x89, b'P', b'N', b'G']);
     }
 
     /// Helper: create a minimal PNG in memory.

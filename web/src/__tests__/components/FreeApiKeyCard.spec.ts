@@ -39,13 +39,6 @@ function mountCard(freeApiKeyEnabled = true) {
           template: '<input :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />',
           props: ['modelValue', 'type', 'placeholder', 'required', 'id'],
         },
-        Checkbox: {
-          name: 'Checkbox',
-          template: '<input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />',
-          props: ['modelValue', 'id'],
-          emits: ['update:modelValue'],
-        },
-        Label: { template: '<label><slot /></label>' },
         Button: {
           template: '<button :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>',
           props: ['disabled', 'variant', 'size', 'type'],
@@ -184,13 +177,8 @@ describe('FreeApiKeyCard', () => {
     expect(wrapper.text()).toContain('Failed to fetch')
   })
 
-  it('queryString includes fallback, lang, imageSize params when set', async () => {
+  it('queryString includes lang, imageSize params when set', async () => {
     const wrapper = mountCard(true)
-
-    // Set fallback checkbox
-    const checkbox = wrapper.find('input[type="checkbox"]')
-    await checkbox.setValue(true)
-    await flushPromises()
 
     // Set lang
     await setSelect(wrapper, 3, 'en')
@@ -198,7 +186,6 @@ describe('FreeApiKeyCard', () => {
     await setSelect(wrapper, 2, 'large')
 
     const curlText = findCurlCode(wrapper).text()
-    expect(curlText).toContain('fallback=true')
     expect(curlText).toContain('lang=en')
     expect(curlText).toContain('imageSize=large')
   })

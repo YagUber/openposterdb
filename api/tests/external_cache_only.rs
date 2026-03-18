@@ -33,23 +33,23 @@ async fn create_api_key(app: &axum::Router, token: &str, name: &str) -> String {
     json["key"].as_str().unwrap().to_string()
 }
 
-/// Poster request with fallback=true should succeed even with external_cache_only
-/// (placeholder image returned since we have a fake TMDB key).
+/// Poster request should return an error with external_cache_only and fake TMDB key.
+/// The ?fallback=true param is accepted but has no effect.
 #[tokio::test]
-async fn poster_with_fallback_succeeds() {
+async fn poster_request_returns_error() {
     let (app, _state) = setup_external_cache_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "ext-cache-poster").await;
 
     let req = Request::builder()
-        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg?fallback=true"))
+        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg"))
         .body(Body::empty())
         .unwrap();
 
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
-    let ct = res.headers().get("content-type").unwrap().to_str().unwrap();
-    assert!(ct.contains("image/"), "should return an image: {ct}");
+    // With fake TMDB key, generation fails — should return error
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 /// No files should be written to the cache directory when external_cache_only is enabled.
@@ -70,13 +70,12 @@ async fn no_files_written_to_cache_dir() {
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "ext-cache-no-files").await;
 
-    // Make a poster request (with fallback so it doesn't error)
+    // Make a poster request (will fail with fake TMDB key, but should not write files)
     let req = Request::builder()
-        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg?fallback=true"))
+        .uri(format!("/{api_key}/imdb/poster-default/tt0111161.jpg"))
         .body(Body::empty())
         .unwrap();
-    let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::OK);
+    let _res = app.oneshot(req).await.unwrap();
 
     // Cache directory should not have been created
     assert!(

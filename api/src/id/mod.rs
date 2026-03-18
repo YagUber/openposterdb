@@ -65,6 +65,8 @@ struct FindEntry {
     poster_path: Option<String>,
     release_date: Option<String>,
     first_air_date: Option<String>,
+    #[serde(default)]
+    popularity: f64,
 }
 
 pub async fn resolve(
@@ -105,17 +107,32 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
         .get(&format!("/find/{imdb_id}"), &[("external_source", "imdb_id")])
         .await?;
 
-    if let Some(movie) = result.movie_results.first() {
-        return Ok(ResolvedId {
-            imdb_id: Some(imdb_id.to_string()),
-            tmdb_id: movie.id,
-            tvdb_id: None,
-            media_type: MediaType::Movie,
-            poster_path: movie.poster_path.clone(),
-            release_date: movie.release_date.clone(),
-        });
+    // Pick the most popular entry across all movie and TV results.
+    let best_movie = result.movie_results.iter().max_by(|a, b| a.popularity.total_cmp(&b.popularity));
+    let best_tv = result.tv_results.iter().max_by(|a, b| a.popularity.total_cmp(&b.popularity));
+
+    // When both exist, pick the one with higher popularity.
+    // Fall back to movie-first ordering when popularity is equal.
+    let pick_movie = match (best_movie, best_tv) {
+        (Some(m), Some(t)) => m.popularity >= t.popularity,
+        (Some(_), None) => true,
+        (None, Some(_)) => false,
+        (None, None) => false,
+    };
+
+    if pick_movie {
+        if let Some(movie) = best_movie {
+            return Ok(ResolvedId {
+                imdb_id: Some(imdb_id.to_string()),
+                tmdb_id: movie.id,
+                tvdb_id: None,
+                media_type: MediaType::Movie,
+                poster_path: movie.poster_path.clone(),
+                release_date: movie.release_date.clone(),
+            });
+        }
     }
-    if let Some(tv) = result.tv_results.first() {
+    if let Some(tv) = best_tv {
         return Ok(ResolvedId {
             imdb_id: Some(imdb_id.to_string()),
             tmdb_id: tv.id,

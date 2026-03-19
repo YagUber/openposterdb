@@ -82,7 +82,7 @@ GET /{api_key}/isValid
 
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
-- `?fallback=true`: accepted for RPDB plugin compatibility but ignored. OpenPosterDB uses TMDB as a fallback source instead of returning a 1x1 pixel placeholder
+- `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the Fanart.tv language for this request (e.g. `?lang=de` for German posters). Automatically switches the poster source to Fanart.tv even if TMDB is configured
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)

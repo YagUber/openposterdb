@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import NavButtons from "@/components/NavButtons.vue";
+import BlurImage from "@/components/BlurImage.vue";
 
 const posters = [
-  { src: "/examples/nosferatu.jpg", label: "Nosferatu (1922)", rotate: "-6deg", delay: "0s" },
-  { src: "/examples/metropolis.jpg", label: "Metropolis (1927)", rotate: "4deg", delay: "0.1s" },
-  { src: "/examples/caligari.jpg", label: "Dr. Caligari (1920)", rotate: "-3deg", delay: "0.2s" },
-  { src: "/examples/phantom.jpg", label: "Phantom of the Opera (1925)", rotate: "5deg", delay: "0.3s" },
-  { src: "/examples/trip-to-moon.jpg", label: "A Trip to the Moon (1902)", rotate: "-5deg", delay: "0.4s" },
+  { src: "/examples/nosferatu.webp", label: "Nosferatu (1922)", rotate: "-6deg", delay: "0s" },
+  { src: "/examples/metropolis.webp", label: "Metropolis (1927)", rotate: "4deg", delay: "0.1s" },
+  { src: "/examples/caligari.webp", label: "Dr. Caligari (1920)", rotate: "-3deg", delay: "0.2s" },
+  { src: "/examples/phantom.webp", label: "Phantom of the Opera (1925)", rotate: "5deg", delay: "0.3s" },
+  { src: "/examples/trip-to-moon.webp", label: "A Trip to the Moon (1902)", rotate: "-5deg", delay: "0.4s" },
 ];
 </script>
 
@@ -22,11 +23,12 @@ const posters = [
           :class="{ 'hidden sm:block': i === 0 || i === posters.length - 1 }"
           :style="{ '--rotate': p.rotate, '--delay': p.delay }"
         >
-          <img
+          <BlurImage
             :src="p.src"
             :alt="p.label"
-            loading="lazy"
-            class="rounded-lg shadow-xl w-20 sm:w-24 opacity-40"
+            :width="96"
+            :height="144"
+            class="rounded-lg shadow-xl opacity-40"
           />
         </div>
       </div>

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, FanartImageKind};
-use crate::services::db::{self, validate_render_settings_input, RenderSettingsInput, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, default_poster_position, default_poster_badge_style, default_logo_badge_style, default_backdrop_badge_style, default_label_style, default_poster_badge_direction, default_badge_size};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, PosterPosition, PosterSource};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -110,7 +110,7 @@ pub async fn poster_image(
 
 #[derive(Serialize)]
 pub struct GlobalSettingsResponse {
-    pub poster_source: String,
+    pub poster_source: PosterSource,
     pub fanart_lang: String,
     pub fanart_textless: bool,
     pub fanart_available: bool,
@@ -118,19 +118,19 @@ pub struct GlobalSettingsResponse {
     pub ratings_order: String,
     pub free_api_key_enabled: bool,
     pub free_api_key_locked: bool,
-    pub poster_position: String,
+    pub poster_position: PosterPosition,
     pub logo_ratings_limit: i32,
     pub backdrop_ratings_limit: i32,
-    pub poster_badge_style: String,
-    pub logo_badge_style: String,
-    pub backdrop_badge_style: String,
-    pub poster_label_style: String,
-    pub logo_label_style: String,
-    pub backdrop_label_style: String,
-    pub poster_badge_direction: String,
-    pub poster_badge_size: String,
-    pub logo_badge_size: String,
-    pub backdrop_badge_size: String,
+    pub poster_badge_style: BadgeStyle,
+    pub logo_badge_style: BadgeStyle,
+    pub backdrop_badge_style: BadgeStyle,
+    pub poster_label_style: LabelStyle,
+    pub logo_label_style: LabelStyle,
+    pub backdrop_label_style: LabelStyle,
+    pub poster_badge_direction: BadgeDirection,
+    pub poster_badge_size: BadgeSize,
+    pub logo_badge_size: BadgeSize,
+    pub backdrop_badge_size: BadgeSize,
 }
 
 pub async fn get_settings(
@@ -148,7 +148,7 @@ pub async fn get_settings(
     let free_api_key_locked = state.config.free_key_enabled.is_some();
     let free_api_key_enabled = state.is_free_api_key_enabled().await;
     Ok(Json(GlobalSettingsResponse {
-        poster_source: settings.poster_source.to_string(),
+        poster_source: settings.poster_source,
         fanart_lang: settings.fanart_lang.to_string(),
         fanart_textless: settings.fanart_textless,
         fanart_available: state.fanart.is_some(),
@@ -156,25 +156,25 @@ pub async fn get_settings(
         ratings_order: settings.ratings_order.to_string(),
         free_api_key_enabled,
         free_api_key_locked,
-        poster_position: settings.poster_position.to_string(),
+        poster_position: settings.poster_position,
         logo_ratings_limit: settings.logo_ratings_limit,
         backdrop_ratings_limit: settings.backdrop_ratings_limit,
-        poster_badge_style: settings.poster_badge_style.to_string(),
-        logo_badge_style: settings.logo_badge_style.to_string(),
-        backdrop_badge_style: settings.backdrop_badge_style.to_string(),
-        poster_label_style: settings.poster_label_style.to_string(),
-        logo_label_style: settings.logo_label_style.to_string(),
-        backdrop_label_style: settings.backdrop_label_style.to_string(),
-        poster_badge_direction: settings.poster_badge_direction.to_string(),
-        poster_badge_size: settings.poster_badge_size.to_string(),
-        logo_badge_size: settings.logo_badge_size.to_string(),
-        backdrop_badge_size: settings.backdrop_badge_size.to_string(),
+        poster_badge_style: settings.poster_badge_style,
+        logo_badge_style: settings.logo_badge_style,
+        backdrop_badge_style: settings.backdrop_badge_style,
+        poster_label_style: settings.poster_label_style,
+        logo_label_style: settings.logo_label_style,
+        backdrop_label_style: settings.backdrop_label_style,
+        poster_badge_direction: settings.poster_badge_direction,
+        poster_badge_size: settings.poster_badge_size,
+        logo_badge_size: settings.logo_badge_size,
+        backdrop_badge_size: settings.backdrop_badge_size,
     }))
 }
 
 #[derive(Deserialize)]
 pub struct UpdateGlobalSettingsRequest {
-    pub poster_source: String,
+    pub poster_source: PosterSource,
     #[serde(default = "db::default_fanart_lang")]
     pub fanart_lang: String,
     #[serde(default)]
@@ -184,82 +184,62 @@ pub struct UpdateGlobalSettingsRequest {
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
     pub free_api_key_enabled: Option<bool>,
-    #[serde(default = "default_poster_position")]
-    pub poster_position: String,
+    #[serde(default = "db::default_poster_position")]
+    pub poster_position: PosterPosition,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub logo_ratings_limit: i32,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub backdrop_ratings_limit: i32,
-    #[serde(default = "default_poster_badge_style")]
-    pub poster_badge_style: String,
-    #[serde(default = "default_logo_badge_style")]
-    pub logo_badge_style: String,
-    #[serde(default = "default_backdrop_badge_style")]
-    pub backdrop_badge_style: String,
-    #[serde(default = "default_label_style")]
-    pub poster_label_style: String,
-    #[serde(default = "default_label_style")]
-    pub logo_label_style: String,
-    #[serde(default = "default_label_style")]
-    pub backdrop_label_style: String,
-    #[serde(default = "default_poster_badge_direction")]
-    pub poster_badge_direction: String,
-    #[serde(default = "default_badge_size")]
-    pub poster_badge_size: String,
-    #[serde(default = "default_badge_size")]
-    pub logo_badge_size: String,
-    #[serde(default = "default_badge_size")]
-    pub backdrop_badge_size: String,
-}
-
-impl RenderSettingsInput for UpdateGlobalSettingsRequest {
-    fn poster_source(&self) -> &str { &self.poster_source }
-    fn fanart_lang(&self) -> &str { &self.fanart_lang }
-    fn ratings_limit(&self) -> i32 { self.ratings_limit }
-    fn ratings_order(&self) -> &str { &self.ratings_order }
-    fn poster_position(&self) -> &str { &self.poster_position }
-    fn logo_ratings_limit(&self) -> i32 { self.logo_ratings_limit }
-    fn backdrop_ratings_limit(&self) -> i32 { self.backdrop_ratings_limit }
-    fn poster_badge_style(&self) -> &str { &self.poster_badge_style }
-    fn logo_badge_style(&self) -> &str { &self.logo_badge_style }
-    fn backdrop_badge_style(&self) -> &str { &self.backdrop_badge_style }
-    fn poster_label_style(&self) -> &str { &self.poster_label_style }
-    fn logo_label_style(&self) -> &str { &self.logo_label_style }
-    fn backdrop_label_style(&self) -> &str { &self.backdrop_label_style }
-    fn poster_badge_direction(&self) -> &str { &self.poster_badge_direction }
-    fn poster_badge_size(&self) -> &str { &self.poster_badge_size }
-    fn logo_badge_size(&self) -> &str { &self.logo_badge_size }
-    fn backdrop_badge_size(&self) -> &str { &self.backdrop_badge_size }
+    #[serde(default = "db::default_poster_badge_style")]
+    pub poster_badge_style: BadgeStyle,
+    #[serde(default = "db::default_logo_badge_style")]
+    pub logo_badge_style: BadgeStyle,
+    #[serde(default = "db::default_backdrop_badge_style")]
+    pub backdrop_badge_style: BadgeStyle,
+    #[serde(default = "db::default_label_style")]
+    pub poster_label_style: LabelStyle,
+    #[serde(default = "db::default_label_style")]
+    pub logo_label_style: LabelStyle,
+    #[serde(default = "db::default_label_style")]
+    pub backdrop_label_style: LabelStyle,
+    #[serde(default = "db::default_poster_badge_direction")]
+    pub poster_badge_direction: BadgeDirection,
+    #[serde(default = "db::default_badge_size")]
+    pub poster_badge_size: BadgeSize,
+    #[serde(default = "db::default_badge_size")]
+    pub logo_badge_size: BadgeSize,
+    #[serde(default = "db::default_badge_size")]
+    pub backdrop_badge_size: BadgeSize,
 }
 
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    validate_render_settings_input(&req)?;
+    db::validate_render_settings(&req.fanart_lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
     let textless_str = if req.fanart_textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
     let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
     let mut batch: Vec<(&str, &str)> = vec![
-        ("poster_source", &req.poster_source),
+        ("poster_source", req.poster_source.as_str()),
         ("fanart_lang", &req.fanart_lang),
         ("fanart_textless", textless_str),
         ("ratings_limit", &limit_str),
         ("ratings_order", &req.ratings_order),
-        ("poster_position", &req.poster_position),
+        ("poster_position", req.poster_position.as_str()),
         ("logo_ratings_limit", &logo_limit_str),
         ("backdrop_ratings_limit", &backdrop_limit_str),
-        ("poster_badge_style", &req.poster_badge_style),
-        ("logo_badge_style", &req.logo_badge_style),
-        ("backdrop_badge_style", &req.backdrop_badge_style),
-        ("poster_label_style", &req.poster_label_style),
-        ("logo_label_style", &req.logo_label_style),
-        ("backdrop_label_style", &req.backdrop_label_style),
-        ("poster_badge_direction", &req.poster_badge_direction),
-        ("poster_badge_size", &req.poster_badge_size),
-        ("logo_badge_size", &req.logo_badge_size),
-        ("backdrop_badge_size", &req.backdrop_badge_size),
+        ("poster_badge_style", req.poster_badge_style.as_str()),
+        ("logo_badge_style", req.logo_badge_style.as_str()),
+        ("backdrop_badge_style", req.backdrop_badge_style.as_str()),
+        ("poster_label_style", req.poster_label_style.as_str()),
+        ("logo_label_style", req.logo_label_style.as_str()),
+        ("backdrop_label_style", req.backdrop_label_style.as_str()),
+        ("poster_badge_direction", req.poster_badge_direction.as_str()),
+        ("poster_badge_size", req.poster_badge_size.as_str()),
+        ("logo_badge_size", req.logo_badge_size.as_str()),
+        ("backdrop_badge_size", req.backdrop_badge_size.as_str()),
     ];
     let free_key_str;
     if state.config.free_key_enabled.is_none() {

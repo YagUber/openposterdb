@@ -357,7 +357,8 @@ async fn update_key_settings_rejects_invalid_source() {
         })))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    // Invalid enum values are rejected at deserialization (422), not validation (400)
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]
@@ -611,5 +612,6 @@ async fn update_key_settings_rejects_invalid_poster_position() {
         })))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    // Invalid enum values are rejected at deserialization (422), not validation (400)
+    assert_eq!(res.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }

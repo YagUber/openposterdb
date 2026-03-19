@@ -616,7 +616,7 @@ async fn delete_api_key_settings_removes() {
 async fn effective_settings_defaults_when_nothing_configured() {
     let (_app, state) = common::setup_test_app().await;
     let s = db::get_effective_render_settings(&state.db, 999, None).await;
-    assert_eq!(&*s.poster_source, "t");
+    assert_eq!(s.poster_source, db::PosterSource::Tmdb);
     assert_eq!(&*s.fanart_lang, "en");
     assert!(!s.fanart_textless);
     assert!(s.is_default);
@@ -637,7 +637,7 @@ async fn effective_settings_uses_global_when_no_per_key() {
     .unwrap();
 
     let s = db::get_effective_render_settings(&state.db, 999, None).await;
-    assert_eq!(&*s.poster_source, "f");
+    assert_eq!(s.poster_source, db::PosterSource::Fanart);
     assert_eq!(&*s.fanart_lang, "fr");
     assert!(s.fanart_textless);
     assert!(s.is_default); // global settings still marked as "default"
@@ -682,7 +682,7 @@ async fn effective_settings_per_key_overrides_global() {
     }).await.unwrap();
 
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(&*s.poster_source, "t");
+    assert_eq!(s.poster_source, db::PosterSource::Tmdb);
     assert_eq!(&*s.fanart_lang, "ja");
     assert!(s.fanart_textless);
     assert!(!s.is_default); // per-key override
@@ -752,7 +752,7 @@ async fn effective_settings_include_new_fields() {
 
     // Without per-key settings, effective should have defaults
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(&*s.poster_position, "bc");
+    assert_eq!(s.poster_position, db::PosterPosition::BottomCenter);
     assert_eq!(s.logo_ratings_limit, 5);
     assert_eq!(s.backdrop_ratings_limit, 5);
 
@@ -765,7 +765,7 @@ async fn effective_settings_include_new_fields() {
     }).await.unwrap();
 
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(&*s.poster_position, "r");
+    assert_eq!(s.poster_position, db::PosterPosition::Right);
     assert_eq!(s.logo_ratings_limit, 2);
     assert_eq!(s.backdrop_ratings_limit, 0);
 }

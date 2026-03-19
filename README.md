@@ -253,7 +253,7 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 | Ratings | `@{chars}` | `@mil` | Single-char per source, no commas (`m`=MAL, `i`=IMDb, `l`=Letterboxd, `r`=RT, `a`=RT Audience, `c`=Metacritic, `t`=TMDB, `k`=Trakt) |
 | Position | `.p{pos}` | `.pbc`, `.pl` | Poster badge position (`bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br`) |
 | Badge style | `.s{style}` | `.sh`, `.sv` | `h` = horizontal, `v` = vertical |
-| Label style | `.l{style}` | `.lt`, `.li` | `t` = text labels, `i` = icon labels |
+| Label style | `.l{style}` | `.lt`, `.li`, `.lo` | `t` = text labels, `i` = icon labels, `o` = official provider logos |
 | Badge direction | `.d{dir}` | `.dh`, `.dv` | `h` = horizontal, `v` = vertical (resolved from `d` = default) |
 | Badge size | `.b{size}` | `.bm`, `.bxl` | `xs` = extra-small, `s` = small, `m` = medium (default), `l` = large, `xl` = extra-large |
 | Image size | `.z{size}` | `.zm`, `.zl` | `s` = small, `m` = medium (default), `l` = large, `vl` = very-large |
@@ -297,7 +297,7 @@ Settings are stored as short single-character or two-character codes:
 |---|---|---|
 | `poster_source` | `t`, `f` | TMDB, Fanart.tv |
 | `badge_style` | `h`, `v` | Horizontal, Vertical |
-| `label_style` | `t`, `i` | Text, Icon |
+| `label_style` | `t`, `i`, `o` | Text, Icon, Official |
 | `badge_direction` | `d`, `h`, `v` | Default (auto-resolved by position), Horizontal, Vertical |
 | `badge_size` | `xs`, `s`, `m`, `l`, `xl` | Extra-small (0.5×), Small (0.75×), Medium (1.0×), Large (1.25×), Extra-large (1.5×) |
 | `poster_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Bottom-center, Top-center, Left, Right, corners |
@@ -305,20 +305,20 @@ Settings are stored as short single-character or two-character codes:
 ### Example Cache Keys
 
 ```
-# TMDB poster, 3 ratings (MAL, IMDb, Letterboxd), bottom-center, horizontal badges, icon labels, horizontal direction, medium badge size, medium image
-imdb/tt0111161@mil.pbc.sh.li.dh.bm.zm
+# TMDB poster, 3 ratings (MAL, IMDb, Letterboxd), bottom-center, horizontal badges, official labels, horizontal direction, medium badge size, medium image
+imdb/tt0111161@mil.pbc.sh.lo.dh.bm.zm
 
 # Same poster at large image size with large badge size
-imdb/tt0111161@mil.pbc.sh.li.dh.bl.zl
+imdb/tt0111161@mil.pbc.sh.lo.dh.bl.zl
 
 # Fanart textless poster
-imdb/tt0111161_f_tl@mil.pbc.sh.li.dh.bm.zm
+imdb/tt0111161_f_tl@mil.pbc.sh.lo.dh.bm.zm
 
 # Logo with 3 ratings, horizontal badges, text labels, medium badge size
 imdb/tt0111161_l_f_en@mil.sh.lt.bm.zm
 
-# Backdrop with vertical badges, icon labels, extra-large badge size, large image
-imdb/tt0111161_b@mil.sv.li.bxl.zl
+# Backdrop with vertical badges, official labels, extra-large badge size, large image
+imdb/tt0111161_b@mil.sv.lo.bxl.zl
 ```
 
 ### Cross-ID Cache

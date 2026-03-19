@@ -72,9 +72,9 @@ const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit ?? 3)
 const editPosterBadgeStyle = ref(props.settings.poster_badge_style || 'd')
 const editLogoBadgeStyle = ref(props.settings.logo_badge_style || 'v')
 const editBackdropBadgeStyle = ref(props.settings.backdrop_badge_style || 'v')
-const editPosterLabelStyle = ref(props.settings.poster_label_style || 'i')
-const editLogoLabelStyle = ref(props.settings.logo_label_style || 'i')
-const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'i')
+const editPosterLabelStyle = ref(props.settings.poster_label_style || 'o')
+const editLogoLabelStyle = ref(props.settings.logo_label_style || 'o')
+const editBackdropLabelStyle = ref(props.settings.backdrop_label_style || 'o')
 const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd')
 const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
@@ -92,9 +92,9 @@ function applySettings(s: RenderSettings) {
   editPosterBadgeStyle.value = s.poster_badge_style || 'd'
   editLogoBadgeStyle.value = s.logo_badge_style || 'v'
   editBackdropBadgeStyle.value = s.backdrop_badge_style || 'v'
-  editPosterLabelStyle.value = s.poster_label_style || 'i'
-  editLogoLabelStyle.value = s.logo_label_style || 'i'
-  editBackdropLabelStyle.value = s.backdrop_label_style || 'i'
+  editPosterLabelStyle.value = s.poster_label_style || 'o'
+  editLogoLabelStyle.value = s.logo_label_style || 'o'
+  editBackdropLabelStyle.value = s.backdrop_label_style || 'o'
   editPosterBadgeDirection.value = s.poster_badge_direction || 'd'
   editPosterBadgeSize.value = s.poster_badge_size || 'm'
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
@@ -540,6 +540,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               <SelectContent>
                 <SelectItem value="t">Text</SelectItem>
                 <SelectItem value="i">Icon</SelectItem>
+                <SelectItem value="o">Official</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -624,6 +625,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               <SelectContent>
                 <SelectItem value="t">Text</SelectItem>
                 <SelectItem value="i">Icon</SelectItem>
+                <SelectItem value="o">Official</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -708,6 +710,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               <SelectContent>
                 <SelectItem value="t">Text</SelectItem>
                 <SelectItem value="i">Icon</SelectItem>
+                <SelectItem value="o">Official</SelectItem>
               </SelectContent>
             </Select>
           </div>

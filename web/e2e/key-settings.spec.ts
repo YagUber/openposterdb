@@ -230,7 +230,7 @@ test.describe('key settings (self-service)', () => {
     for (const testId of ['poster-label-style-select', 'logo-label-style-select', 'backdrop-label-style-select']) {
       const select = page.getByTestId(testId)
       await expect(select).toBeVisible()
-      await expect(select).toContainText('Icon')
+      await expect(select).toContainText('Official')
     }
   })
 

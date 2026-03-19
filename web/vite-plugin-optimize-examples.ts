@@ -1,12 +1,8 @@
 import { join, extname, basename } from 'node:path'
-import { existsSync, readdirSync, statSync, writeFileSync, unlinkSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync, unlinkSync } from 'node:fs'
 import type { Plugin } from 'vite'
-
-const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png'])
+import { IMAGE_EXTS, IMAGE_DIRS, listImages } from './vite-plugin-image-utils'
 const WEBP_QUALITY = 80
-
-/** Directories to process. */
-const IMAGE_DIRS = ['examples', 'icons'] as const
 
 /** Max widths at 2× retina for each image category on the landing page. */
 const MAX_WIDTHS: Record<string, number> = {
@@ -39,7 +35,7 @@ async function toWebP(sourcePath: string): Promise<Buffer> {
 
 /** Find the source jpg/png file for a .webp request. */
 function findSource(dir: string, webpName: string): string | null {
-  const base = basename(webpName, '.webp')
+  const base = webpName.replace(/\.webp$/, '')
   for (const ext of ['.jpg', '.jpeg', '.png']) {
     const candidate = join(dir, base + ext)
     try {
@@ -107,9 +103,7 @@ export default function optimizeExamplesPlugin(): Plugin {
       for (const dir of IMAGE_DIRS) {
         const dirOut = join(outDir, dir)
         if (!existsSync(dirOut)) continue
-        const files = readdirSync(dirOut).filter(f =>
-          IMAGE_EXTS.has(extname(f).toLowerCase())
-        )
+        const files = listImages(dirOut)
         if (files.length === 0) continue
 
         let totalBefore = 0
@@ -119,7 +113,7 @@ export default function optimizeExamplesPlugin(): Plugin {
           const filePath = join(dirOut, file)
           const origSize = statSync(filePath).size
 
-          const webpName = basename(file, extname(file)) + '.webp'
+          const webpName = file.replace(/\.[^.]+$/, '.webp')
           const webpPath = join(dirOut, webpName)
 
           const buf = await toWebP(filePath)

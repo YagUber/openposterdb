@@ -71,6 +71,7 @@ const styles = [
 const labels = [
   { src: "/examples/label-icon.webp", label: "Icons" },
   { src: "/examples/label-text.webp", label: "Text" },
+  { src: "/examples/label-official.webp", label: "Official" },
 ];
 
 const dataProviders = [
@@ -101,6 +102,21 @@ const ratingIcons = [
   { src: "/icons/trakt.webp", label: "Trakt", color: "rgb(175, 15, 45)" },
   { src: "/icons/lb.webp", label: "Letterboxd", color: "rgb(0, 155, 88)" },
   { src: "/icons/mal.webp", label: "MyAnimeList", color: "rgb(34, 60, 120)" },
+];
+
+const officialIcons = [
+  { src: "/icons/official/imdb.webp", label: "IMDb" },
+  { src: "/icons/official/tmdb.webp", label: "TMDB" },
+  { src: "/icons/official/Rotten_Tomatoes_critic_positive.webp", label: "RT Fresh" },
+  { src: "/icons/official/Rotten_Tomatoes_critic_certified_fresh.webp", label: "RT Certified Fresh" },
+  { src: "/icons/official/Rotten_Tomatoes_critic_rotten.webp", label: "RT Rotten" },
+  { src: "/icons/official/Rotten_Tomatoes_positive_audience.webp", label: "RT Audience Positive" },
+  { src: "/icons/official/Rotten_Tomatoes_verified_hot_audience.webp", label: "RT Audience Verified Hot" },
+  { src: "/icons/official/Rotten_Tomatoes_negative_audience.webp", label: "RT Audience Negative" },
+  { src: "/icons/official/metacritic.webp", label: "Metacritic" },
+  { src: "/icons/official/trakt.webp", label: "Trakt" },
+  { src: "/icons/official/letterboxd.webp", label: "Letterboxd" },
+  { src: "/icons/official/mal.webp", label: "MyAnimeList" },
 ];
 
 const logos = [
@@ -184,11 +200,29 @@ const backdropSizes = [
             Aggregate ratings from IMDb, TMDB, Rotten Tomatoes, Metacritic, Trakt, Letterboxd, and
             MyAnimeList.
           </p>
+          <p class="text-xs text-muted-foreground font-medium">Icon style</p>
           <div class="flex flex-wrap justify-center items-center gap-4" role="list" aria-label="Supported rating sources">
             <div v-for="icon in ratingIcons" :key="icon.src" role="listitem" class="flex flex-col items-center">
               <div
                 class="h-10 w-10 rounded-lg p-1.5"
                 :style="{ backgroundColor: icon.color }"
+                :title="icon.label"
+              >
+                <BlurImage
+                  :src="icon.src"
+                  :alt="icon.label"
+                  :width="28"
+                  :height="28"
+                  fit="contain"
+                />
+              </div>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground font-medium pt-2">Official style</p>
+          <div class="flex flex-wrap justify-center items-center gap-4" role="list" aria-label="Official rating provider logos">
+            <div v-for="icon in officialIcons" :key="icon.src" role="listitem" class="flex flex-col items-center">
+              <div
+                class="h-10 w-10 rounded-lg p-1.5 flex items-center justify-center bg-neutral-900"
                 :title="icon.label"
               >
                 <BlurImage
@@ -310,7 +344,7 @@ const backdropSizes = [
         <div class="space-y-4 text-center">
           <h2 class="text-2xl font-semibold">Label Style</h2>
           <p class="text-sm text-muted-foreground max-w-lg mx-auto">
-            Show rating sources as colored icons or as text labels.
+            Show rating sources as colored icons, text labels, or official provider logos.
           </p>
           <div class="flex flex-wrap items-end justify-center gap-6">
             <div v-for="l in labels" :key="l.src" class="space-y-2">

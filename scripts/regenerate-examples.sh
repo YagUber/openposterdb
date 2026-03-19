@@ -105,14 +105,15 @@ done
 
 # Label style variants
 echo "--- Label Styles ---"
-for label_val in i t; do
+for label_val in i t o; do
   case "$label_val" in
     i) label_name="icon" ;;
     t) label_name="text" ;;
+    o) label_name="official" ;;
   esac
   echo -n "label-$label_name... "
   curl -sf "${AUTH[@]}" \
-    "$PREVIEW/poster?label_style=$label_val" \
+    "$PREVIEW/poster?label_style=$label_val&ratings_limit=0" \
     -o "$OUT/label-$label_name.jpg"
   echo "OK"
 done

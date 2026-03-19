@@ -29,6 +29,46 @@ pub const STYLE_DEFAULT: &str = DIRECTION_DEFAULT;
 pub const LABEL_ICON: &str = "i";
 /// Label style: text
 pub const LABEL_TEXT: &str = "t";
+/// Label style: official
+pub const LABEL_OFFICIAL: &str = "o";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelStyle {
+    Icon,
+    Text,
+    Official,
+}
+
+impl LabelStyle {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Icon => LABEL_ICON,
+            Self::Text => LABEL_TEXT,
+            Self::Official => LABEL_OFFICIAL,
+        }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, AppError> {
+        match s {
+            LABEL_ICON => Ok(Self::Icon),
+            LABEL_TEXT => Ok(Self::Text),
+            LABEL_OFFICIAL => Ok(Self::Official),
+            _ => Err(AppError::BadRequest(
+                format!("label_style must be '{LABEL_TEXT}', '{LABEL_ICON}', or '{LABEL_OFFICIAL}'"),
+            )),
+        }
+    }
+
+    pub fn uses_icon(&self) -> bool {
+        matches!(self, Self::Icon | Self::Official)
+    }
+}
+
+impl serde::Serialize for LabelStyle {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
 
 /// Poster position: bottom-center (default)
 pub const POS_BOTTOM_CENTER: &str = "bc";
@@ -189,7 +229,7 @@ pub fn default_backdrop_badge_style() -> String {
 }
 
 pub fn default_label_style() -> String {
-    LABEL_ICON.to_string()
+    LABEL_OFFICIAL.to_string()
 }
 
 pub fn default_poster_badge_direction() -> String {
@@ -332,14 +372,6 @@ pub fn resolve_badge_style(style: &str, resolved_direction: &str) -> Arc<str> {
     }
 }
 
-pub fn validate_label_style(style: &str) -> Result<(), AppError> {
-    match style {
-        LABEL_TEXT | LABEL_ICON => Ok(()),
-        _ => Err(AppError::BadRequest(
-            format!("label_style must be '{LABEL_TEXT}' or '{LABEL_ICON}'"),
-        )),
-    }
-}
 
 pub fn validate_badge_direction(dir: &str) -> Result<(), AppError> {
     match dir {
@@ -411,9 +443,9 @@ pub fn validate_render_settings_input(input: &dyn RenderSettingsInput) -> Result
     validate_badge_style(input.poster_badge_style())?;
     validate_badge_style(input.logo_badge_style())?;
     validate_badge_style(input.backdrop_badge_style())?;
-    validate_label_style(input.poster_label_style())?;
-    validate_label_style(input.logo_label_style())?;
-    validate_label_style(input.backdrop_label_style())?;
+    LabelStyle::parse(input.poster_label_style())?;
+    LabelStyle::parse(input.logo_label_style())?;
+    LabelStyle::parse(input.backdrop_label_style())?;
     validate_badge_direction(input.poster_badge_direction())?;
     validate_badge_size(input.poster_badge_size())?;
     validate_badge_size(input.logo_badge_size())?;
@@ -686,20 +718,21 @@ mod tests {
     }
 
     #[test]
-    fn validate_label_style_accepts_valid() {
-        assert!(validate_label_style("t").is_ok());
-        assert!(validate_label_style("i").is_ok());
+    fn label_style_parse_accepts_valid() {
+        assert!(LabelStyle::parse("t").is_ok());
+        assert!(LabelStyle::parse("i").is_ok());
+        assert!(LabelStyle::parse("o").is_ok());
     }
 
     #[test]
-    fn validate_label_style_rejects_invalid() {
-        assert!(validate_label_style("emoji").is_err());
-        assert!(validate_label_style("").is_err());
+    fn label_style_parse_rejects_invalid() {
+        assert!(LabelStyle::parse("emoji").is_err());
+        assert!(LabelStyle::parse("").is_err());
     }
 
     #[test]
-    fn default_label_style_returns_icon() {
-        assert_eq!(default_label_style(), "i");
+    fn default_label_style_returns_official() {
+        assert_eq!(default_label_style(), "o");
     }
 
     #[test]
@@ -1341,9 +1374,9 @@ impl Default for RenderSettings {
             poster_badge_style: Arc::from(STYLE_DEFAULT),
             logo_badge_style: Arc::from(STYLE_VERTICAL),
             backdrop_badge_style: Arc::from(STYLE_VERTICAL),
-            poster_label_style: Arc::from(LABEL_ICON),
-            logo_label_style: Arc::from(LABEL_ICON),
-            backdrop_label_style: Arc::from(LABEL_ICON),
+            poster_label_style: Arc::from(LABEL_OFFICIAL),
+            logo_label_style: Arc::from(LABEL_OFFICIAL),
+            backdrop_label_style: Arc::from(LABEL_OFFICIAL),
             poster_badge_direction: Arc::from(DIRECTION_DEFAULT),
             poster_badge_size: Arc::from(BADGE_SIZE_MEDIUM),
             logo_badge_size: Arc::from(BADGE_SIZE_MEDIUM),

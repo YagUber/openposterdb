@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 use crate::cache;
 use crate::error::AppError;
 use crate::image::badge;
-use crate::services::db::{BadgeSize, STYLE_HORIZONTAL, STYLE_VERTICAL};
+use crate::services::db::{BadgeSize, LabelStyle, STYLE_HORIZONTAL, STYLE_VERTICAL};
 use crate::services::ratings::RatingBadge;
 use crate::services::tmdb::TmdbClient;
 
@@ -37,7 +37,7 @@ pub struct ImageParams<'a> {
     /// Badge position: "bc" (default), "tc", "l", "r", "tl", "tr", "bl", "br"
     pub poster_position: Arc<str>,
     pub badge_style: Arc<str>,
-    pub label_style: Arc<str>,
+    pub label_style: LabelStyle,
     pub badge_direction: Arc<str>,
     pub render_semaphore: Arc<Semaphore>,
     /// Target width for the output image. Defaults to 500 for posters.
@@ -124,7 +124,7 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
     let badges = badges.to_vec();
     let font = font.clone();
     let buf = tokio::task::spawn_blocking(move || {
-        render_poster_sync(&poster_bytes, &badges, &font, quality, &poster_position, &badge_style, &label_style, &badge_direction, target_width, badge_scale, &badge_size)
+        render_poster_sync(&poster_bytes, &badges, &font, quality, &poster_position, &badge_style, label_style, &badge_direction, target_width, badge_scale, &badge_size)
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))??;
@@ -245,7 +245,7 @@ pub fn render_poster_sync(
     quality: u8,
     poster_position: &str,
     badge_style: &str,
-    label_style: &str,
+    label_style: LabelStyle,
     badge_direction: &str,
     target_width: u32,
     badge_scale: f32,
@@ -305,7 +305,7 @@ pub fn render_logo_sync(
     badges: &[RatingBadge],
     font: &FontArc,
     badge_style: &str,
-    label_style: &str,
+    label_style: LabelStyle,
     target_width: u32,
     badge_scale: f32,
 ) -> Result<Vec<u8>, AppError> {
@@ -459,7 +459,7 @@ pub async fn generate_logo(
     badges: Vec<RatingBadge>,
     font: FontArc,
     badge_style: Arc<str>,
-    label_style: Arc<str>,
+    label_style: LabelStyle,
     render_semaphore: Arc<Semaphore>,
     target_width: u32,
     badge_scale: f32,
@@ -472,7 +472,7 @@ pub async fn generate_logo(
     tracing::debug!("logo render started");
     let start = std::time::Instant::now();
 
-    let buf = tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, &badge_style, &label_style, target_width, badge_scale))
+    let buf = tokio::task::spawn_blocking(move || render_logo_sync(&logo_bytes, &badges, &font, &badge_style, label_style, target_width, badge_scale))
         .await
         .map_err(|e| AppError::Other(e.to_string()))??;
 
@@ -489,7 +489,7 @@ pub fn render_backdrop_sync(
     font: &FontArc,
     quality: u8,
     badge_style: &str,
-    label_style: &str,
+    label_style: LabelStyle,
     target_width: u32,
     badge_scale: f32,
 ) -> Result<Vec<u8>, AppError> {
@@ -539,7 +539,7 @@ pub async fn generate_backdrop(
     font: FontArc,
     quality: u8,
     badge_style: Arc<str>,
-    label_style: Arc<str>,
+    label_style: LabelStyle,
     render_semaphore: Arc<Semaphore>,
     target_width: u32,
     badge_scale: f32,
@@ -552,7 +552,7 @@ pub async fn generate_backdrop(
     tracing::debug!("backdrop render started");
     let start = std::time::Instant::now();
 
-    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, &badge_style, &label_style, target_width, badge_scale))
+    let buf = tokio::task::spawn_blocking(move || render_backdrop_sync(&backdrop_bytes, &badges, &font, quality, &badge_style, label_style, target_width, badge_scale))
         .await
         .map_err(|e| AppError::Other(e.to_string()))??;
 
@@ -580,7 +580,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = render_poster_sync(&png_bytes, &[], &font, 85, "bc", "h", "t", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &[], &font, 85, "bc", "h", LabelStyle::Text, "h", 500, 1.0, "m").unwrap();
         assert!(!result.is_empty());
         // Should be valid JPEG
         assert_eq!(result[0], 0xFF);
@@ -623,7 +623,7 @@ mod tests {
             },
         ];
 
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", LabelStyle::Text, "h", 500, 1.0, "m").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn render_poster_invalid_image_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(b"not an image", &[], &font, 85, "bc", "h", "t", "h", 500, 1.0, "m");
+        let result = render_poster_sync(b"not an image", &[], &font, 85, "bc", "h", LabelStyle::Text, "h", 500, 1.0, "m");
         assert!(result.is_err());
     }
 
@@ -656,7 +656,7 @@ mod tests {
     fn render_logo_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(200, 80);
-        let result = render_logo_sync(&png, &[], &font, "h", "t", 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &[], &font, "h", LabelStyle::Text, 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -671,7 +671,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font, "h", "t", 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &badges, &font, "h", LabelStyle::Text, 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -681,7 +681,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a logo wider than TARGET_WIDTH (500)
         let png = test_png(1000, 200);
-        let result = render_logo_sync(&png, &[], &font, "h", "t", 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &[], &font, "h", LabelStyle::Text, 500, 1.0).unwrap();
         assert!(!result.is_empty());
         // Verify the output is valid PNG and was produced (implicitly downscaled)
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn render_logo_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_logo_sync(b"not an image", &[], &font, "h", "t", 500, 1.0);
+        let result = render_logo_sync(b"not an image", &[], &font, "h", LabelStyle::Text, 500, 1.0);
         assert!(result.is_err());
     }
 
@@ -698,7 +698,7 @@ mod tests {
     fn render_backdrop_no_badges() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, "v", "t", 1280, 1.0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, "v", LabelStyle::Text, 1280, 1.0).unwrap();
         assert!(!result.is_empty());
         // Backdrop outputs JPEG
         assert_eq!(result[0], 0xFF);
@@ -715,7 +715,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, "v", "t", 1280, 1.0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, "v", LabelStyle::Text, 1280, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -726,7 +726,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         // Create a backdrop wider than TARGET_WIDTH (1280)
         let png = test_png(2560, 1440);
-        let result = render_backdrop_sync(&png, &[], &font, 85, "v", "t", 1280, 1.0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, "v", LabelStyle::Text, 1280, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn render_backdrop_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_backdrop_sync(b"not an image", &[], &font, 85, "v", "t", 1280, 1.0);
+        let result = render_backdrop_sync(b"not an image", &[], &font, 85, "v", LabelStyle::Text, 1280, 1.0);
         assert!(result.is_err());
     }
 
@@ -751,7 +751,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tc", "h", "t", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tc", "h", LabelStyle::Text, "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -768,7 +768,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "l", "h", "t", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "l", "h", LabelStyle::Text, "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -785,7 +785,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "r", "h", "t", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "r", "h", LabelStyle::Text, "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -800,7 +800,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "i", "h", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", LabelStyle::Icon, "h", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -816,17 +816,17 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
         // vertical direction at bottom-center
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", "t", "v", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", LabelStyle::Text, "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at top-left corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tl", "h", "t", "v", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "tl", "h", LabelStyle::Text, "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at bottom-right corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "br", "h", "t", "v", 500, 1.0, "m").unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "br", "h", LabelStyle::Text, "v", 500, 1.0, "m").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -841,7 +841,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
-        let result = render_logo_sync(&png, &badges, &font, "h", "i", 500, 1.0).unwrap();
+        let result = render_logo_sync(&png, &badges, &font, "h", LabelStyle::Icon, 500, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -856,7 +856,55 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
         ];
-        let result = render_backdrop_sync(&png, &badges, &font, 85, "v", "i", 1280, 1.0).unwrap();
+        let result = render_backdrop_sync(&png, &badges, &font, 85, "v", LabelStyle::Icon, 1280, 1.0).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_poster_with_official_label_style() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png_bytes = test_png(500, 750);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
+            RatingBadge { source: RatingSource::RtAudience, value: "45%".to_string() },
+        ];
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, "bc", "h", LabelStyle::Official, "h", 500, 1.0, "m").unwrap();
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_logo_with_official_label_style() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(400, 100);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
+        ];
+        let result = render_logo_sync(&png, &badges, &font, "h", LabelStyle::Official, 500, 1.0).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
+    }
+
+    #[test]
+    fn render_backdrop_with_official_label_style() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(1280, 720);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "9.0".to_string() },
+            RatingBadge { source: RatingSource::Rt, value: "95%".to_string() },
+            RatingBadge { source: RatingSource::RtAudience, value: "40%".to_string() },
+        ];
+        let result = render_backdrop_sync(&png, &badges, &font, 85, "v", LabelStyle::Official, 1280, 1.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -884,7 +932,7 @@ mod tests {
             image_stale_secs: 3600,
             poster_position: Arc::from("bc"),
             badge_style: Arc::from("h"),
-            label_style: Arc::from("t"),
+            label_style: LabelStyle::Text,
             badge_direction: Arc::from("h"),
             render_semaphore: sem.clone(),
             target_width: 500,
@@ -919,7 +967,7 @@ mod tests {
             image_stale_secs: 3600,
             poster_position: Arc::from("bc"),
             badge_style: Arc::from("h"),
-            label_style: Arc::from("t"),
+            label_style: LabelStyle::Text,
             badge_direction: Arc::from("h"),
             render_semaphore: sem,
             target_width: 500,
@@ -941,7 +989,7 @@ mod tests {
         let png = test_png(200, 80);
         let sem = Arc::new(Semaphore::new(1));
 
-        let result = generate_logo(png, vec![], font, Arc::from("h"), Arc::from("t"), sem.clone(), 500, 1.0).await;
+        let result = generate_logo(png, vec![], font, Arc::from("h"), LabelStyle::Text, sem.clone(), 500, 1.0).await;
         assert!(result.is_ok());
         assert_eq!(sem.available_permits(), 1);
     }
@@ -953,7 +1001,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(1));
         sem.close();
 
-        let result = generate_logo(png, vec![], font, Arc::from("h"), Arc::from("t"), sem, 500, 1.0).await;
+        let result = generate_logo(png, vec![], font, Arc::from("h"), LabelStyle::Text, sem, 500, 1.0).await;
         assert!(result.is_err());
     }
 
@@ -963,7 +1011,7 @@ mod tests {
         let png = test_png(640, 360);
         let sem = Arc::new(Semaphore::new(1));
 
-        let result = generate_backdrop(png, vec![], font, 85, Arc::from("h"), Arc::from("t"), sem.clone(), 1280, 1.0).await;
+        let result = generate_backdrop(png, vec![], font, 85, Arc::from("h"), LabelStyle::Text, sem.clone(), 1280, 1.0).await;
         assert!(result.is_ok());
         assert_eq!(sem.available_permits(), 1);
     }
@@ -975,7 +1023,7 @@ mod tests {
         let sem = Arc::new(Semaphore::new(1));
         sem.close();
 
-        let result = generate_backdrop(png, vec![], font, 85, Arc::from("h"), Arc::from("t"), sem, 1280, 1.0).await;
+        let result = generate_backdrop(png, vec![], font, 85, Arc::from("h"), LabelStyle::Text, sem, 1280, 1.0).await;
         assert!(result.is_err());
     }
 
@@ -993,7 +1041,7 @@ mod tests {
 
         // Spawn a render that should block waiting for the permit
         let handle = tokio::spawn(async move {
-            generate_logo(png, vec![], font2, Arc::from("h"), Arc::from("t"), sem2, 500, 1.0).await
+            generate_logo(png, vec![], font2, Arc::from("h"), LabelStyle::Text, sem2, 500, 1.0).await
         });
 
         // Give the task a moment to start and block
@@ -1012,7 +1060,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(500, 750);
         // Render at large size (1280 width, ~2.2x badge scale)
-        let result = render_poster_sync(&png, &[], &font, 85, "bc", "h", "t", "h", 1280, 2.2, "m").unwrap();
+        let result = render_poster_sync(&png, &[], &font, 85, "bc", "h", LabelStyle::Text, "h", 1280, 2.2, "m").unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1030,7 +1078,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", "t", "h", 1280, 2.2, "m").unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", LabelStyle::Text, "h", 1280, 2.2, "m").unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert_eq!(img.width(), 1280);
     }
@@ -1046,12 +1094,12 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
         // Large badge size with horizontal style — should use max 2 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", "t", "h", 500, 1.0, "l").unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "h", LabelStyle::Text, "h", 500, 1.0, "l").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // Extra-large badge size with vertical style — should use max 4 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "v", "t", "h", 500, 1.0, "xl").unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, "bc", "v", LabelStyle::Text, "h", 500, 1.0, "xl").unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -1060,7 +1108,7 @@ mod tests {
     fn render_logo_at_large_target_width() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(200, 80);
-        let result = render_logo_sync(&png, &[], &font, "h", "t", 1722, 2.2).unwrap();
+        let result = render_logo_sync(&png, &[], &font, "h", LabelStyle::Text, 1722, 2.2).unwrap();
         assert!(!result.is_empty());
         assert_eq!(&result[..4], &[0x89, b'P', b'N', b'G']);
     }
@@ -1069,7 +1117,7 @@ mod tests {
     fn render_backdrop_at_large_target_width() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(640, 360);
-        let result = render_backdrop_sync(&png, &[], &font, 85, "v", "t", 3840, 2.0).unwrap();
+        let result = render_backdrop_sync(&png, &[], &font, 85, "v", LabelStyle::Text, 3840, 2.0).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);

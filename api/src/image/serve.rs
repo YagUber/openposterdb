@@ -10,7 +10,7 @@ use crate::cache::{self, MemCacheEntry};
 use crate::error::AppError;
 use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
-use crate::services::db::{resolve_badge_direction, resolve_badge_style, BadgeSize, ImageSize, RenderSettings, POS_BOTTOM_CENTER, SOURCE_FANART};
+use crate::services::db::{resolve_badge_direction, resolve_badge_style, BadgeSize, ImageSize, LabelStyle, RenderSettings, POS_BOTTOM_CENTER, SOURCE_FANART};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::ratings;
 use crate::AppState;
@@ -980,8 +980,8 @@ fn trigger_fanart_background_refresh(
             FanartImageKind::Backdrop => settings.backdrop_badge_style.clone(),
         };
         let type_label_style = match fanart_kind {
-            FanartImageKind::Logo => settings.logo_label_style.clone(),
-            FanartImageKind::Backdrop => settings.backdrop_label_style.clone(),
+            FanartImageKind::Logo => LabelStyle::parse(&settings.logo_label_style)?,
+            FanartImageKind::Backdrop => LabelStyle::parse(&settings.backdrop_label_style)?,
         };
 
         let resolved_size = resolve_image_size(image_size);
@@ -1070,7 +1070,7 @@ async fn generate_poster_with_source(
         poster_bytes_override: fanart_bytes,
         poster_position: settings.poster_position.clone(),
         badge_style: settings.poster_badge_style.clone(),
-        label_style: settings.poster_label_style.clone(),
+        label_style: LabelStyle::parse(&settings.poster_label_style)?,
         badge_direction: settings.poster_badge_direction.clone(),
         render_semaphore: state.render_semaphore.clone(),
         target_width,
@@ -1254,8 +1254,8 @@ pub async fn handle_fanart_image_inner(
         FanartImageKind::Backdrop => &settings.backdrop_badge_style,
     };
     let type_label_style = match fanart_kind {
-        FanartImageKind::Logo => &settings.logo_label_style,
-        FanartImageKind::Backdrop => &settings.backdrop_label_style,
+        FanartImageKind::Logo => LabelStyle::parse(&settings.logo_label_style)?,
+        FanartImageKind::Backdrop => LabelStyle::parse(&settings.backdrop_label_style)?,
     };
 
     // Backdrops are language-agnostic (no text) — skip lang/textless entirely.
@@ -1357,7 +1357,7 @@ pub async fn handle_fanart_image_inner(
         neg_textless_key: String,
         neg_lang_key: String,
         type_badge_style: Arc<str>,
-        type_label_style: Arc<str>,
+        type_label_style: LabelStyle,
         badge_size_factor: f32,
         label: &'static str,
         resolved: id::ResolvedId,
@@ -1373,7 +1373,7 @@ pub async fn handle_fanart_image_inner(
         neg_textless_key,
         neg_lang_key,
         type_badge_style: type_badge_style.clone(),
-        type_label_style: type_label_style.clone(),
+        type_label_style,
         badge_size_factor: match fanart_kind {
             FanartImageKind::Logo => BadgeSize::parse(&settings.logo_badge_size).scale_factor(),
             FanartImageKind::Backdrop => BadgeSize::parse(&settings.backdrop_badge_size).scale_factor(),

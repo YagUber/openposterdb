@@ -219,12 +219,12 @@ test.describe('settings', () => {
     await page.keyboard.press('Escape')
   })
 
-  test('label style dropdowns are visible with default icon', async ({ page }) => {
+  test('label style dropdowns are visible with default official', async ({ page }) => {
     // Check poster, logo, and backdrop label style selects
     for (const testId of ['poster-label-style-select', 'logo-label-style-select', 'backdrop-label-style-select']) {
       const select = page.getByTestId(testId)
       await expect(select).toBeVisible()
-      await expect(select).toContainText('Icon')
+      await expect(select).toContainText('Official')
     }
   })
 

@@ -1,11 +1,10 @@
-import { readdirSync, existsSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import type { Plugin } from 'vite'
+import { IMAGE_EXTS, IMAGE_DIRS, listImages } from './vite-plugin-image-utils'
 
 const VIRTUAL_ID = 'virtual:placeholders'
 const RESOLVED_ID = '\0' + VIRTUAL_ID
-const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png'])
-const IMAGE_DIRS = ['examples', 'icons'] as const
 
 export default function placeholdersPlugin(): Plugin {
   let publicDir: string
@@ -30,9 +29,7 @@ export default function placeholdersPlugin(): Plugin {
       for (const dir of IMAGE_DIRS) {
         const dirPath = join(publicDir, dir)
         if (!existsSync(dirPath)) continue
-        const files = readdirSync(dirPath).filter(f =>
-          IMAGE_EXTS.has(extname(f).toLowerCase())
-        )
+        const files = listImages(dirPath)
 
         for (const file of files) {
           const filePath = join(dirPath, file)

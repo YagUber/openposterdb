@@ -12,7 +12,9 @@ A self-hosted, drop-in replacement for [RPDB (Rating Poster Database)](https://r
 
 ## Quick Start
 
-OpenPosterDB runs as a single Docker container.
+A hosted version is available at [openposterdb.com](https://openposterdb.com) — no setup required, just grab a free API key and point your media server at it.
+
+To self-host, OpenPosterDB runs as a single Docker container.
 
 ### Docker Compose
 

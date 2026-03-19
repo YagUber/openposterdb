@@ -38,9 +38,6 @@ jobs:
       - name: Extract metadata
         id: meta
         run: |
-          TAG="${{ github.event.release.tag_name }}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "image_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
           echo "platform_pair=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
 
@@ -98,8 +95,11 @@ jobs:
         id: meta
         run: |
           TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+          MAJOR="v${VERSION%%.*}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
           echo "image_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Create and push GHCR manifest
@@ -109,6 +109,7 @@ jobs:
           docker buildx imagetools create \
             -t "$GHCR_IMAGE:${{ steps.meta.outputs.tag }}" \
             -t "$GHCR_IMAGE:${{ steps.meta.outputs.version }}" \
+            -t "$GHCR_IMAGE:${{ steps.meta.outputs.major }}" \
             -t "$GHCR_IMAGE:latest" \
             $(for f in *; do echo "$GHCR_IMAGE@$(cat "$f")"; done)
 
@@ -119,5 +120,6 @@ jobs:
           docker buildx imagetools create \
             -t "$DH_IMAGE:${{ steps.meta.outputs.tag }}" \
             -t "$DH_IMAGE:${{ steps.meta.outputs.version }}" \
+            -t "$DH_IMAGE:${{ steps.meta.outputs.major }}" \
             -t "$DH_IMAGE:latest" \
             $(for f in *; do echo "$DH_IMAGE@$(cat "$f")"; done)

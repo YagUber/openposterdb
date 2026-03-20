@@ -88,7 +88,7 @@ echo "--- Positions ---"
 for pos in tl tc tr r bl bc br l; do
   echo -n "pos-$pos... "
   curl -sf "${AUTH[@]}" \
-    "$PREVIEW/poster?poster_position=$pos" \
+    "$PREVIEW/poster?position=$pos" \
     -o "$OUT/pos-$pos.jpg"
   echo "OK"
 done

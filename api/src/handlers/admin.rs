@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, FanartImageKind};
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, PosterPosition, PosterSource};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -118,7 +118,7 @@ pub struct GlobalSettingsResponse {
     pub ratings_order: String,
     pub free_api_key_enabled: bool,
     pub free_api_key_locked: bool,
-    pub poster_position: PosterPosition,
+    pub poster_position: BadgePosition,
     pub logo_ratings_limit: i32,
     pub backdrop_ratings_limit: i32,
     pub poster_badge_style: BadgeStyle,
@@ -185,7 +185,7 @@ pub struct UpdateGlobalSettingsRequest {
     pub ratings_order: String,
     pub free_api_key_enabled: Option<bool>,
     #[serde(default = "db::default_poster_position")]
-    pub poster_position: PosterPosition,
+    pub poster_position: BadgePosition,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub logo_ratings_limit: i32,
     #[serde(default = "default_logo_backdrop_ratings_limit")]

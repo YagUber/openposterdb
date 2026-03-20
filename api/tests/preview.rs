@@ -241,7 +241,7 @@ async fn preview_respects_poster_position() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
 
-    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?poster_position=l", &token)).await.unwrap();
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?position=l", &token)).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
 
@@ -256,10 +256,10 @@ async fn preview_cache_differs_for_different_positions() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
 
-    let res1 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=2&ratings_order=imdb,rt&poster_position=bc", &token)).await.unwrap();
+    let res1 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=2&ratings_order=imdb,rt&position=bc", &token)).await.unwrap();
     let body1 = res1.into_body().collect().await.unwrap().to_bytes();
 
-    let res2 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=2&ratings_order=imdb,rt&poster_position=l", &token)).await.unwrap();
+    let res2 = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=2&ratings_order=imdb,rt&position=l", &token)).await.unwrap();
     let body2 = res2.into_body().collect().await.unwrap().to_bytes();
 
     assert_eq!(body1[0], 0xFF);
@@ -267,11 +267,307 @@ async fn preview_cache_differs_for_different_positions() {
     assert_ne!(body1, body2);
 }
 
+
+/// Verify that the preview endpoint actually renders badges in the correct
+/// region of the image by checking pixel data, not just HTTP status codes.
+#[tokio::test]
+async fn preview_position_places_badges_in_correct_region() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let params = "ratings_limit=3&ratings_order=imdb,tmdb,rt";
+
+    let res_tc = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/poster?{params}&position=tc"), &token,
+    )).await.unwrap();
+    assert_eq!(res_tc.status(), StatusCode::OK);
+    let body_tc = res_tc.into_body().collect().await.unwrap().to_bytes();
+
+    let res_bc = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/poster?{params}&position=bc"), &token,
+    )).await.unwrap();
+    assert_eq!(res_bc.status(), StatusCode::OK);
+    let body_bc = res_bc.into_body().collect().await.unwrap().to_bytes();
+
+    // The sample poster is a dark gray gradient (26–42 per channel).
+    // Badge pixels are significantly brighter. Compute the y-centroid of
+    // bright pixels to verify badge placement.
+    fn badge_y_centroid(jpeg: &[u8]) -> f64 {
+        let img = image::load_from_memory(jpeg).unwrap().to_rgba8();
+        let h = img.height() as f64;
+        let (mut sum_y, mut count) = (0u64, 0u64);
+        for (_, y, px) in img.enumerate_pixels() {
+            if px[0].max(px[1]).max(px[2]) > 80 {
+                sum_y += y as u64;
+                count += 1;
+            }
+        }
+        assert!(count > 0, "no badge pixels found");
+        sum_y as f64 / count as f64 / h
+    }
+
+    let tc_cy = badge_y_centroid(&body_tc);
+    let bc_cy = badge_y_centroid(&body_bc);
+
+    assert!(tc_cy < 0.33,
+        "TopCenter: badge y-centroid {tc_cy:.2} should be in top third");
+    assert!(bc_cy > 0.67,
+        "BottomCenter: badge y-centroid {bc_cy:.2} should be in bottom third");
+}
+
 #[tokio::test]
 async fn preview_rejects_invalid_poster_position() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
 
-    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?poster_position=invalid", &token)).await.unwrap();
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?position=invalid", &token)).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+// --- Badge style tests ---
+
+#[tokio::test]
+async fn preview_accepts_all_badge_styles() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for style in ["h", "v", "d"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/poster?badge_style={style}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "badge_style={style} should be accepted");
+        assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
+    }
+}
+
+#[tokio::test]
+async fn preview_rejects_invalid_badge_style() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?badge_style=z", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preview_badge_style_produces_different_images() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res_h = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&badge_style=h", &token)).await.unwrap();
+    let body_h = res_h.into_body().collect().await.unwrap().to_bytes();
+
+    let res_v = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&badge_style=v", &token)).await.unwrap();
+    let body_v = res_v.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_h[0], 0xFF);
+    assert_eq!(body_v[0], 0xFF);
+    assert_ne!(body_h, body_v, "horizontal and vertical badge styles should produce different images");
+}
+
+// --- Label style tests ---
+
+#[tokio::test]
+async fn preview_accepts_all_label_styles() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for style in ["t", "i", "o"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/poster?label_style={style}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "label_style={style} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_rejects_invalid_label_style() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?label_style=x", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preview_label_style_produces_different_images() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res_text = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&label_style=t", &token)).await.unwrap();
+    let body_text = res_text.into_body().collect().await.unwrap().to_bytes();
+
+    let res_icon = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&label_style=i", &token)).await.unwrap();
+    let body_icon = res_icon.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_text[0], 0xFF);
+    assert_eq!(body_icon[0], 0xFF);
+    assert_ne!(body_text, body_icon, "text and icon label styles should produce different images");
+}
+
+// --- Badge size tests ---
+
+#[tokio::test]
+async fn preview_accepts_all_badge_sizes() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for size in ["xs", "s", "m", "l", "xl"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/poster?badge_size={size}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "badge_size={size} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_rejects_invalid_badge_size() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?badge_size=xxl", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preview_badge_size_produces_different_images() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res_xs = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&badge_size=xs", &token)).await.unwrap();
+    let body_xs = res_xs.into_body().collect().await.unwrap().to_bytes();
+
+    let res_xl = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=3&badge_size=xl", &token)).await.unwrap();
+    let body_xl = res_xl.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_xs[0], 0xFF);
+    assert_eq!(body_xl[0], 0xFF);
+    assert_ne!(body_xs, body_xl, "xs and xl badge sizes should produce different images");
+}
+
+// --- Badge direction tests ---
+
+#[tokio::test]
+async fn preview_accepts_all_badge_directions() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for dir in ["d", "h", "v"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/poster?badge_direction={dir}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "badge_direction={dir} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_rejects_invalid_badge_direction() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/poster?badge_direction=x", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+// --- Logo preview tests ---
+
+#[tokio::test]
+async fn preview_logo_returns_png() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/logo", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/png");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&body[..4], &[0x89, b'P', b'N', b'G']);
+}
+
+#[tokio::test]
+async fn preview_logo_accepts_badge_style_and_size() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get(
+        "/api/admin/preview/logo?badge_style=h&badge_size=l&label_style=t", &token
+    )).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+// --- Backdrop preview tests ---
+
+#[tokio::test]
+async fn preview_backdrop_returns_jpeg() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/backdrop", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body[0], 0xFF);
+    assert_eq!(body[1], 0xD8);
+}
+
+#[tokio::test]
+async fn preview_backdrop_accepts_badge_style_and_size() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get(
+        "/api/admin/preview/backdrop?badge_style=v&badge_size=xs&label_style=o", &token
+    )).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+// --- Combined param tests ---
+
+#[tokio::test]
+async fn preview_all_new_params_combined() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get(
+        "/api/admin/preview/poster?ratings_limit=4&ratings_order=imdb,tmdb,rt,mc&position=tl&badge_style=v&label_style=i&badge_direction=v&badge_size=l",
+        &token
+    )).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body[0], 0xFF);
+    assert!(body.len() > 100);
+}
+
+#[tokio::test]
+async fn preview_self_serve_logo() {
+    let (app, _state) = common::setup_test_app().await;
+    let api_key_token = common::setup_api_key_session(&app).await;
+
+    let req = Request::builder()
+        .uri("/api/key/me/preview/logo?badge_style=h&badge_size=s")
+        .header("authorization", format!("Bearer {api_key_token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/png");
+}
+
+#[tokio::test]
+async fn preview_self_serve_backdrop() {
+    let (app, _state) = common::setup_test_app().await;
+    let api_key_token = common::setup_api_key_session(&app).await;
+
+    let req = Request::builder()
+        .uri("/api/key/me/preview/backdrop?badge_size=xl&label_style=t")
+        .header("authorization", format!("Bearer {api_key_token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
 }

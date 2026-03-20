@@ -27,7 +27,7 @@ function mountCard(freeApiKeyEnabled = true) {
       plugins: [pinia],
       stubs: {
         Select: SelectStub,
-        SelectTrigger: { template: '<span><slot /></span>' },
+        SelectTrigger: { template: '<span :id="id"><slot /></span>', props: ['id', 'ariaLabel', 'class'] },
         SelectValue: { template: '<span>{{ placeholder }}</span>', props: ['placeholder'] },
         SelectContent: { template: '<span><slot /></span>' },
         SelectItem: { template: '<span><slot /></span>', props: ['value'] },
@@ -51,17 +51,21 @@ function mountCard(freeApiKeyEnabled = true) {
 }
 
 /**
- * Find all Select stub component wrappers.
- * Order in FreeApiKeyCard template: idType, imageType, imageSize, lang
+ * Set a Select's value by finding its SelectTrigger via id,
+ * then emitting on the parent Select component.
  */
-function findSelectComponents(wrapper: VueWrapper) {
-  return wrapper.findAllComponents(SelectStub)
-}
-
-/** Set a Select stub's value by emitting update:modelValue directly. */
-async function setSelect(wrapper: VueWrapper, index: number, value: string) {
-  const selects = findSelectComponents(wrapper)
-  selects[index].vm.$emit('update:modelValue', value)
+async function setSelectById(wrapper: VueWrapper, triggerId: string, value: string) {
+  const trigger = wrapper.find(`#${triggerId}`)
+  if (!trigger.exists()) {
+    throw new Error(`SelectTrigger with id="${triggerId}" not found`)
+  }
+  // Walk up to find the parent Select stub component
+  const selectComponents = wrapper.findAllComponents(SelectStub)
+  const parent = selectComponents.find(s => s.find(`#${triggerId}`).exists())
+  if (!parent) {
+    throw new Error(`Parent Select for trigger id="${triggerId}" not found`)
+  }
+  parent.vm.$emit('update:modelValue', value)
   await flushPromises()
 }
 
@@ -95,22 +99,21 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
     expect(findCurlCode(wrapper).text()).toContain('.jpg')
 
-    await setSelect(wrapper, 1, 'logo') // imageType
+    await setSelectById(wrapper, 'free-image-type', 'logo')
     expect(findCurlCode(wrapper).text()).toContain('.png')
   })
 
   it('sizeOptions excludes small for poster, includes small for backdrop', async () => {
     const wrapper = mountCard(true)
     // Default is poster — set "small" then switch imageType to trigger the watch
-    await setSelect(wrapper, 2, 'small') // imageSize = small
-    // Now switch imageType to poster again (same value) — watch doesn't fire
-    // Instead, switch imageType away and back to trigger the reset
-    await setSelect(wrapper, 1, 'logo') // triggers watch → small invalid for logo → reset
+    await setSelectById(wrapper, 'free-image-size', 'small')
+    // Switch imageType away to trigger the reset (small invalid for logo)
+    await setSelectById(wrapper, 'free-image-type', 'logo')
     expect(findCurlCode(wrapper).text()).not.toContain('imageSize=small')
 
     // Switch to backdrop — "small" should be valid and persist
-    await setSelect(wrapper, 1, 'backdrop') // imageType = backdrop
-    await setSelect(wrapper, 2, 'small') // imageSize = small
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    await setSelectById(wrapper, 'free-image-size', 'small')
     expect(findCurlCode(wrapper).text()).toContain('imageSize=small')
   })
 
@@ -118,13 +121,13 @@ describe('FreeApiKeyCard', () => {
     const wrapper = mountCard(true)
 
     // Switch to backdrop
-    await setSelect(wrapper, 1, 'backdrop')
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
     // Set size to small (valid for backdrop)
-    await setSelect(wrapper, 2, 'small')
+    await setSelectById(wrapper, 'free-image-size', 'small')
     expect(findCurlCode(wrapper).text()).toContain('imageSize=small')
 
     // Switch back to poster — "small" is invalid, should reset to default
-    await setSelect(wrapper, 1, 'poster')
+    await setSelectById(wrapper, 'free-image-type', 'poster')
     expect(findCurlCode(wrapper).text()).not.toContain('imageSize=small')
   })
 
@@ -180,10 +183,8 @@ describe('FreeApiKeyCard', () => {
   it('queryString includes lang, imageSize params when set', async () => {
     const wrapper = mountCard(true)
 
-    // Set lang
-    await setSelect(wrapper, 3, 'en')
-    // Set imageSize
-    await setSelect(wrapper, 2, 'large')
+    await setSelectById(wrapper, 'free-lang', 'en')
+    await setSelectById(wrapper, 'free-image-size', 'large')
 
     const curlText = findCurlCode(wrapper).text()
     expect(curlText).toContain('lang=en')
@@ -196,10 +197,38 @@ describe('FreeApiKeyCard', () => {
     const getPlaceholder = () => wrapper.find('input:not([type="checkbox"])').attributes('placeholder')
     expect(getPlaceholder()).toBe('tt0013442')
 
-    await setSelect(wrapper, 0, 'tmdb')
+    await setSelectById(wrapper, 'free-id-type', 'tmdb')
     expect(getPlaceholder()).toBe('movie-872585')
 
-    await setSelect(wrapper, 0, 'tvdb')
+    await setSelectById(wrapper, 'free-id-type', 'tvdb')
     expect(getPlaceholder()).toBe('253573')
+  })
+
+  it('resets poster-only controls when switching away from poster', async () => {
+    const wrapper = mountCard(true)
+
+    // Set poster-only controls
+    await setSelectById(wrapper, 'free-poster-position', 'tl')
+    await setSelectById(wrapper, 'free-badge-direction', 'v')
+    await setSelectById(wrapper, 'free-poster-source', 'f')
+    await setSelectById(wrapper, 'free-fanart-textless', 'true')
+    expect(findCurlCode(wrapper).text()).toContain('position=tl')
+    expect(findCurlCode(wrapper).text()).toContain('badge_direction=v')
+    expect(findCurlCode(wrapper).text()).toContain('poster_source=f')
+    expect(findCurlCode(wrapper).text()).toContain('fanart_textless=true')
+
+    // Switch to logo — poster-only controls should reset
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).not.toContain('position=')
+    expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
+    expect(findCurlCode(wrapper).text()).not.toContain('poster_source=')
+    expect(findCurlCode(wrapper).text()).not.toContain('fanart_textless=')
+
+    // Switch back to poster — controls should be at defaults (not persisted)
+    await setSelectById(wrapper, 'free-image-type', 'poster')
+    expect(findCurlCode(wrapper).text()).not.toContain('position=')
+    expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
+    expect(findCurlCode(wrapper).text()).not.toContain('poster_source=')
+    expect(findCurlCode(wrapper).text()).not.toContain('fanart_textless=')
   })
 })

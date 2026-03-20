@@ -12,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import type { SaveSettingsPayload } from '@/lib/api'
-import { LANGUAGES } from '@/lib/constants'
+import { LANGUAGES, parseRatingsOrder } from '@/lib/constants'
 
 export interface RenderSettings {
   poster_source: string
@@ -38,17 +39,6 @@ export interface RenderSettings {
   backdrop_badge_size: string
 }
 
-const ALL_RATING_SOURCES = [
-  { key: 'imdb', label: 'IMDb', color: '#b4910f' },
-  { key: 'tmdb', label: 'TMDB', color: '#019b58' },
-  { key: 'rt', label: 'Rotten Tomatoes (Critics)', color: '#b92308' },
-  { key: 'rta', label: 'Rotten Tomatoes (Audience)', color: '#b92308' },
-  { key: 'mc', label: 'Metacritic', color: '#4b9626' },
-  { key: 'trakt', label: 'Trakt', color: '#af0f2d' },
-  { key: 'lb', label: 'Letterboxd', color: '#009b58' },
-  { key: 'mal', label: 'MyAnimeList', color: '#223c78' },
-] as const
-
 const props = defineProps<{
   settings: RenderSettings
   uid?: string
@@ -65,7 +55,7 @@ const editLang = ref(props.settings.fanart_lang || 'en')
 const editTextless = ref(props.settings.fanart_textless)
 const editSource = computed(() => editFanart.value ? 'f' : 't')
 const editRatingsLimit = ref(props.settings.ratings_limit)
-const editRatingsOrder = ref<string[]>(parseOrder(props.settings.ratings_order))
+const editRatingsOrder = ref<string[]>(parseRatingsOrder(props.settings.ratings_order))
 const editPosterPosition = ref(props.settings.poster_position || 'bc')
 const editLogoRatingsLimit = ref(props.settings.logo_ratings_limit ?? 3)
 const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit ?? 3)
@@ -85,7 +75,7 @@ function applySettings(s: RenderSettings) {
   editLang.value = s.fanart_lang || 'en'
   editTextless.value = s.fanart_textless
   editRatingsLimit.value = s.ratings_limit
-  editRatingsOrder.value = parseOrder(s.ratings_order)
+  editRatingsOrder.value = parseRatingsOrder(s.ratings_order)
   editPosterPosition.value = s.poster_position || 'bc'
   editLogoRatingsLimit.value = s.logo_ratings_limit ?? 3
   editBackdropRatingsLimit.value = s.backdrop_ratings_limit ?? 3
@@ -106,27 +96,6 @@ const error = ref('')
 const showCheck = ref(false)
 let checkTimeout: ReturnType<typeof setTimeout> | null = null
 let syncing = false
-function parseOrder(order: string): string[] {
-  const keys = order ? order.split(',').map(k => k.trim()).filter(Boolean) : []
-  // Ensure all sources are present — add any missing ones at the end
-  const allKeys = ALL_RATING_SOURCES.map(s => s.key)
-  for (const k of allKeys) {
-    if (!keys.includes(k)) keys.push(k)
-  }
-  return keys
-}
-
-function moveItem(from: number, to: number) {
-  if (to < 0 || to >= editRatingsOrder.value.length) return
-  const arr = [...editRatingsOrder.value]
-  const removed = arr.splice(from, 1)
-  arr.splice(to, 0, ...removed)
-  editRatingsOrder.value = arr
-}
-
-function getRatingSource(key: string) {
-  return ALL_RATING_SOURCES.find(s => s.key === key)
-}
 
 watch(() => props.settings, (s) => {
   syncing = true
@@ -426,34 +395,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
       <div class="space-y-2">
         <Label>Rating order</Label>
         <p class="text-xs text-muted-foreground">Use the arrows to reorder. Higher items have priority.</p>
-        <div class="space-y-1 max-w-sm">
-          <div
-            v-for="(key, index) in editRatingsOrder"
-            :key="key"
-            class="flex items-center gap-2 rounded border px-2 py-1.5 bg-background"
-          >
-            <span class="text-muted-foreground text-xs select-none w-4 text-right">{{ index + 1 }}</span>
-            <span
-              class="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-              :style="{ backgroundColor: getRatingSource(key)?.color }"
-            ></span>
-            <span class="text-sm flex-1">{{ getRatingSource(key)?.label || key }}</span>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center w-8 h-8 rounded border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none"
-              :disabled="index === 0"
-              @click="moveItem(index, index - 1)"
-              title="Move up"
-            >&uarr;</button>
-            <button
-              type="button"
-              class="inline-flex items-center justify-center w-8 h-8 rounded border text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:pointer-events-none"
-              :disabled="index === editRatingsOrder.length - 1"
-              @click="moveItem(index, index + 1)"
-              title="Move down"
-            >&darr;</button>
-          </div>
-        </div>
+        <RatingsOrderList v-model="editRatingsOrder" />
       </div>
     </div>
 

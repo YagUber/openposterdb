@@ -72,6 +72,9 @@ describe('selfApi', () => {
       logo_label_style: 't',
       backdrop_label_style: 't',
       poster_badge_direction: 'd',
+      poster_badge_size: 'l',
+      logo_badge_size: 's',
+      backdrop_badge_size: 'xl',
     })
 
     const [url, options] = fetchMock.mock.calls[0]
@@ -94,6 +97,9 @@ describe('selfApi', () => {
       logo_label_style: 't',
       backdrop_label_style: 't',
       poster_badge_direction: 'd',
+      poster_badge_size: 'l',
+      logo_badge_size: 's',
+      backdrop_badge_size: 'xl',
     })
   })
 
@@ -130,14 +136,14 @@ describe('selfApi', () => {
     expect(options.credentials).toBeUndefined()
   })
 
-  it('previewPoster includes poster_position when provided', async () => {
+  it('previewPoster includes position when provided', async () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
     vi.stubGlobal('fetch', fetchMock)
 
     await selfApi.previewPoster(3, 'imdb,rt', 'r')
 
     const [url] = fetchMock.mock.calls[0]
-    expect(url).toContain('poster_position=r')
+    expect(url).toContain('position=r')
   })
 
   it('previewPoster includes label_style when provided', async () => {

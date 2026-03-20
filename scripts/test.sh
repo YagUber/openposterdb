@@ -28,6 +28,7 @@ echo "=== E2E tests ==="
 cleanup() {
     echo "=== Tearing down ==="
     $CTR rm -f "$CONTAINER_NAME" 2>/dev/null || true
+    $CTR rmi -f "$IMAGE_NAME" 2>/dev/null || true
 }
 trap cleanup EXIT
 

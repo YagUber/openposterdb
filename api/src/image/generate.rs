@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 use crate::cache;
 use crate::error::AppError;
 use crate::image::badge;
-use crate::services::db::{BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, PosterPosition};
+use crate::services::db::{BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition};
 use crate::services::ratings::RatingBadge;
 use crate::services::tmdb::TmdbClient;
 
@@ -34,7 +34,7 @@ pub struct ImageParams<'a> {
     pub cache_dir: &'a str,
     pub image_stale_secs: u64,
     pub poster_bytes_override: Option<Vec<u8>>,
-    pub poster_position: PosterPosition,
+    pub poster_position: BadgePosition,
     pub badge_style: BadgeStyle,
     pub label_style: LabelStyle,
     pub badge_direction: BadgeDirection,
@@ -141,7 +141,7 @@ pub async fn generate_poster(params: ImageParams<'_>) -> Result<Vec<u8>, AppErro
 }
 
 /// Overlay badges in a vertical column, positioned according to `poster_position`.
-fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], poster_position: PosterPosition, badge_scale: f32) {
+fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], poster_position: BadgePosition, badge_scale: f32) {
     let vert_spacing = (BADGE_VERT_SPACING as f32 * badge_scale).round() as u32;
     let top_margin = (BADGE_TOP_MARGIN as f32 * badge_scale).round() as u32;
     let bottom_margin = (BADGE_BOTTOM_MARGIN as f32 * badge_scale).round() as u32;
@@ -189,7 +189,7 @@ fn overlay_vertical_stack(canvas: &mut RgbaImage, badge_images: &[RgbaImage], po
 }
 
 /// Overlay badges in horizontal rows, positioned according to `poster_position`.
-fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], poster_position: PosterPosition, max_per_row: usize, badge_scale: f32) {
+fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], poster_position: BadgePosition, max_per_row: usize, badge_scale: f32) {
     let spacing = (BADGE_SPACING as f32 * badge_scale).round() as u32;
     let row_spacing = (BADGE_ROW_SPACING as f32 * badge_scale).round() as u32;
     let top_margin = (BADGE_TOP_MARGIN as f32 * badge_scale).round() as u32;
@@ -242,7 +242,7 @@ pub fn render_poster_sync(
     badges: &[RatingBadge],
     font: &FontArc,
     quality: u8,
-    poster_position: PosterPosition,
+    poster_position: BadgePosition,
     badge_style: BadgeStyle,
     label_style: LabelStyle,
     badge_direction: BadgeDirection,
@@ -578,7 +578,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = render_poster_sync(&png_bytes, &[], &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert!(!result.is_empty());
         // Should be valid JPEG
         assert_eq!(result[0], 0xFF);
@@ -621,7 +621,7 @@ mod tests {
             },
         ];
 
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -630,7 +630,7 @@ mod tests {
     #[test]
     fn render_poster_invalid_image_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
-        let result = render_poster_sync(b"not an image", &[], &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
+        let result = render_poster_sync(b"not an image", &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium);
         assert!(result.is_err());
     }
 
@@ -749,10 +749,12 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
+
+
 
     #[test]
     fn render_poster_left_position_produces_valid_jpeg() {
@@ -766,7 +768,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::Left, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -783,7 +785,7 @@ mod tests {
                 value: "8.5".to_string(),
             },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::Right, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::Right, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -798,7 +800,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Icon, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -814,17 +816,17 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
         // vertical direction at bottom-center
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at top-left corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // vertical direction at bottom-right corner
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -871,7 +873,7 @@ mod tests {
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
             RatingBadge { source: RatingSource::RtAudience, value: "45%".to_string() },
         ];
-        let result = render_poster_sync(&png_bytes, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Official, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png_bytes, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Official, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
     }
@@ -928,7 +930,7 @@ mod tests {
             quality: 85,
             cache_dir: "/tmp",
             image_stale_secs: 3600,
-            poster_position: PosterPosition::BottomCenter,
+            poster_position: BadgePosition::BottomCenter,
             badge_style: BadgeStyle::Horizontal,
             label_style: LabelStyle::Text,
             badge_direction: BadgeDirection::Horizontal,
@@ -963,7 +965,7 @@ mod tests {
             quality: 85,
             cache_dir: "/tmp",
             image_stale_secs: 3600,
-            poster_position: PosterPosition::BottomCenter,
+            poster_position: BadgePosition::BottomCenter,
             badge_style: BadgeStyle::Horizontal,
             label_style: LabelStyle::Text,
             badge_direction: BadgeDirection::Horizontal,
@@ -1058,7 +1060,7 @@ mod tests {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let png = test_png(500, 750);
         // Render at large size (1280 width, ~2.2x badge scale)
-        let result = render_poster_sync(&png, &[], &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png, &[], &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium).unwrap();
         assert!(!result.is_empty());
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
@@ -1076,7 +1078,7 @@ mod tests {
             RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
             RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
         ];
-        let result = render_poster_sync(&png, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium).unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 1280, 2.2, BadgeSize::Medium).unwrap();
         let img = image::load_from_memory(&result).unwrap();
         assert_eq!(img.width(), 1280);
     }
@@ -1092,14 +1094,112 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
         ];
         // Large badge size with horizontal style — should use max 2 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Large).unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Large).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
 
         // Extra-large badge size with vertical style — should use max 4 per row
-        let result = render_poster_sync(&png, &badges, &font, 85, PosterPosition::BottomCenter, BadgeStyle::Vertical, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::ExtraLarge).unwrap();
+        let result = render_poster_sync(&png, &badges, &font, 85, BadgePosition::BottomCenter, BadgeStyle::Vertical, LabelStyle::Text, BadgeDirection::Horizontal, 500, 1.0, BadgeSize::ExtraLarge).unwrap();
         assert_eq!(result[0], 0xFF);
         assert_eq!(result[1], 0xD8);
+    }
+
+    /// Compute the centroid (center of mass) of non-background pixels in a
+    /// rendered poster JPEG. The base image is uniform gray (128,128,128), so
+    /// any pixel that deviates significantly is part of a badge overlay.
+    /// Returns (centroid_x, centroid_y) as fractions of image dimensions (0.0–1.0).
+    fn badge_centroid(jpeg_bytes: &[u8]) -> (f64, f64) {
+        let img = image::load_from_memory(jpeg_bytes).unwrap().to_rgba8();
+        let (w, h) = (img.width() as f64, img.height() as f64);
+        let (mut sx, mut sy, mut count) = (0u64, 0u64, 0u64);
+        for (x, y, px) in img.enumerate_pixels() {
+            // JPEG compression blurs edges, so use a generous threshold
+            let diff = (px[0] as i32 - 128).abs()
+                .max((px[1] as i32 - 128).abs())
+                .max((px[2] as i32 - 128).abs());
+            if diff > 20 {
+                sx += x as u64;
+                sy += y as u64;
+                count += 1;
+            }
+        }
+        assert!(count > 0, "no badge pixels found");
+        (sx as f64 / count as f64 / w, sy as f64 / count as f64 / h)
+    }
+
+    fn position_test_badges() -> Vec<crate::services::ratings::RatingBadge> {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+        vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
+            RatingBadge { source: RatingSource::Rt, value: "92%".to_string() },
+        ]
+    }
+
+    #[test]
+    fn badge_position_top_center_places_badges_in_top_region() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::TopCenter, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cy < 0.33, "TopCenter: badge y-centroid {cy:.2} should be in top third");
+        assert!(cx > 0.3 && cx < 0.7, "TopCenter: badge x-centroid {cx:.2} should be centered");
+    }
+
+    #[test]
+    fn badge_position_bottom_center_places_badges_in_bottom_region() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::BottomCenter, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Horizontal, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cy > 0.67, "BottomCenter: badge y-centroid {cy:.2} should be in bottom third");
+        assert!(cx > 0.3 && cx < 0.7, "BottomCenter: badge x-centroid {cx:.2} should be centered");
+    }
+
+    #[test]
+    fn badge_position_left_places_badges_on_left_side() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::Left, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cx < 0.5, "Left: badge x-centroid {cx:.2} should be in left half");
+        assert!(cy > 0.25 && cy < 0.75, "Left: badge y-centroid {cy:.2} should be vertically centered");
+    }
+
+    #[test]
+    fn badge_position_right_places_badges_on_right_side() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::Right, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cx > 0.5, "Right: badge x-centroid {cx:.2} should be in right half");
+        assert!(cy > 0.25 && cy < 0.75, "Right: badge y-centroid {cy:.2} should be vertically centered");
+    }
+
+    #[test]
+    fn badge_position_top_left_places_badges_in_top_left_quadrant() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::TopLeft, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cx < 0.5, "TopLeft: badge x-centroid {cx:.2} should be in left half");
+        assert!(cy < 0.5, "TopLeft: badge y-centroid {cy:.2} should be in top half");
+    }
+
+    #[test]
+    fn badge_position_bottom_right_places_badges_in_bottom_right_quadrant() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_poster_sync(&test_png(500, 750), &position_test_badges(), &font, 85,
+            BadgePosition::BottomRight, BadgeStyle::Horizontal, LabelStyle::Text,
+            BadgeDirection::Vertical, 500, 1.0, BadgeSize::Medium).unwrap();
+        let (cx, cy) = badge_centroid(&result);
+        assert!(cx > 0.5, "BottomRight: badge x-centroid {cx:.2} should be in right half");
+        assert!(cy > 0.5, "BottomRight: badge y-centroid {cy:.2} should be in bottom half");
     }
 
     #[test]

@@ -87,7 +87,18 @@ GET /{api_key}/isValid
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the Fanart.tv language for this request (e.g. `?lang=de` for German posters). Automatically switches the poster source to Fanart.tv even if TMDB is configured
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
+- `?ratings_limit={0-8}`: maximum number of rating badges to display
+- `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`
+- `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
+- `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
+- `?badge_size={xs|s|m|l|xl}`: badge scale — extra-small, small, medium, large, extra-large
+- `?badge_direction={d|h|v}`: badge stacking direction (poster only) — `d` (default), `h` (horizontal), `v` (vertical)
+- `?position={bc|tc|l|r|tl|tr|bl|br}`: badge anchor position (poster only)
+- `?poster_source={t|f}`: poster image source (poster only) — `t` (TMDB), `f` (Fanart.tv)
+- `?fanart_textless={true|false}`: use textless Fanart.tv posters when available (poster only)
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)
+
+Poster-only parameters (`badge_direction`, `position`, `poster_source`, `fanart_textless`) are silently ignored on logo and backdrop endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -302,7 +313,7 @@ Settings are stored as short single-character or two-character codes:
 | `label_style` | `t`, `i`, `o` | Text, Icon, Official |
 | `badge_direction` | `d`, `h`, `v` | Default (auto-resolved by position), Horizontal, Vertical |
 | `badge_size` | `xs`, `s`, `m`, `l`, `xl` | Extra-small (0.5×), Small (0.75×), Medium (1.0×), Large (1.25×), Extra-large (1.5×) |
-| `poster_position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Bottom-center, Top-center, Left, Right, corners |
+| `position` | `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br` | Bottom-center, Top-center, Left, Right, corners |
 
 ### Example Cache Keys
 

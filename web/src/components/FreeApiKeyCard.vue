@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { FREE_API_KEY, LANGUAGES } from '@/lib/constants'
+import { FREE_API_KEY, LANGUAGES, DEFAULT_RATINGS_ORDER, parseRatingsOrder } from '@/lib/constants'
+import RatingsOrderList from '@/components/RatingsOrderList.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -23,6 +24,16 @@ const imageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
 const idValue = ref('tt0013442')
 const lang = ref('any')
 const imageSize = ref<'default' | 'small' | 'medium' | 'large' | 'verylarge'>('default')
+const badgeStyle = ref('default')
+const labelStyle = ref('default')
+const badgeSize = ref('default')
+const ratingsLimit = ref('default')
+const badgeDirection = ref('default')
+const posterPosition = ref('default')
+const posterSource = ref('default')
+const fanartTextless = ref('default')
+const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
+const ratingsOrderChanged = ref(false)
 const fetchError = ref('')
 const fetchLoading = ref(false)
 const resultUrl = ref('')
@@ -45,11 +56,23 @@ const sizeOptions = computed(() => {
   ]
 })
 
-// Reset size when switching image type if the current size is invalid
-watch(imageType, () => {
+watch(ratingsOrderList, (newOrder) => {
+  const defaultOrder = parseRatingsOrder(DEFAULT_RATINGS_ORDER)
+  ratingsOrderChanged.value = newOrder.join(',') !== defaultOrder.join(',')
+}, { deep: true })
+
+// Reset size when switching image type if the current size is invalid,
+// and reset poster-only controls when switching away from poster
+watch(imageType, (newType) => {
   const validValues = sizeOptions.value.map(o => o.value)
   if (!validValues.includes(imageSize.value)) {
     imageSize.value = 'default'
+  }
+  if (newType !== 'poster') {
+    badgeDirection.value = 'default'
+    posterPosition.value = 'default'
+    posterSource.value = 'default'
+    fanartTextless.value = 'default'
   }
 })
 
@@ -71,6 +94,15 @@ const queryString = computed(() => {
   if (langVal.trim()) params.set('lang', langVal.trim())
   const sizeVal = imageSize.value === 'default' ? '' : imageSize.value
   if (sizeVal) params.set('imageSize', sizeVal)
+  if (ratingsOrderChanged.value) params.set('ratings_order', ratingsOrderList.value.join(','))
+  if (badgeStyle.value !== 'default') params.set('badge_style', badgeStyle.value)
+  if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
+  if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
+  if (ratingsLimit.value !== 'default') params.set('ratings_limit', ratingsLimit.value)
+  if (imageType.value === 'poster' && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
+  if (imageType.value === 'poster' && posterPosition.value !== 'default') params.set('position', posterPosition.value)
+  if (imageType.value === 'poster' && posterSource.value !== 'default') params.set('poster_source', posterSource.value)
+  if (imageType.value === 'poster' && fanartTextless.value !== 'default') params.set('fanart_textless', fanartTextless.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -131,38 +163,8 @@ async function handleFetch() {
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent class="pt-3 space-y-3">
-      <form class="flex flex-col gap-2" @submit.prevent="handleFetch">
-        <div class="flex flex-col sm:flex-row gap-2">
-          <Select v-model="idType">
-            <SelectTrigger id="free-id-type" aria-label="ID type" class="bg-background">
-              <SelectValue placeholder="ID type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="imdb">IMDb</SelectItem>
-              <SelectItem value="tmdb">TMDb</SelectItem>
-              <SelectItem value="tvdb">TVDB</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select v-model="imageType">
-            <SelectTrigger id="free-image-type" aria-label="Image type" class="bg-background">
-              <SelectValue placeholder="Image type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="poster">Poster</SelectItem>
-              <SelectItem value="logo">Logo</SelectItem>
-              <SelectItem value="backdrop">Backdrop</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            id="free-id-value"
-            v-model="idValue"
-            type="text"
-            :placeholder="idPlaceholder"
-            required
-            class="flex-1 min-w-0 font-mono bg-background"
-          />
-        </div>
-        <div class="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+      <form class="flex flex-col gap-3" @submit.prevent="handleFetch">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Select v-model="imageSize">
             <SelectTrigger id="free-image-size" aria-label="Image size" class="bg-background">
               <SelectValue placeholder="Size: default" />
@@ -184,13 +186,141 @@ async function handleFetch() {
               </SelectItem>
             </SelectContent>
           </Select>
+          <Select v-model="ratingsLimit">
+            <SelectTrigger id="free-ratings-limit" aria-label="Ratings limit" class="bg-background">
+              <SelectValue placeholder="Max badges: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Max badges: default</SelectItem>
+              <SelectItem v-for="n in 9" :key="n - 1" :value="String(n - 1)">
+                {{ n - 1 }} {{ n - 1 === 1 ? 'badge' : 'badges' }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="badgeStyle">
+            <SelectTrigger id="free-badge-style" aria-label="Badge style" class="bg-background">
+              <SelectValue placeholder="Badge style: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Badge style: default</SelectItem>
+              <SelectItem value="h">Horizontal</SelectItem>
+              <SelectItem value="v">Vertical</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="labelStyle">
+            <SelectTrigger id="free-label-style" aria-label="Label style" class="bg-background">
+              <SelectValue placeholder="Label style: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Label style: default</SelectItem>
+              <SelectItem value="t">Text</SelectItem>
+              <SelectItem value="i">Icon</SelectItem>
+              <SelectItem value="o">Official</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="badgeSize">
+            <SelectTrigger id="free-badge-size" aria-label="Badge size" class="bg-background">
+              <SelectValue placeholder="Badge size: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Badge size: default</SelectItem>
+              <SelectItem value="xs">Extra Small</SelectItem>
+              <SelectItem value="s">Small</SelectItem>
+              <SelectItem value="m">Medium</SelectItem>
+              <SelectItem value="l">Large</SelectItem>
+              <SelectItem value="xl">Extra Large</SelectItem>
+            </SelectContent>
+          </Select>
+          <template v-if="imageType === 'poster'">
+            <Select v-model="posterPosition">
+              <SelectTrigger id="free-poster-position" aria-label="Position" class="bg-background">
+                <SelectValue placeholder="Position: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Position: default</SelectItem>
+                <SelectItem value="bc">Bottom Center</SelectItem>
+                <SelectItem value="tc">Top Center</SelectItem>
+                <SelectItem value="l">Left</SelectItem>
+                <SelectItem value="r">Right</SelectItem>
+                <SelectItem value="tl">Top Left</SelectItem>
+                <SelectItem value="tr">Top Right</SelectItem>
+                <SelectItem value="bl">Bottom Left</SelectItem>
+                <SelectItem value="br">Bottom Right</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="badgeDirection">
+              <SelectTrigger id="free-badge-direction" aria-label="Badge direction" class="bg-background">
+                <SelectValue placeholder="Direction: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Direction: default</SelectItem>
+                <SelectItem value="d">Auto</SelectItem>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="posterSource">
+              <SelectTrigger id="free-poster-source" aria-label="Poster source" class="bg-background">
+                <SelectValue placeholder="Source: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Source: default</SelectItem>
+                <SelectItem value="t">TMDB</SelectItem>
+                <SelectItem value="f">Fanart.tv</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="fanartTextless">
+              <SelectTrigger id="free-fanart-textless" aria-label="Textless poster" class="bg-background">
+                <SelectValue placeholder="Textless: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Textless: default</SelectItem>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </template>
+        </div>
+        <div class="space-y-1 flex flex-col items-center">
+          <p class="text-xs text-muted-foreground">Rating priority</p>
+          <RatingsOrderList v-model="ratingsOrderList" compact />
         </div>
         <code class="block text-xs font-mono bg-muted px-3 py-2 rounded text-muted-foreground break-all select-all">{{ curlExample }}</code>
-        <div class="flex justify-center">
-          <Button type="submit" size="lg" :disabled="fetchLoading">
-            <Loader2 v-if="fetchLoading" class="h-4 w-4 animate-spin" />
-            <span v-else>Fetch</span>
-          </Button>
+        <div class="flex flex-wrap gap-2">
+          <Select v-model="idType">
+            <SelectTrigger id="free-id-type" aria-label="ID type" class="bg-background w-auto">
+              <SelectValue placeholder="ID type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="imdb">IMDb</SelectItem>
+              <SelectItem value="tmdb">TMDb</SelectItem>
+              <SelectItem value="tvdb">TVDB</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select v-model="imageType">
+            <SelectTrigger id="free-image-type" aria-label="Image type" class="bg-background w-auto">
+              <SelectValue placeholder="Image type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="poster">Poster</SelectItem>
+              <SelectItem value="logo">Logo</SelectItem>
+              <SelectItem value="backdrop">Backdrop</SelectItem>
+            </SelectContent>
+          </Select>
+          <div class="flex gap-2 flex-1 min-w-[200px]">
+            <Input
+              id="free-id-value"
+              v-model="idValue"
+              type="text"
+              :placeholder="idPlaceholder"
+              required
+              class="flex-1 min-w-0 font-mono bg-background"
+            />
+            <Button type="submit" :disabled="fetchLoading" class="shrink-0">
+              <Loader2 v-if="fetchLoading" class="h-4 w-4 animate-spin" />
+              <span v-else>Fetch</span>
+            </Button>
+          </div>
         </div>
       </form>
       <p v-if="fetchError" class="text-sm text-destructive">{{ fetchError }}</p>

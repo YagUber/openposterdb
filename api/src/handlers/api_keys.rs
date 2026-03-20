@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, PosterPosition, PosterSource};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource};
 use crate::services::validation;
 use crate::AppState;
 
@@ -100,7 +100,7 @@ pub struct RenderSettingsResponse {
     pub is_default: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
-    pub poster_position: PosterPosition,
+    pub poster_position: BadgePosition,
     pub logo_ratings_limit: i32,
     pub backdrop_ratings_limit: i32,
     pub poster_badge_style: BadgeStyle,
@@ -163,7 +163,7 @@ pub struct UpdateSettingsRequest {
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
     #[serde(default = "db::default_poster_position")]
-    pub poster_position: PosterPosition,
+    pub poster_position: BadgePosition,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub logo_ratings_limit: i32,
     #[serde(default = "default_logo_backdrop_ratings_limit")]

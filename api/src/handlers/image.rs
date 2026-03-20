@@ -10,7 +10,10 @@ use crate::error::AppError;
 use crate::handlers::auth::hash_api_key;
 use crate::image::serve;
 use crate::services::db;
-use crate::services::db::RenderSettings;
+use crate::services::db::{
+    BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource,
+    RenderSettings,
+};
 use crate::AppState;
 
 pub const FREE_API_KEY: &str = "t0-free-rpdb";
@@ -55,6 +58,57 @@ pub struct ImageQuery {
     #[serde(default, rename = "imageSize")]
     #[param(rename = "imageSize", default = "medium", value_type = Option<ImageSizeParam>)]
     pub image_size: Option<String>,
+    /// Maximum number of rating badges to display (0–8).
+    #[serde(default)]
+    #[param(value_type = Option<i32>)]
+    pub ratings_limit: Option<i32>,
+    /// Comma-separated rating source keys controlling display order (e.g. `imdb,tmdb,rt`).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub ratings_order: Option<String>,
+    /// Badge layout style: `h` (horizontal), `v` (vertical), `d` (default).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub badge_style: Option<BadgeStyle>,
+    /// Label rendering style: `t` (text), `i` (icon), `o` (official).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub label_style: Option<LabelStyle>,
+    /// Badge size: `xs`, `s`, `m`, `l`, `xl`.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub badge_size: Option<BadgeSize>,
+    /// Badge stacking direction (poster only): `d` (default), `h` (horizontal), `v` (vertical).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub badge_direction: Option<BadgeDirection>,
+    /// Badge anchor position: `bc`, `tc`, `l`, `r`, `tl`, `tr`, `bl`, `br`.
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub position: Option<BadgePosition>,
+    /// Poster image source (poster only): `t` (TMDB), `f` (Fanart.tv).
+    #[serde(default)]
+    #[param(value_type = Option<String>)]
+    pub poster_source: Option<PosterSource>,
+    /// Use textless Fanart.tv posters when available (poster only).
+    #[serde(default)]
+    #[param(value_type = Option<bool>)]
+    pub fanart_textless: Option<bool>,
+}
+
+impl ImageQuery {
+    /// Returns `true` if any render-setting override query parameter is present.
+    fn has_overrides(&self) -> bool {
+        self.ratings_limit.is_some()
+            || self.ratings_order.is_some()
+            || self.badge_style.is_some()
+            || self.label_style.is_some()
+            || self.badge_size.is_some()
+            || self.badge_direction.is_some()
+            || self.position.is_some()
+            || self.poster_source.is_some()
+            || self.fanart_textless.is_some()
+    }
 }
 
 /// Resolve settings for a free API key (global defaults, no per-key DB lookup).
@@ -166,8 +220,9 @@ pub async fn is_valid_handler(
     }
 }
 
-/// If `?lang=` was provided, validate it and override `fanart_lang` in settings.
-fn apply_lang_override(
+/// If `?lang=` was provided, validate it, override `fanart_lang`, and set
+/// `fanart_override` to force the fanart code path.
+fn apply_fanart_override(
     settings: Arc<db::RenderSettings>,
     lang: &Option<String>,
 ) -> Result<Arc<db::RenderSettings>, Response> {
@@ -175,11 +230,82 @@ fn apply_lang_override(
         db::validate_fanart_lang(lang).map_err(|e| e.into_response())?;
         let mut s = (*settings).clone();
         s.fanart_lang = Arc::from(lang.as_str());
-        s.lang_override = true;
+        s.fanart_override = true;
         Ok(Arc::new(s))
     } else {
         Ok(settings)
     }
+}
+
+/// Apply query-parameter overrides to render settings, returning a new `Arc` only
+/// when at least one override is present. Poster-only params are silently ignored
+/// on logo/backdrop endpoints.
+fn apply_query_overrides(
+    settings: Arc<db::RenderSettings>,
+    query: &ImageQuery,
+    kind: cache::ImageType,
+) -> Result<Arc<db::RenderSettings>, Response> {
+    if !query.has_overrides() {
+        return Ok(settings);
+    }
+
+    let mut s = (*settings).clone();
+
+    // -- shared overrides (image-type-aware) --
+    if let Some(limit) = query.ratings_limit {
+        db::validate_ratings_limit(limit).map_err(|e| e.into_response())?;
+        match kind {
+            cache::ImageType::Poster => s.ratings_limit = limit,
+            cache::ImageType::Logo => s.logo_ratings_limit = limit,
+            cache::ImageType::Backdrop => s.backdrop_ratings_limit = limit,
+        }
+    }
+    if let Some(ref order) = query.ratings_order {
+        db::validate_ratings_order(order).map_err(|e| e.into_response())?;
+        s.ratings_order = Arc::from(order.as_str());
+    }
+    if let Some(style) = query.badge_style {
+        match kind {
+            cache::ImageType::Poster => s.poster_badge_style = style,
+            cache::ImageType::Logo => s.logo_badge_style = style,
+            cache::ImageType::Backdrop => s.backdrop_badge_style = style,
+        }
+    }
+    if let Some(style) = query.label_style {
+        match kind {
+            cache::ImageType::Poster => s.poster_label_style = style,
+            cache::ImageType::Logo => s.logo_label_style = style,
+            cache::ImageType::Backdrop => s.backdrop_label_style = style,
+        }
+    }
+    if let Some(size) = query.badge_size {
+        match kind {
+            cache::ImageType::Poster => s.poster_badge_size = size,
+            cache::ImageType::Logo => s.logo_badge_size = size,
+            cache::ImageType::Backdrop => s.backdrop_badge_size = size,
+        }
+    }
+
+    // -- poster-only overrides (silently ignored for logo/backdrop) --
+    if kind == cache::ImageType::Poster {
+        if let Some(dir) = query.badge_direction {
+            s.poster_badge_direction = dir;
+        }
+        if let Some(pos) = query.position {
+            s.poster_position = pos;
+        }
+        if let Some(src) = query.poster_source {
+            s.poster_source = src;
+        }
+        if let Some(textless) = query.fanart_textless {
+            s.fanart_textless = textless;
+            if textless {
+                s.fanart_override = true;
+            }
+        }
+    }
+
+    Ok(Arc::new(s))
 }
 
 /// URL path segment used in CDN redirect URLs for each image type.
@@ -303,7 +429,11 @@ async fn image_handler_inner(
         Ok(s) => s,
         Err(resp) => return resp,
     };
-    let settings = match apply_lang_override(settings, &query.lang) {
+    let settings = match apply_fanart_override(settings, &query.lang) {
+        Ok(s) => s,
+        Err(resp) => return resp,
+    };
+    let settings = match apply_query_overrides(settings, &query, kind) {
         Ok(s) => s,
         Err(resp) => return resp,
     };
@@ -529,5 +659,142 @@ mod tests {
             resp.headers().get(header::CACHE_CONTROL).unwrap(),
             CDN_ERROR_CACHE_CONTROL,
         );
+    }
+
+    fn empty_query() -> ImageQuery {
+        ImageQuery {
+            fallback: None,
+            lang: None,
+            image_size: None,
+            ratings_limit: None,
+            ratings_order: None,
+            badge_style: None,
+            label_style: None,
+            badge_size: None,
+            badge_direction: None,
+            position: None,
+            poster_source: None,
+            fanart_textless: None,
+        }
+    }
+
+    #[test]
+    fn apply_query_overrides_no_overrides_returns_same_arc() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = empty_query();
+        let result =
+            apply_query_overrides(settings.clone(), &query, cache::ImageType::Poster).unwrap();
+        assert!(Arc::ptr_eq(&settings, &result));
+    }
+
+    #[test]
+    fn apply_query_overrides_poster_maps_correctly() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_limit: Some(3),
+            badge_style: Some(BadgeStyle::Horizontal),
+            label_style: Some(LabelStyle::Icon),
+            badge_size: Some(BadgeSize::Large),
+            badge_direction: Some(BadgeDirection::Horizontal),
+            position: Some(BadgePosition::TopLeft),
+            poster_source: Some(PosterSource::Fanart),
+            fanart_textless: Some(true),
+            ratings_order: Some("imdb,tmdb".into()),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Poster).unwrap();
+        assert_eq!(result.ratings_limit, 3);
+        assert_eq!(result.poster_badge_style, BadgeStyle::Horizontal);
+        assert_eq!(result.poster_label_style, LabelStyle::Icon);
+        assert_eq!(result.poster_badge_size, BadgeSize::Large);
+        assert_eq!(result.poster_badge_direction, BadgeDirection::Horizontal);
+        assert_eq!(result.poster_position, BadgePosition::TopLeft);
+        assert_eq!(result.poster_source, PosterSource::Fanart);
+        assert!(result.fanart_textless);
+        assert!(result.fanart_override, "fanart_textless=true should set fanart_override to trigger fanart path");
+        assert_eq!(&*result.ratings_order, "imdb,tmdb");
+    }
+
+    #[test]
+    fn apply_query_overrides_logo_maps_correctly_ignores_poster_only() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let original_position = settings.poster_position;
+        let original_direction = settings.poster_badge_direction;
+        let original_source = settings.poster_source;
+        let original_textless = settings.fanart_textless;
+
+        let query = ImageQuery {
+            ratings_limit: Some(2),
+            badge_style: Some(BadgeStyle::Vertical),
+            label_style: Some(LabelStyle::Text),
+            badge_size: Some(BadgeSize::Small),
+            badge_direction: Some(BadgeDirection::Horizontal),
+            position: Some(BadgePosition::TopRight),
+            poster_source: Some(PosterSource::Fanart),
+            fanart_textless: Some(true),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Logo).unwrap();
+        // Logo-specific fields applied
+        assert_eq!(result.logo_ratings_limit, 2);
+        assert_eq!(result.logo_badge_style, BadgeStyle::Vertical);
+        assert_eq!(result.logo_label_style, LabelStyle::Text);
+        assert_eq!(result.logo_badge_size, BadgeSize::Small);
+        // Poster-only fields unchanged
+        assert_eq!(result.poster_position, original_position);
+        assert_eq!(result.poster_badge_direction, original_direction);
+        assert_eq!(result.poster_source, original_source);
+        assert_eq!(result.fanart_textless, original_textless);
+    }
+
+    #[test]
+    fn apply_query_overrides_backdrop_maps_correctly() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_limit: Some(5),
+            badge_style: Some(BadgeStyle::Default),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Backdrop).unwrap();
+        assert_eq!(result.backdrop_ratings_limit, 5);
+        assert_eq!(result.backdrop_badge_style, BadgeStyle::Default);
+    }
+
+    #[test]
+    fn apply_query_overrides_rejects_invalid_ratings_limit() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_limit: Some(9),
+            ..empty_query()
+        };
+        let result = apply_query_overrides(settings, &query, cache::ImageType::Poster);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_query_overrides_rejects_invalid_ratings_order() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            ratings_order: Some("bogus_source".into()),
+            ..empty_query()
+        };
+        let result = apply_query_overrides(settings, &query, cache::ImageType::Poster);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn apply_query_overrides_fanart_textless_false_does_not_set_fanart_override() {
+        let settings = Arc::new(db::RenderSettings::default());
+        let query = ImageQuery {
+            fanart_textless: Some(false),
+            ..empty_query()
+        };
+        let result =
+            apply_query_overrides(settings, &query, cache::ImageType::Poster).unwrap();
+        assert!(!result.fanart_textless);
+        assert!(!result.fanart_override);
     }
 }

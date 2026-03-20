@@ -268,4 +268,8 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_size TEXT NOT NULL DEFAULT 'm'",
         "duplicate column",
     ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_image_meta_type ON image_meta(image_type)",
+        "already exists",
+    ),
 ];

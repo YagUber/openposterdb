@@ -38,3 +38,25 @@ export const LANGUAGES = [
   { code: 'uk', name: 'Ukrainian' },
   { code: 'vi', name: 'Vietnamese' },
 ] as const
+
+export const ALL_RATING_SOURCES = [
+  { key: 'imdb', label: 'IMDb', color: '#b4910f' },
+  { key: 'tmdb', label: 'TMDB', color: '#019b58' },
+  { key: 'rt', label: 'Rotten Tomatoes (Critics)', color: '#b92308' },
+  { key: 'rta', label: 'Rotten Tomatoes (Audience)', color: '#b92308' },
+  { key: 'mc', label: 'Metacritic', color: '#4b9626' },
+  { key: 'trakt', label: 'Trakt', color: '#af0f2d' },
+  { key: 'lb', label: 'Letterboxd', color: '#009b58' },
+  { key: 'mal', label: 'MyAnimeList', color: '#223c78' },
+] as const
+
+export const DEFAULT_RATINGS_ORDER = 'mal,imdb,lb,rt,mc,rta,tmdb,trakt'
+
+export function parseRatingsOrder(order: string): string[] {
+  const keys = order ? order.split(',').map(k => k.trim()).filter(Boolean) : []
+  const allKeys = ALL_RATING_SOURCES.map(s => s.key)
+  for (const k of allKeys) {
+    if (!keys.includes(k)) keys.push(k)
+  }
+  return keys
+}

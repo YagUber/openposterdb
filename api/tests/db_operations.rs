@@ -752,7 +752,7 @@ async fn effective_settings_include_new_fields() {
 
     // Without per-key settings, effective should have defaults
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(s.poster_position, db::PosterPosition::BottomCenter);
+    assert_eq!(s.poster_position, db::BadgePosition::BottomCenter);
     assert_eq!(s.logo_ratings_limit, 5);
     assert_eq!(s.backdrop_ratings_limit, 5);
 
@@ -765,7 +765,7 @@ async fn effective_settings_include_new_fields() {
     }).await.unwrap();
 
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(s.poster_position, db::PosterPosition::Right);
+    assert_eq!(s.poster_position, db::BadgePosition::Right);
     assert_eq!(s.logo_ratings_limit, 2);
     assert_eq!(s.backdrop_ratings_limit, 0);
 }

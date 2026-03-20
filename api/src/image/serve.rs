@@ -10,7 +10,7 @@ use crate::cache::{self, MemCacheEntry};
 use crate::error::AppError;
 use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
-use crate::services::db::{BadgeStyle, ImageSize, LabelStyle, RenderSettings};
+use crate::services::db::{BadgeDirection, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::ratings;
 use crate::AppState;
@@ -120,7 +120,7 @@ pub fn settings_cache_suffix_with_ratings(
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
-        lang_override: _,       // handled by code path, not suffix
+        fanart_override: _,       // handled by code path, not suffix
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -174,7 +174,7 @@ pub fn settings_hash(settings: &RenderSettings, kind: cache::ImageType, image_si
     hasher.update(b"\0");
     hasher.update(if settings.fanart_textless { b"1" } else { b"0" });
     hasher.update(b"\0");
-    hasher.update(if settings.lang_override { b"1" } else { b"0" });
+    hasher.update(if settings.fanart_override { b"1" } else { b"0" });
 
     let hash = hasher.finalize();
     format!(
@@ -501,7 +501,7 @@ pub async fn handle_inner(
     settings.poster_badge_direction = settings.poster_badge_direction.resolve(settings.poster_position);
     settings.poster_badge_style = settings.poster_badge_style.resolve(settings.poster_badge_direction);
 
-    let use_fanart = settings.poster_source.is_fanart() || settings.lang_override;
+    let use_fanart = settings.poster_source.is_fanart() || settings.fanart_override;
     let id_key = format!("{id_type_str}/{id_value}");
 
     // Fast path (non-fanart): try to reconstruct the cache key from SQLite-stored
@@ -573,14 +573,14 @@ pub async fn handle_inner(
 
     // Fanart → TMDB fallback strategy:
     //
-    // 1. If the user's source is fanart, or `?lang=` was provided, try the fanart
-    //    path first. On hit, return immediately.
+    // 1. If the user's source is fanart, or a query param forced the fanart path
+    //    (e.g. `?lang=`, `?fanart_textless=true`), try fanart first. On hit, return.
     //
     // 2. On fanart miss, fall through to TMDB. The settings used for TMDB depend
     //    on *why* we tried fanart:
-    //    a. `?lang=` on a TMDB user — preserve the user's original settings
-    //       (badge style, position, etc.) for the TMDB fallback; just clear
-    //       the lang_override flag so we don't re-enter the fanart path.
+    //    a. Query-param override on a TMDB user — preserve the user's original
+    //       settings (badge style, position, etc.) for the TMDB fallback; just
+    //       clear the fanart_override flag so we don't re-enter the fanart path.
     //    b. Fanart-source user — reset to defaults, since their per-key settings
     //       (e.g. fanart-specific lang/textless) don't apply to TMDB posters.
     if use_fanart {
@@ -591,8 +591,8 @@ pub async fn handle_inner(
 
     // TMDB path (default, or fanart fallback)
     if use_fanart {
-        if settings.lang_override && !settings.poster_source.is_fanart() {
-            settings.lang_override = false;
+        if settings.fanart_override && !settings.poster_source.is_fanart() {
+            settings.fanart_override = false;
         } else {
             let mut defaults = RenderSettings::default();
             defaults.poster_badge_direction = defaults.poster_badge_direction.resolve(defaults.poster_position);
@@ -1031,7 +1031,7 @@ async fn generate_poster_with_source(
         })?;
 
     // Try to fetch poster bytes from fanart.tv if configured
-    let fanart_result = if settings.poster_source.is_fanart() || settings.lang_override {
+    let fanart_result = if settings.poster_source.is_fanart() || settings.fanart_override {
         if let Some(ref fanart) = state.fanart {
             fetch_fanart_image(
                 fanart,
@@ -1252,7 +1252,8 @@ pub async fn handle_fanart_image_inner(
     let type_badge_style = match fanart_kind {
         FanartImageKind::Logo => settings.logo_badge_style,
         FanartImageKind::Backdrop => settings.backdrop_badge_style,
-    };
+    }
+    .resolve(BadgeDirection::Vertical);
     let type_label_style = match fanart_kind {
         FanartImageKind::Logo => settings.logo_label_style,
         FanartImageKind::Backdrop => settings.backdrop_label_style,
@@ -1615,13 +1616,13 @@ mod tests {
     }
 
     #[test]
-    fn settings_hash_includes_lang_override() {
+    fn settings_hash_includes_fanart_override() {
         let mut s1 = RenderSettings::default();
         let mut s2 = RenderSettings::default();
         s1.fanart_lang = "de".into();
-        s1.lang_override = false;
+        s1.fanart_override = false;
         s2.fanart_lang = "de".into();
-        s2.lang_override = true;
+        s2.fanart_override = true;
         assert_ne!(
             settings_hash(&s1, cache::ImageType::Poster, None),
             settings_hash(&s2, cache::ImageType::Poster, None)
@@ -1743,8 +1744,8 @@ mod tests {
         s2.fanart_lang = "de".into();
         s1.fanart_textless = false;
         s2.fanart_textless = true;
-        s1.lang_override = false;
-        s2.lang_override = true;
+        s1.fanart_override = false;
+        s2.fanart_override = true;
         assert_eq!(
             settings_cache_suffix(&s1, cache::ImageType::Poster, None),
             settings_cache_suffix(&s2, cache::ImageType::Poster, None)

@@ -269,7 +269,11 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "duplicate column",
     ),
     (
-        "CREATE INDEX IF NOT EXISTS idx_image_meta_type ON image_meta(image_type)",
+        "DROP INDEX IF EXISTS idx_image_meta_type",
+        "no such index",
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_image_meta_type_created ON image_meta(image_type, created_at DESC)",
         "already exists",
     ),
 ];

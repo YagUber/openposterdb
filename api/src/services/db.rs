@@ -1496,10 +1496,11 @@ pub async fn list_image_meta_by_kind(
     page_size: u64,
 ) -> Result<(Vec<crate::entity::image_meta::Model>, u64), AppError> {
     use crate::entity::image_meta;
-    use sea_orm::{PaginatorTrait, QueryFilter, ColumnTrait};
+    use sea_orm::{PaginatorTrait, QueryFilter, QueryOrder, ColumnTrait};
 
     let paginator = image_meta::Entity::find()
         .filter(image_meta::Column::ImageType.eq(image_type.db_value()))
+        .order_by_desc(image_meta::Column::CreatedAt)
         .paginate(db, page_size);
     let total = paginator.num_items().await.map_err(|e| AppError::DbError(e.to_string()))?;
     let items = paginator

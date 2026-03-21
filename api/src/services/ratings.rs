@@ -352,8 +352,12 @@ fn parse_order(order: &str) -> Vec<RatingSource> {
 }
 
 /// Reorder `sources` according to `order`, appending any sources not mentioned
-/// in `order` in their original order, then truncate to `limit` (0 = no limit).
+/// in `order` in their original order, then truncate to `limit` (0 = no ratings).
 fn order_and_limit(sources: Vec<RatingSource>, order: &str, limit: i32) -> Vec<RatingSource> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
     let mut result = if order.is_empty() {
         sources
     } else {
@@ -372,9 +376,8 @@ fn order_and_limit(sources: Vec<RatingSource>, order: &str, limit: i32) -> Vec<R
         ordered
     };
 
-    if limit > 0 {
-        result.truncate(limit as usize);
-    }
+    debug_assert!(limit > 0, "negative limit is not supported");
+    result.truncate(limit as usize);
 
     result
 }
@@ -403,6 +406,10 @@ pub fn badges_suffix_from_available(available_sources: &str, order: &str, limit:
 /// in canonical order for determinism, then truncates to `limit` if positive.
 /// Returns a compact string like `@mil` (single-char per source, no commas).
 pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
+    if limit == 0 {
+        return "@".to_string();
+    }
+
     let mut sources = parse_order(order);
 
     // Append missing sources in canonical order
@@ -414,9 +421,8 @@ pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
         }
     }
 
-    if limit > 0 {
-        sources.truncate(limit as usize);
-    }
+    debug_assert!(limit > 0, "negative limit is not supported");
+    sources.truncate(limit as usize);
 
     let chars: String = sources.iter().map(|s| s.cache_char()).collect();
     format!("@{chars}")
@@ -426,6 +432,7 @@ pub fn ratings_cache_suffix(order: &str, limit: i32) -> String {
 ///
 /// - If `order` is non-empty, badges are reordered to match the specified order.
 ///   Unmentioned sources are appended after in their original order.
+/// - If `limit` is 0, an empty list is returned (no ratings).
 /// - If `limit` > 0, the result is truncated to that many badges.
 pub fn apply_rating_preferences(badges: Vec<RatingBadge>, order: &str, limit: i32) -> Vec<RatingBadge> {
     let sources: Vec<RatingSource> = badges.iter().map(|b| b.source).collect();
@@ -496,7 +503,7 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
             RatingBadge { source: RatingSource::Trakt, value: "80%".into() },
         ];
-        let result = apply_rating_preferences(badges, "trakt,imdb", 0);
+        let result = apply_rating_preferences(badges, "trakt,imdb", 8);
         assert_eq!(result[0].source, RatingSource::Trakt);
         assert_eq!(result[1].source, RatingSource::Imdb);
         assert_eq!(result[2].source, RatingSource::Tmdb);
@@ -537,7 +544,7 @@ mod tests {
             RatingBadge { source: RatingSource::Tmdb, value: "75%".into() },
         ];
         let result = apply_rating_preferences(badges.clone(), "", 0);
-        assert_eq!(result.len(), 2);
+        assert_eq!(result.len(), 0, "limit=0 should return no ratings");
     }
 
     #[test]
@@ -578,14 +585,14 @@ mod tests {
     #[test]
     fn ratings_cache_suffix_partial_order_normalized() {
         // Only two sources specified — missing ones appended in canonical order
-        let suffix = ratings_cache_suffix("imdb,rt", 0);
+        let suffix = ratings_cache_suffix("imdb,rt", 8);
         assert_eq!(suffix, "@irmlactk");
     }
 
     #[test]
-    fn ratings_cache_suffix_limit_zero_includes_all() {
+    fn ratings_cache_suffix_limit_zero_shows_none() {
         let suffix = ratings_cache_suffix("mal,imdb,lb,rt,rta,mc,tmdb,trakt", 0);
-        assert_eq!(suffix, "@milractk");
+        assert_eq!(suffix, "@");
     }
 
     #[test]

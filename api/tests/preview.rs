@@ -60,8 +60,8 @@ async fn preview_respects_ratings_limit() {
     assert_eq!(res_small.status(), StatusCode::OK);
     let body_small = res_small.into_body().collect().await.unwrap().to_bytes();
 
-    // Request with limit=0 (show all 8 badges)
-    let res_all = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=0", &token)).await.unwrap();
+    // Request with limit=8 (show all 8 badges)
+    let res_all = app.clone().oneshot(authed_get("/api/admin/preview/poster?ratings_limit=8", &token)).await.unwrap();
     assert_eq!(res_all.status(), StatusCode::OK);
     let body_all = res_all.into_body().collect().await.unwrap().to_bytes();
 

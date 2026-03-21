@@ -87,7 +87,7 @@ GET /{api_key}/isValid
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the Fanart.tv language for this request (e.g. `?lang=de` for German posters). Automatically switches the poster source to Fanart.tv even if TMDB is configured
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
-- `?ratings_limit={0-8}`: maximum number of rating badges to display
+- `?ratings_limit={0-8}`: maximum number of rating badges to display (0 = no ratings)
 - `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`
 - `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)

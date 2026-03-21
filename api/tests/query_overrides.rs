@@ -225,6 +225,108 @@ async fn poster_no_overrides_accepted() {
     assert_ne!(res.status(), StatusCode::BAD_REQUEST);
 }
 
+// --- New image_source param name works on all image types ---
+
+#[tokio::test]
+async fn poster_image_source_param_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?image_source=f"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn logo_image_source_param_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/logo-default/tt0000001.png?image_source=t"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn backdrop_image_source_param_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/backdrop-default/tt0000001.jpg?image_source=f"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+// --- Backward-compatible aliases still work ---
+
+#[tokio::test]
+async fn poster_source_alias_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    // Old `poster_source` param should still work via serde alias
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?poster_source=f"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn fanart_textless_alias_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    // Old `fanart_textless` param should still work via serde alias
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?fanart_textless=true"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn textless_new_param_accepted() {
+    let (app, _) = common::setup_test_app().await;
+    let api_key = create_api_key(&app).await;
+
+    let req = Request::builder()
+        .uri(format!(
+            "/{api_key}/imdb/poster-default/tt0000001.jpg?textless=true"
+        ))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::BAD_REQUEST);
+}
+
 // --- Ratings limit boundary values ---
 
 #[tokio::test]

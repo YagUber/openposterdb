@@ -40,9 +40,9 @@ async fn global_settings_round_trip_all_fields() {
 
     // Update global settings with non-default values
     let update = json!({
-        "poster_source": "f",
-        "fanart_lang": "de",
-        "fanart_textless": true,
+        "image_source": "f",
+        "lang": "de",
+        "textless": true,
         "ratings_limit": 5,
         "ratings_order": "imdb,rt,mc,tmdb,trakt,mal,lb,rta",
         "poster_position": "tl",
@@ -69,9 +69,9 @@ async fn global_settings_round_trip_all_fields() {
     assert_eq!(res.status(), StatusCode::OK);
     let settings = parse_json(res).await;
 
-    assert_eq!(settings["poster_source"], "f");
-    assert_eq!(settings["fanart_lang"], "de");
-    assert_eq!(settings["fanart_textless"], true);
+    assert_eq!(settings["image_source"], "f");
+    assert_eq!(settings["lang"], "de");
+    assert_eq!(settings["textless"], true);
     assert_eq!(settings["ratings_limit"], 5);
     assert_eq!(settings["ratings_order"], "imdb,rt,mc,tmdb,trakt,mal,lb,rta");
     assert_eq!(settings["poster_position"], "tl");
@@ -107,7 +107,7 @@ async fn per_key_settings_round_trip() {
 
     // Set per-key overrides
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "ratings_limit": 1,
         "ratings_order": "tmdb",
         "poster_position": "r",
@@ -158,7 +158,7 @@ async fn per_key_reset_falls_back_to_global() {
 
     // Set global to something non-default
     let global = json!({
-        "poster_source": "f",
+        "image_source": "f",
         "ratings_limit": 7,
         "ratings_order": "rt,imdb",
         "poster_position": "bl",
@@ -170,7 +170,7 @@ async fn per_key_reset_falls_back_to_global() {
 
     // Set per-key override
     let per_key = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "ratings_limit": 2,
         "ratings_order": "tmdb",
         "poster_badge_style": "h",
@@ -194,7 +194,7 @@ async fn per_key_reset_falls_back_to_global() {
     let settings = parse_json(res).await;
 
     assert_eq!(settings["is_default"], true);
-    assert_eq!(settings["poster_source"], "f");
+    assert_eq!(settings["image_source"], "f");
     assert_eq!(settings["ratings_limit"], 7);
     assert_eq!(settings["poster_position"], "bl");
     assert_eq!(settings["poster_badge_style"], "v");
@@ -220,7 +220,7 @@ async fn self_service_settings_round_trip() {
 
     // Update own settings
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "ratings_limit": 4,
         "ratings_order": "imdb,tmdb,rt,mc",
         "poster_position": "tc",
@@ -297,7 +297,7 @@ async fn global_settings_rejects_invalid_ratings_limit() {
     let token = common::setup_admin(&app).await;
 
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "ratings_limit": 10,
     });
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
@@ -306,13 +306,13 @@ async fn global_settings_rejects_invalid_ratings_limit() {
 }
 
 #[tokio::test]
-async fn global_settings_rejects_invalid_fanart_lang() {
+async fn global_settings_rejects_invalid_lang() {
     let (app, _state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
 
     let update = json!({
-        "poster_source": "t",
-        "fanart_lang": "x",
+        "image_source": "t",
+        "lang": "x",
     });
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
     let res = app.clone().oneshot(req).await.unwrap();
@@ -325,7 +325,7 @@ async fn global_settings_rejects_invalid_ratings_order() {
     let token = common::setup_admin(&app).await;
 
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "ratings_order": "bogus",
     });
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
@@ -339,7 +339,7 @@ async fn global_settings_rejects_invalid_badge_style() {
     let token = common::setup_admin(&app).await;
 
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "poster_badge_style": "z",
     });
     let req = authed_request("PUT", "/api/admin/settings", &token, Some(update));
@@ -355,7 +355,7 @@ async fn per_key_settings_rejects_invalid_logo_ratings_limit() {
     let (key_id, _) = create_api_key(&app, &token).await;
 
     let update = json!({
-        "poster_source": "t",
+        "image_source": "t",
         "logo_ratings_limit": 9,
     });
     let req = authed_request("PUT", &format!("/api/keys/{key_id}/settings"), &token, Some(update));

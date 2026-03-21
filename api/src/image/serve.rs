@@ -18,20 +18,21 @@ use crate::AppState;
 /// Threshold (ms) above which requests are logged as slow.
 const SLOW_REQUEST_MS: u64 = 2000;
 
-/// Logo or backdrop — the subset of image kinds served exclusively via fanart.tv.
+/// Logo or backdrop — image types served via TMDB images API (primary) with
+/// fanart.tv fallback, or vice versa when the user prefers fanart.
 /// Posters are excluded because they use a separate code path (`handle_inner`) with
-/// TMDB fallback, staleness checks, and background refresh that these endpoints don't need.
+/// staleness checks and background refresh that these endpoints don't need.
 #[derive(Debug, Clone, Copy)]
-pub enum FanartImageKind {
+pub enum LogoBackdropKind {
     Logo,
     Backdrop,
 }
 
-impl From<FanartImageKind> for cache::ImageType {
-    fn from(k: FanartImageKind) -> Self {
+impl From<LogoBackdropKind> for cache::ImageType {
+    fn from(k: LogoBackdropKind) -> Self {
         match k {
-            FanartImageKind::Logo => cache::ImageType::Logo,
-            FanartImageKind::Backdrop => cache::ImageType::Backdrop,
+            LogoBackdropKind::Logo => cache::ImageType::Logo,
+            LogoBackdropKind::Backdrop => cache::ImageType::Backdrop,
         }
     }
 }
@@ -101,9 +102,9 @@ pub fn settings_cache_suffix_with_ratings(
 ) -> String {
     // Exhaustive destructure ensures new fields trigger a compile error here.
     let RenderSettings {
-        poster_source: _,       // handled by code path selection, not suffix
-        fanart_lang: _,         // handled by variant string, not suffix
-        fanart_textless: _,     // handled by variant string, not suffix
+        image_source: _,        // handled by code path selection, not suffix
+        lang: _,                // handled by variant string, not suffix
+        textless: _,            // handled by variant string, not suffix
         ratings_limit: _,
         ratings_order: _,
         is_default: _,          // metadata, not a render setting
@@ -120,7 +121,6 @@ pub fn settings_cache_suffix_with_ratings(
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
-        fanart_override: _,       // handled by code path, not suffix
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -168,13 +168,11 @@ pub fn settings_hash(settings: &RenderSettings, kind: cache::ImageType, image_si
     hasher.update(b"\0");
 
     // Source-selection settings (not in cache suffix because handled by code path/variant)
-    hasher.update(settings.poster_source.as_str().as_bytes());
+    hasher.update(settings.image_source.as_str().as_bytes());
     hasher.update(b"\0");
-    hasher.update(settings.fanart_lang.as_bytes());
+    hasher.update(settings.lang.as_bytes());
     hasher.update(b"\0");
-    hasher.update(if settings.fanart_textless { b"1" } else { b"0" });
-    hasher.update(b"\0");
-    hasher.update(if settings.fanart_override { b"1" } else { b"0" });
+    hasher.update(if settings.textless { b"1" } else { b"0" });
 
     let hash = hasher.finalize();
     format!(
@@ -501,8 +499,9 @@ pub async fn handle_inner(
     settings.poster_badge_direction = settings.poster_badge_direction.resolve(settings.poster_position);
     settings.poster_badge_style = settings.poster_badge_style.resolve(settings.poster_badge_direction);
 
-    let use_fanart = settings.poster_source.is_fanart() || settings.fanart_override;
+    let use_fanart = settings.image_source.is_fanart();
     let id_key = format!("{id_type_str}/{id_value}");
+    let variant = tmdb_poster_variant(&settings.lang, settings.textless);
 
     // Fast path (non-fanart): try to reconstruct the cache key from SQLite-stored
     // available sources, avoiding external API calls entirely on cache hits.
@@ -512,7 +511,7 @@ pub async fn handle_inner(
             let available_ratings_ms = fast_path_start.elapsed().as_millis() as u64;
             let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.ratings_limit);
             let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Poster, image_size, &ratings_suffix);
-            let cache_value = format!("{id_value}{suffix}");
+            let cache_value = format!("{id_value}{variant}{suffix}");
             let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
             let cache_key = format!("{id_type_str}/{cache_value}");
 
@@ -573,16 +572,10 @@ pub async fn handle_inner(
 
     // Fanart → TMDB fallback strategy:
     //
-    // 1. If the user's source is fanart, or a query param forced the fanart path
-    //    (e.g. `?lang=`, `?fanart_textless=true`), try fanart first. On hit, return.
+    // 1. If the user's image_source is fanart, try fanart first. On hit, return.
     //
-    // 2. On fanart miss, fall through to TMDB. The settings used for TMDB depend
-    //    on *why* we tried fanart:
-    //    a. Query-param override on a TMDB user — preserve the user's original
-    //       settings (badge style, position, etc.) for the TMDB fallback; just
-    //       clear the fanart_override flag so we don't re-enter the fanart path.
-    //    b. Fanart-source user — reset to defaults, since their per-key settings
-    //       (e.g. fanart-specific lang/textless) don't apply to TMDB posters.
+    // 2. On fanart miss, fall through to TMDB. The user's badge/position settings
+    //    are preserved — only the image source changes.
     if use_fanart {
         if let Some(bytes) = try_fanart_path(state, id_type_str, id_value, id_type, &resolved, &ratings_result, &cross_ids, &settings, image_size).await? {
             return Ok((bytes, cross_ids.release_date));
@@ -590,23 +583,13 @@ pub async fn handle_inner(
     }
 
     // TMDB path (default, or fanart fallback)
-    if use_fanart {
-        if settings.fanart_override && !settings.poster_source.is_fanart() {
-            settings.fanart_override = false;
-        } else {
-            let mut defaults = RenderSettings::default();
-            defaults.poster_badge_direction = defaults.poster_badge_direction.resolve(defaults.poster_position);
-            defaults.poster_badge_style = defaults.poster_badge_style.resolve(defaults.poster_badge_direction);
-            settings = defaults;
-        }
-    }
     let settings = &settings;
 
     let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
     let ratings_suffix = ratings::badges_cache_suffix(&badges);
 
     let suffix = settings_cache_suffix_with_ratings(settings, cache::ImageType::Poster, image_size, &ratings_suffix);
-    let cache_value = format!("{id_value}{suffix}");
+    let cache_value = format!("{id_value}{variant}{suffix}");
     let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
     let cache_key = format!("{id_type_str}/{cache_value}");
 
@@ -646,7 +629,7 @@ pub async fn handle_inner(
         .image_inflight
         .try_get_with(cache_key.clone(), async move {
             let (bytes, rd, _used_fanart, gen_cross_ids) =
-                generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings2, image_size).await?;
+                generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings2, image_size, use_fanart).await?;
             if !state2.config.external_cache_only {
                 cache::write(&cache_path2, &bytes).await?;
             }
@@ -740,15 +723,15 @@ async fn try_fanart_path(
     // When textless is requested but we know it's unavailable (negative cache),
     // skip the textless key and go straight to language.
     let neg_key = format!("{id_type_str}/{id_value}_f_tl_neg");
-    let textless_known_missing = settings.fanart_textless
+    let textless_known_missing = settings.textless
         && state.fanart_negative.get(&neg_key).await.is_some();
 
-    let lang_variant = format!("_f_{}", settings.fanart_lang);
-    let lang_neg_key = format!("{id_type_str}/{id_value}_f_{}_neg", settings.fanart_lang);
+    let lang_variant = format!("_f_{}", settings.lang);
+    let lang_neg_key = format!("{id_type_str}/{id_value}_f_{}_neg", settings.lang);
     let lang_known_missing = state.fanart_negative.get(&lang_neg_key).await.is_some();
 
     // All fanart variants are known-missing — skip generation and fall through to TMDB
-    if lang_known_missing && (!settings.fanart_textless || textless_known_missing) {
+    if lang_known_missing && (!settings.textless || textless_known_missing) {
         return Ok(None);
     }
 
@@ -760,7 +743,7 @@ async fn try_fanart_path(
 
     // Check cached variants (textless first if requested, then language)
     let mut variants_to_check: Vec<String> = Vec::new();
-    if settings.fanart_textless && !textless_known_missing {
+    if settings.textless && !textless_known_missing {
         variants_to_check.push("_f_tl".to_string());
     }
     if !lang_known_missing {
@@ -780,17 +763,17 @@ async fn try_fanart_path(
 
     // No cache hit — generate with fanart. Cache under the key matching the actual
     // tier used (textless vs language). If no fanart match, fall through to TMDB.
-    let result = generate_poster_with_source(state, resolved, badges, cross_ids, settings, image_size).await;
+    let result = generate_poster_with_source(state, resolved, badges, cross_ids, settings, image_size, false).await;
 
     match result {
         Ok((bytes, rd, Some(tier), cross_ids)) => {
-            if settings.fanart_textless && tier == PosterMatch::Language {
+            if settings.textless && tier == PosterMatch::Language {
                 state.fanart_negative.insert(neg_key, ()).await;
             }
 
             let actual_variant = match tier {
                 PosterMatch::Textless => "_f_tl".to_string(),
-                PosterMatch::Language => format!("_f_{}", settings.fanart_lang),
+                PosterMatch::Language => format!("_f_{}", settings.lang),
             };
             let (cache_key, cache_path) =
                 fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &suffix)?;
@@ -814,7 +797,7 @@ async fn try_fanart_path(
             Ok(Some(bytes))
         }
         Ok((_bytes, _rd, None, _cross_ids)) => {
-            if settings.fanart_textless {
+            if settings.textless {
                 state.fanart_negative.insert(neg_key, ()).await;
             }
             state.fanart_negative.insert(lang_neg_key, ()).await;
@@ -910,12 +893,12 @@ fn trigger_background_refresh(
         }
         let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
         let (bytes, rd, _tier, cross_ids) =
-            generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings, image_size).await?;
+            generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings, image_size, false).await?;
         Ok((bytes, rd, cache::ImageType::Poster, cross_ids))
     });
 }
 
-fn trigger_fanart_background_refresh(
+fn trigger_logo_backdrop_refresh(
     state: &AppState,
     cache_key: &str,
     cache_path: &std::path::Path,
@@ -923,7 +906,7 @@ fn trigger_fanart_background_refresh(
     id_value: &str,
     cache_suffix: &str,
     settings: &RenderSettings,
-    fanart_kind: FanartImageKind,
+    lb_kind: LogoBackdropKind,
     image_size: Option<ImageSize>,
 ) {
     let state2 = state.clone();
@@ -931,17 +914,15 @@ fn trigger_fanart_background_refresh(
     let settings = settings.clone();
     let cross_id = Some((id_type, cache_suffix.to_string()));
     spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
-        let fanart = state2
-            .fanart
-            .as_ref()
-            .ok_or_else(|| AppError::Other("FANART_API_KEY not configured".into()))?;
+        let fanart = state2.fanart.as_ref();
 
-        let kind: cache::ImageType = fanart_kind.into();
-        let fanart_lang = match kind {
+        let kind: cache::ImageType = lb_kind.into();
+        let lang = match kind {
             cache::ImageType::Backdrop => "",
-            _ => &settings.fanart_lang,
+            _ => &settings.lang,
         };
-        let fanart_textless = matches!(kind, cache::ImageType::Poster) && settings.fanart_textless;
+        // Logos/backdrops never use textless
+        let textless = false;
 
         let (resolved, ratings_result, cross_ids) =
             resolve_with_ratings(&state2, id_type, &id_value).await?;
@@ -950,58 +931,77 @@ fn trigger_fanart_background_refresh(
             let sources = ratings::available_sources_string(&ratings_result.badges);
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
         }
-        let type_ratings_limit = match fanart_kind {
-            FanartImageKind::Logo => settings.logo_ratings_limit,
-            FanartImageKind::Backdrop => settings.backdrop_ratings_limit,
+        let type_ratings_limit = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_ratings_limit,
+            LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
         };
         let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, type_ratings_limit);
 
-        let fanart_result = fetch_fanart_image(
-            fanart,
-            &state2.tmdb,
-            &state2.fanart_cache,
-            &resolved,
-            fanart_lang,
-            fanart_textless,
-            kind,
-            &state2.config.cache_dir,
-            state2.config.external_cache_only,
-        )
-        .await;
+        let label = kind.label();
+        let not_found = || AppError::IdNotFound(format!("no {label} available"));
 
-        let image_bytes = fanart_result
-            .map(|r| r.bytes)
-            .ok_or_else(|| AppError::IdNotFound("no fanart image available".into()))?;
-
-        let image_type: cache::ImageType = fanart_kind.into();
-
-        let type_badge_style = match fanart_kind {
-            FanartImageKind::Logo => settings.logo_badge_style,
-            FanartImageKind::Backdrop => settings.backdrop_badge_style,
+        // Use the same primary/fallback pattern as the generation path
+        let fanart_is_primary = settings.image_source.is_fanart() && fanart.is_some();
+        let image_bytes = if fanart_is_primary {
+            // Fanart primary → TMDB fallback
+            let primary = if let Some(fc) = fanart {
+                fetch_fanart_image(fc, &state2.tmdb, &state2.fanart_cache, &resolved, lang, textless, kind, &state2.config.cache_dir, state2.config.external_cache_only).await.map(|r| r.bytes)
+            } else {
+                None
+            };
+            match primary {
+                Some(b) => b,
+                None => try_tmdb_logo_backdrop(&state2, &resolved, kind, lang, textless, image_size)
+                    .await
+                    .ok_or_else(not_found)?,
+            }
+        } else {
+            // TMDB primary → Fanart fallback
+            let primary = try_tmdb_logo_backdrop(&state2, &resolved, kind, lang, textless, image_size).await;
+            match primary {
+                Some(b) => b,
+                None => {
+                    if let Some(fc) = fanart {
+                        fetch_fanart_image(fc, &state2.tmdb, &state2.fanart_cache, &resolved, lang, textless, kind, &state2.config.cache_dir, state2.config.external_cache_only)
+                            .await
+                            .map(|r| r.bytes)
+                            .ok_or_else(not_found)?
+                    } else {
+                        return Err(not_found());
+                    }
+                }
+            }
         };
-        let type_label_style = match fanart_kind {
-            FanartImageKind::Logo => settings.logo_label_style,
-            FanartImageKind::Backdrop => settings.backdrop_label_style,
+
+        let image_type: cache::ImageType = lb_kind.into();
+
+        let type_badge_style = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_badge_style,
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_style,
+        };
+        let type_label_style = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_label_style,
+            LogoBackdropKind::Backdrop => settings.backdrop_label_style,
         };
 
         let resolved_size = resolve_image_size(image_size);
-        let badge_size_factor = match fanart_kind {
-            FanartImageKind::Logo => settings.logo_badge_size.scale_factor(),
-            FanartImageKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
+        let badge_size_factor = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_badge_size.scale_factor(),
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
         };
-        let (target_width, badge_scale) = match fanart_kind {
-            FanartImageKind::Logo => (
+        let (target_width, badge_scale) = match lb_kind {
+            LogoBackdropKind::Logo => (
                 resolved_size.logo_target_width(),
                 resolved_size.badge_scale(cache::ImageType::Logo) * badge_size_factor,
             ),
-            FanartImageKind::Backdrop => (
+            LogoBackdropKind::Backdrop => (
                 resolved_size.backdrop_target_width(),
                 resolved_size.badge_scale(cache::ImageType::Backdrop) * badge_size_factor,
             ),
         };
-        let bytes = match fanart_kind {
-            FanartImageKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
-            FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+        let bytes = match lb_kind {
+            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
@@ -1020,8 +1020,9 @@ async fn generate_poster_with_source(
     cross_ids: &CrossIdInfo,
     settings: &RenderSettings,
     image_size: Option<ImageSize>,
+    fanart_already_tried: bool,
 ) -> Result<(Vec<u8>, Option<String>, Option<PosterMatch>, CrossIdInfo), AppError> {
-    let poster_path = resolved
+    let default_poster_path = resolved
         .poster_path
         .as_deref()
         .ok_or_else(|| {
@@ -1030,16 +1031,25 @@ async fn generate_poster_with_source(
             AppError::IdNotFound(format!("no poster available for {id_desc} / tmdb:{} (TMDB has no poster_path)", resolved.tmdb_id))
         })?;
 
-    // Try to fetch poster bytes from fanart.tv if configured
-    let fanart_result = if settings.poster_source.is_fanart() || settings.fanart_override {
+    // Unified fallback chain for posters:
+    //   TMDB preferred: TMDB(lang) → Fanart(lang) → TMDB(default)
+    //   Fanart preferred: Fanart(lang) → TMDB(lang) → TMDB(default)
+    // The default case (lang=en, textless=false) skips lang-specific lookups
+    // entirely — `resolved.poster_path` is already the TMDB(default).
+    let is_default = &*settings.lang == "en" && !settings.textless;
+
+    let try_fanart = || async {
+        if fanart_already_tried {
+            return None;
+        }
         if let Some(ref fanart) = state.fanart {
             fetch_fanart_image(
                 fanart,
                 &state.tmdb,
                 &state.fanart_cache,
                 resolved,
-                &settings.fanart_lang,
-                settings.fanart_textless,
+                &settings.lang,
+                settings.textless,
                 cache::ImageType::Poster,
                 &state.config.cache_dir,
                 state.config.external_cache_only,
@@ -1048,9 +1058,33 @@ async fn generate_poster_with_source(
         } else {
             None
         }
-    } else {
-        None
     };
+
+    let (lang_poster_path, fanart_result) = if settings.image_source.is_fanart() {
+        // Fanart(lang) → TMDB(lang) → TMDB(default)
+        let fr = try_fanart().await;
+        let tp = if fr.is_none() && !is_default {
+            resolve_tmdb_poster_path(state, resolved, &settings.lang, settings.textless).await
+        } else {
+            None
+        };
+        (tp, fr)
+    } else {
+        // TMDB(lang) → Fanart(lang) → TMDB(default)
+        let tp = if !is_default {
+            resolve_tmdb_poster_path(state, resolved, &settings.lang, settings.textless).await
+        } else {
+            None
+        };
+        let fr = if tp.is_none() && !is_default {
+            try_fanart().await
+        } else {
+            None
+        };
+        (tp, fr)
+    };
+    // When both None → poster_path = default_poster_path → generate_poster fetches TMDB(default)
+    let poster_path = lang_poster_path.as_deref().unwrap_or(default_poster_path);
     let match_tier = fanart_result.as_ref().map(|r| r.match_tier);
     let fanart_bytes = fanart_result.map(|r| r.bytes);
 
@@ -1223,21 +1257,141 @@ pub fn image_response(bytes: Bytes, content_type: &'static str) -> Response {
 }
 
 
-/// Serve a fanart-only image (logo or backdrop). Handles caching and negative-cache lookups.
-pub async fn handle_fanart_image_inner(
+/// Build a cache key variant for TMDB poster language/textless combinations.
+///
+/// The default case (`lang=en, textless=false`) returns an empty string for
+/// backward compatibility — existing cache keys are unchanged.
+fn tmdb_poster_variant(lang: &str, textless: bool) -> String {
+    match (lang == "en", textless) {
+        (true, false)  => String::new(),
+        (true, true)   => "_t_tl".into(),
+        (false, false) => format!("_t_{lang}"),
+        (false, true)  => format!("_t_{lang}_tl"),
+    }
+}
+
+/// Fetch TMDB images metadata (cached) and select the best candidate for the
+/// given image type, language, and textless preference.
+async fn get_tmdb_images_cached(
+    state: &AppState,
+    resolved: &id::ResolvedId,
+    lang: &str,
+) -> Option<std::sync::Arc<crate::services::tmdb::TmdbImagesResponse>> {
+    let media_type_str = match resolved.media_type {
+        MediaType::Movie => "movie",
+        MediaType::Tv => "tv",
+    };
+    let cache_key = format!("{}:{}:{}", media_type_str, resolved.tmdb_id, lang);
+    let tmdb = state.tmdb.clone();
+    let tmdb_id = resolved.tmdb_id;
+    let lang_owned = lang.to_string();
+    let mt = media_type_str.to_string();
+    match state
+        .tmdb_images_cache
+        .try_get_with(cache_key, async move {
+            let imgs = tmdb.get_images(&mt, tmdb_id, &lang_owned).await?;
+            Ok::<_, AppError>(std::sync::Arc::new(imgs))
+        })
+        .await
+    {
+        Ok(imgs) => Some(imgs),
+        Err(e) => {
+            tracing::warn!(tmdb_id = resolved.tmdb_id, %e, "TMDB images API request failed");
+            None
+        }
+    }
+}
+
+/// Try to resolve a language-specific poster path via TMDB's images API.
+///
+/// Returns `Some(file_path)` on hit, `None` on miss (caller falls back to
+/// `resolved.poster_path`).
+async fn resolve_tmdb_poster_path(
+    state: &AppState,
+    resolved: &id::ResolvedId,
+    lang: &str,
+    textless: bool,
+) -> Option<String> {
+    let tmdb_images = get_tmdb_images_cached(state, resolved, lang).await?;
+    let selected = crate::services::tmdb::TmdbClient::select_image(&tmdb_images.posters, lang, textless)?;
+    Some(selected.file_path.clone())
+}
+
+/// Try to fetch a logo or backdrop image from TMDB's images API.
+/// Returns `Some(bytes)` on success, `None` on miss.
+async fn try_tmdb_logo_backdrop(
+    state: &AppState,
+    resolved: &id::ResolvedId,
+    kind: cache::ImageType,
+    lang: &str,
+    textless: bool,
+    image_size: Option<ImageSize>,
+) -> Option<Vec<u8>> {
+    let tmdb_images = get_tmdb_images_cached(state, resolved, lang).await?;
+    let candidates = match kind {
+        cache::ImageType::Logo => &tmdb_images.logos,
+        cache::ImageType::Backdrop => &tmdb_images.backdrops,
+        cache::ImageType::Poster => &tmdb_images.posters,
+    };
+    let selected = crate::services::tmdb::TmdbClient::select_image(candidates, lang, textless)?;
+    let size = resolve_image_size(image_size).tmdb_size();
+    state.tmdb.fetch_image_bytes(&selected.file_path, size).await.ok()
+}
+
+/// Try to fetch an image from fanart.tv, updating negative caches on miss.
+/// Returns `Some(bytes)` on hit, `None` on miss.
+async fn try_fanart_with_negative_cache(
+    fanart_client: &FanartClient,
+    state: &AppState,
+    resolved: &id::ResolvedId,
+    lang: &str,
+    textless: bool,
+    kind: cache::ImageType,
+    neg_textless_key: &str,
+    neg_lang_key: &str,
+) -> Option<Vec<u8>> {
+    let result = fetch_fanart_image(
+        fanart_client,
+        &state.tmdb,
+        &state.fanart_cache,
+        resolved,
+        lang,
+        textless,
+        kind,
+        &state.config.cache_dir,
+        state.config.external_cache_only,
+    ).await;
+    match result {
+        Some(r) => {
+            if textless && r.match_tier == PosterMatch::Language {
+                state.fanart_negative.insert(neg_textless_key.to_string(), ()).await;
+            }
+            Some(r.bytes)
+        }
+        None => {
+            if textless {
+                state.fanart_negative.insert(neg_textless_key.to_string(), ()).await;
+            }
+            state.fanart_negative.insert(neg_lang_key.to_string(), ()).await;
+            None
+        }
+    }
+}
+
+/// Serve a logo or backdrop image. Tries TMDB primary with fanart fallback (default),
+/// or fanart primary with TMDB fallback when image_source is Fanart.
+/// Handles caching and negative-cache lookups.
+pub async fn handle_logo_backdrop_inner(
     state: &AppState,
     id_type_str: &str,
     id_value_raw: &str,
     settings: &RenderSettings,
-    fanart_kind: FanartImageKind,
+    lb_kind: LogoBackdropKind,
     image_size: Option<ImageSize>,
 ) -> Result<(Bytes, Option<String>), AppError> {
-    let fanart = state
-        .fanart
-        .as_ref()
-        .ok_or_else(|| AppError::Other("FANART_API_KEY not configured".into()))?;
+    let fanart = state.fanart.as_ref();
 
-    let kind: cache::ImageType = fanart_kind.into();
+    let kind: cache::ImageType = lb_kind.into();
     let id_type = IdType::parse(id_type_str)?;
     let id_value = kind.strip_ext(id_value_raw);
     cache::validate_id_value(id_value)?;
@@ -1245,29 +1399,29 @@ pub async fn handle_fanart_image_inner(
     let label = kind.label();
 
     // Use per-type rating limit for logos/backdrops
-    let type_ratings_limit = match fanart_kind {
-        FanartImageKind::Logo => settings.logo_ratings_limit,
-        FanartImageKind::Backdrop => settings.backdrop_ratings_limit,
+    let type_ratings_limit = match lb_kind {
+        LogoBackdropKind::Logo => settings.logo_ratings_limit,
+        LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
     };
-    let type_badge_style = match fanart_kind {
-        FanartImageKind::Logo => settings.logo_badge_style,
-        FanartImageKind::Backdrop => settings.backdrop_badge_style,
+    let type_badge_style = match lb_kind {
+        LogoBackdropKind::Logo => settings.logo_badge_style,
+        LogoBackdropKind::Backdrop => settings.backdrop_badge_style,
     }
     .resolve(BadgeDirection::Vertical);
-    let type_label_style = match fanart_kind {
-        FanartImageKind::Logo => settings.logo_label_style,
-        FanartImageKind::Backdrop => settings.backdrop_label_style,
+    let type_label_style = match lb_kind {
+        LogoBackdropKind::Logo => settings.logo_label_style,
+        LogoBackdropKind::Backdrop => settings.backdrop_label_style,
     };
 
     // Backdrops are language-agnostic (no text) — skip lang/textless entirely.
     // Logos ARE the text — textless makes no sense, only lang matters.
     let fanart_lang = match kind {
         cache::ImageType::Backdrop => "",
-        _ => &settings.fanart_lang,
+        _ => &settings.lang,
     };
-    let fanart_textless = matches!(kind, cache::ImageType::Poster) && settings.fanart_textless;
+    // Logos/backdrops never use textless — logos ARE text, backdrops have none.
+    let fanart_textless = false;
 
-    // Check negative cache — skip generation if we already know there's nothing
     let neg_textless_key = format!("{id_type_str}/{id_value}{kind_prefix}_f_tl_neg");
     let textless_known_missing = fanart_textless
         && state.fanart_negative.get(&neg_textless_key).await.is_some();
@@ -1275,19 +1429,18 @@ pub async fn handle_fanart_image_inner(
     let neg_lang_key = format!("{id_type_str}/{id_value}{kind_prefix}_f_{}_neg", fanart_lang);
     let lang_known_missing = state.fanart_negative.get(&neg_lang_key).await.is_some();
 
-    if lang_known_missing && (!fanart_textless || textless_known_missing) {
-        return Err(AppError::IdNotFound(format!("no {label} available").into()));
-    }
+    // When all fanart variants are known-missing, skip the fanart API call in
+    // the generation path. We still try TMDB as a fallback rather than
+    // returning 404 immediately.
+    let skip_fanart = lang_known_missing && (!fanart_textless || textless_known_missing);
 
+    let source_prefix = if settings.image_source.is_fanart() { "_f" } else { "_t" };
     let variant = match kind {
-        cache::ImageType::Backdrop => kind_prefix.to_string(),
-        cache::ImageType::Logo => format!("{kind_prefix}_f_{fanart_lang}"),
-        cache::ImageType::Poster => format!("{kind_prefix}_f_{fanart_lang}{}", if fanart_textless { "_tl" } else { "" }),
+        cache::ImageType::Backdrop => format!("{kind_prefix}{source_prefix}"),
+        cache::ImageType::Logo => format!("{kind_prefix}{source_prefix}_{fanart_lang}"),
+        cache::ImageType::Poster => unreachable!("handle_logo_backdrop_inner only handles logos and backdrops"),
     };
-    let image_type = match fanart_kind {
-        FanartImageKind::Logo => cache::ImageType::Logo,
-        FanartImageKind::Backdrop => cache::ImageType::Backdrop,
-    };
+    let image_type: cache::ImageType = lb_kind.into();
 
     let id_key = format!("{id_type_str}/{id_value}");
 
@@ -1300,13 +1453,13 @@ pub async fn handle_fanart_image_inner(
         let cache_path_base = format!("{id_value}{variant}{suffix}");
         let cache_path = cache::typed_cache_path(&state.config.cache_dir, image_type, id_type_str, &cache_path_base)?;
 
-        let fanart_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
+        let lb_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
         {
             let id_value = id_value.to_string();
-            let fanart_cache_suffix = fanart_cache_suffix.clone();
+            let lb_cache_suffix = lb_cache_suffix.clone();
             let settings = settings.clone();
             if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
-                trigger_fanart_background_refresh(s, k, p, id_type, &id_value, &fanart_cache_suffix, &settings, fanart_kind, image_size);
+                trigger_logo_backdrop_refresh(s, k, p, id_type, &id_value, &lb_cache_suffix, &settings, lb_kind, image_size);
             }).await? {
                 let release_date = cache::read_meta_db(&state.db, &cache_key).await;
                 return Ok((bytes, release_date));
@@ -1336,25 +1489,27 @@ pub async fn handle_fanart_image_inner(
 
     // Check caches (memory → filesystem) — may hit if SQLite was stale but
     // the correct cache entry already exists under the updated key.
-    let fanart_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
+    let lb_cache_suffix: Arc<str> = format!("{variant}{suffix}").into();
     {
         let id_value = id_value.to_string();
-        let fanart_cache_suffix = fanart_cache_suffix.clone();
+        let lb_cache_suffix = lb_cache_suffix.clone();
         let settings = settings.clone();
         if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
-            trigger_fanart_background_refresh(s, k, p, id_type, &id_value, &fanart_cache_suffix, &settings, fanart_kind, image_size);
+            trigger_logo_backdrop_refresh(s, k, p, id_type, &id_value, &lb_cache_suffix, &settings, lb_kind, image_size);
         }).await? {
             return Ok((bytes, cross_ids.release_date));
         }
     }
 
     // Request coalescing — concurrent requests for the same logo/backdrop share one generation
-    struct FanartGenCtx {
+    struct LbGenCtx {
         state: AppState,
         cache_key: String,
         cache_path: std::path::PathBuf,
-        fanart_cache_suffix: Arc<str>,
-        fanart: FanartClient,
+        lb_cache_suffix: Arc<str>,
+        fanart: Option<FanartClient>,
+        image_source_is_fanart: bool,
+        skip_fanart: bool,
         neg_textless_key: String,
         neg_lang_key: String,
         type_badge_style: BadgeStyle,
@@ -1365,19 +1520,21 @@ pub async fn handle_fanart_image_inner(
         badges: Vec<ratings::RatingBadge>,
         cross_ids: CrossIdInfo,
     }
-    let ctx = FanartGenCtx {
+    let ctx = LbGenCtx {
         state: state.clone(),
         cache_key: cache_key.clone(),
         cache_path: cache_path.clone(),
-        fanart_cache_suffix: fanart_cache_suffix.clone(),
-        fanart: fanart.clone(),
+        lb_cache_suffix: lb_cache_suffix.clone(),
+        fanart: fanart.cloned(),
+        image_source_is_fanart: settings.image_source.is_fanart(),
+        skip_fanart,
         neg_textless_key,
         neg_lang_key,
         type_badge_style,
         type_label_style,
-        badge_size_factor: match fanart_kind {
-            FanartImageKind::Logo => settings.logo_badge_size.scale_factor(),
-            FanartImageKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
+        badge_size_factor: match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_badge_size.scale_factor(),
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
         },
         label,
         resolved: resolved.clone(),
@@ -1389,49 +1546,79 @@ pub async fn handle_fanart_image_inner(
         .try_get_with(cache_key.clone(), async move {
             let ctx = ctx;
 
-            let fanart_result = fetch_fanart_image(
-                &ctx.fanart,
-                &ctx.state.tmdb,
-                &ctx.state.fanart_cache,
-                &ctx.resolved,
-                fanart_lang,
-                fanart_textless,
-                kind,
-                &ctx.state.config.cache_dir,
-                ctx.state.config.external_cache_only,
-            )
-            .await;
+            // Determine source priority.
+            // When skip_fanart is set (all fanart variants negative-cached),
+            // avoid the fanart API call but still try TMDB.
+            let fanart_is_primary = ctx.image_source_is_fanart && ctx.fanart.is_some();
+            let try_fanart = !ctx.skip_fanart;
+            let not_found = || AppError::IdNotFound(format!("no {} available", ctx.label));
 
-            let image_bytes = match fanart_result {
-                Some(r) => {
-                    if fanart_textless && r.match_tier == PosterMatch::Language {
-                        ctx.state.fanart_negative.insert(ctx.neg_textless_key.clone(), ()).await;
+            // Primary source, then fallback
+            let (primary, fallback) = if fanart_is_primary {
+                // Fanart preferred — try fanart first (unless skipped), then TMDB fallback
+                let primary = if try_fanart {
+                    if let Some(ref fc) = ctx.fanart {
+                        try_fanart_with_negative_cache(
+                            fc, &ctx.state, &ctx.resolved,
+                            fanart_lang, fanart_textless, kind,
+                            &ctx.neg_textless_key, &ctx.neg_lang_key,
+                        ).await
+                    } else {
+                        None
                     }
-                    r.bytes
-                }
-                None => {
-                    if fanart_textless {
-                        ctx.state.fanart_negative.insert(ctx.neg_textless_key, ()).await;
+                } else {
+                    None
+                };
+                let fallback = if primary.is_none() {
+                    try_tmdb_logo_backdrop(&ctx.state, &ctx.resolved, kind, fanart_lang, fanart_textless, image_size).await
+                } else {
+                    None
+                };
+                (primary, fallback)
+            } else {
+                // TMDB preferred — try TMDB first, then fanart fallback (unless skipped)
+                let primary = try_tmdb_logo_backdrop(&ctx.state, &ctx.resolved, kind, fanart_lang, fanart_textless, image_size).await;
+                let fallback = if primary.is_none() && try_fanart {
+                    if let Some(ref fc) = ctx.fanart {
+                        try_fanart_with_negative_cache(
+                            fc, &ctx.state, &ctx.resolved,
+                            fanart_lang, fanart_textless, kind,
+                            &ctx.neg_textless_key, &ctx.neg_lang_key,
+                        ).await
+                    } else {
+                        None
                     }
-                    ctx.state.fanart_negative.insert(ctx.neg_lang_key, ()).await;
-                    return Err(AppError::IdNotFound(format!("no {} available", ctx.label).into()));
+                } else {
+                    None
+                };
+                (primary, fallback)
+            };
+            let image_bytes = match primary.or(fallback) {
+                Some(b) => b,
+                // Logos: try TMDB(default=en) as final fallback when the
+                // requested language wasn't English (avoids a redundant call)
+                None if kind == cache::ImageType::Logo && fanart_lang != "en" => {
+                    try_tmdb_logo_backdrop(&ctx.state, &ctx.resolved, kind, "en", false, image_size)
+                        .await
+                        .ok_or_else(not_found)?
                 }
+                None => return Err(not_found()),
             };
 
             let resolved_size = resolve_image_size(image_size);
-            let (target_width, badge_scale) = match fanart_kind {
-                FanartImageKind::Logo => (
+            let (target_width, badge_scale) = match lb_kind {
+                LogoBackdropKind::Logo => (
                     resolved_size.logo_target_width(),
                     resolved_size.badge_scale(cache::ImageType::Logo) * ctx.badge_size_factor,
                 ),
-                FanartImageKind::Backdrop => (
+                LogoBackdropKind::Backdrop => (
                     resolved_size.backdrop_target_width(),
                     resolved_size.badge_scale(cache::ImageType::Backdrop) * ctx.badge_size_factor,
                 ),
             };
-            let bytes = match fanart_kind {
-                FanartImageKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                FanartImageKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+            let bytes = match lb_kind {
+                LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
             };
 
             if !ctx.state.config.external_cache_only {
@@ -1439,7 +1626,7 @@ pub async fn handle_fanart_image_inner(
             }
             let _ = cache::upsert_meta_db(&ctx.state.db, &ctx.cache_key, ctx.cross_ids.release_date.as_deref(), image_type).await;
             let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(&ctx.state, ctx.cross_ids, id_type, ctx.fanart_cache_suffix.to_string(), image_type, bytes.clone());
+            spawn_cross_id_cache(&ctx.state, ctx.cross_ids, id_type, ctx.lb_cache_suffix.to_string(), image_type, bytes.clone());
             Ok::<_, AppError>(bytes)
         })
         .await
@@ -1458,7 +1645,7 @@ pub async fn handle_fanart_image_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::db::{BadgeStyle, PosterSource};
+    use crate::services::db::{BadgeStyle, ImageSource};
 
     #[test]
     fn image_kind_prefix() {
@@ -1616,20 +1803,6 @@ mod tests {
     }
 
     #[test]
-    fn settings_hash_includes_fanart_override() {
-        let mut s1 = RenderSettings::default();
-        let mut s2 = RenderSettings::default();
-        s1.fanart_lang = "de".into();
-        s1.fanart_override = false;
-        s2.fanart_lang = "de".into();
-        s2.fanart_override = true;
-        assert_ne!(
-            settings_hash(&s1, cache::ImageType::Poster, None),
-            settings_hash(&s2, cache::ImageType::Poster, None)
-        );
-    }
-
-    #[test]
     fn image_size_cache_suffix_values() {
         use crate::services::db::ImageSize;
         assert_eq!(image_size_cache_suffix(None), ".zm");
@@ -1738,14 +1911,12 @@ mod tests {
         let mut s1 = RenderSettings::default();
         let mut s2 = RenderSettings::default();
         // These fields are handled by code path / variant, not suffix
-        s1.poster_source = PosterSource::Tmdb;
-        s2.poster_source = PosterSource::Fanart;
-        s1.fanart_lang = "en".into();
-        s2.fanart_lang = "de".into();
-        s1.fanart_textless = false;
-        s2.fanart_textless = true;
-        s1.fanart_override = false;
-        s2.fanart_override = true;
+        s1.image_source = ImageSource::Tmdb;
+        s2.image_source = ImageSource::Fanart;
+        s1.lang = "en".into();
+        s2.lang = "de".into();
+        s1.textless = false;
+        s2.textless = true;
         assert_eq!(
             settings_cache_suffix(&s1, cache::ImageType::Poster, None),
             settings_cache_suffix(&s2, cache::ImageType::Poster, None)
@@ -1769,5 +1940,19 @@ mod tests {
         // Same badges should produce the same suffix
         let suffix_imdb_rt_2 = settings_cache_suffix_with_ratings(&s, cache::ImageType::Poster, None, "@ir");
         assert_eq!(suffix_imdb_rt, suffix_imdb_rt_2);
+    }
+
+    #[test]
+    fn tmdb_poster_variant_all_combinations() {
+        // Default case: no variant (backward compatible)
+        assert_eq!(tmdb_poster_variant("en", false), "");
+        // English + textless
+        assert_eq!(tmdb_poster_variant("en", true), "_t_tl");
+        // Non-English, no textless
+        assert_eq!(tmdb_poster_variant("de", false), "_t_de");
+        // Non-English + textless
+        assert_eq!(tmdb_poster_variant("de", true), "_t_de_tl");
+        assert_eq!(tmdb_poster_variant("fr", false), "_t_fr");
+        assert_eq!(tmdb_poster_variant("ja", true), "_t_ja_tl");
     }
 }

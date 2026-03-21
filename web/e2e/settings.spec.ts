@@ -16,7 +16,7 @@ test.describe('settings', () => {
     // Reset settings to defaults so tests start from a known state
     await request.put('/api/admin/settings', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { poster_source: 't' },
+      data: { image_source: 't' },
     })
 
     await page.goto('/login')
@@ -39,18 +39,10 @@ test.describe('settings', () => {
     await expect(page.getByTestId('fanart-checkbox')).toBeVisible()
   })
 
-  test('fanart checkbox enables language and textless options', async ({ page }) => {
-    // Child options should be visible but disabled initially
-    await expect(page.getByTestId('fanart-lang-select')).toBeVisible()
-    await expect(page.getByTestId('fanart-lang-select')).toBeDisabled()
+  test('language and textless options are always enabled', async ({ page }) => {
+    await expect(page.getByTestId('lang-select')).toBeVisible()
+    await expect(page.getByTestId('lang-select')).toBeEnabled()
     await expect(page.getByTestId('textless-checkbox')).toBeVisible()
-    await expect(page.getByTestId('textless-checkbox')).toBeDisabled()
-
-    // Enable fanart
-    await page.getByTestId('fanart-checkbox').check()
-
-    // Now child options should be enabled
-    await expect(page.getByTestId('fanart-lang-select')).toBeEnabled()
     await expect(page.getByTestId('textless-checkbox')).toBeEnabled()
   })
 

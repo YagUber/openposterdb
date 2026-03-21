@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache;
 use crate::error::AppError;
-use crate::image::serve::{self, FanartImageKind};
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource};
+use crate::image::serve::{self, LogoBackdropKind};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -110,9 +110,9 @@ pub async fn poster_image(
 
 #[derive(Serialize)]
 pub struct GlobalSettingsResponse {
-    pub poster_source: PosterSource,
-    pub fanart_lang: String,
-    pub fanart_textless: bool,
+    pub image_source: ImageSource,
+    pub lang: String,
+    pub textless: bool,
     pub fanart_available: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
@@ -148,9 +148,9 @@ pub async fn get_settings(
     let free_api_key_locked = state.config.free_key_enabled.is_some();
     let free_api_key_enabled = state.is_free_api_key_enabled().await;
     Ok(Json(GlobalSettingsResponse {
-        poster_source: settings.poster_source,
-        fanart_lang: settings.fanart_lang.to_string(),
-        fanart_textless: settings.fanart_textless,
+        image_source: settings.image_source,
+        lang: settings.lang.to_string(),
+        textless: settings.textless,
         fanart_available: state.fanart.is_some(),
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.to_string(),
@@ -174,11 +174,12 @@ pub async fn get_settings(
 
 #[derive(Deserialize)]
 pub struct UpdateGlobalSettingsRequest {
-    pub poster_source: PosterSource,
-    #[serde(default = "db::default_fanart_lang")]
-    pub fanart_lang: String,
-    #[serde(default)]
-    pub fanart_textless: bool,
+    #[serde(alias = "poster_source")]
+    pub image_source: ImageSource,
+    #[serde(default = "db::default_lang", alias = "fanart_lang")]
+    pub lang: String,
+    #[serde(default, alias = "fanart_textless")]
+    pub textless: bool,
     #[serde(default = "default_ratings_limit")]
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
@@ -216,15 +217,15 @@ pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db::validate_render_settings(&req.fanart_lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
-    let textless_str = if req.fanart_textless { "true" } else { "false" };
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    let textless_str = if req.textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
     let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
     let mut batch: Vec<(&str, &str)> = vec![
-        ("poster_source", req.poster_source.as_str()),
-        ("fanart_lang", &req.fanart_lang),
-        ("fanart_textless", textless_str),
+        ("image_source", req.image_source.as_str()),
+        ("lang", &req.lang),
+        ("textless", textless_str),
         ("ratings_limit", &limit_str),
         ("ratings_order", &req.ratings_order),
         ("poster_position", req.poster_position.as_str()),
@@ -300,7 +301,7 @@ pub async fn fetch_logo(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    fetch_fanart_image(&state, &id_type, &id_value, FanartImageKind::Logo, "image/png").await
+    fetch_logo_backdrop_image(&state, &id_type, &id_value, LogoBackdropKind::Logo, "image/png").await
 }
 
 // --- Backdrops ---
@@ -323,7 +324,7 @@ pub async fn fetch_backdrop(
     State(state): State<Arc<AppState>>,
     Path((id_type, id_value)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    fetch_fanart_image(&state, &id_type, &id_value, FanartImageKind::Backdrop, "image/jpeg").await
+    fetch_logo_backdrop_image(&state, &id_type, &id_value, LogoBackdropKind::Backdrop, "image/jpeg").await
 }
 
 // --- Helpers ---
@@ -372,11 +373,11 @@ async fn image_from_cache_key(
     ).into_response())
 }
 
-async fn fetch_fanart_image(
+async fn fetch_logo_backdrop_image(
     state: &AppState,
     id_type: &str,
     id_value: &str,
-    fanart_kind: FanartImageKind,
+    lb_kind: LogoBackdropKind,
     content_type: &str,
 ) -> Result<Response, AppError> {
     crate::id::IdType::parse(id_type)?;
@@ -391,7 +392,7 @@ async fn fetch_fanart_image(
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
-    let (bytes, _) = serve::handle_fanart_image_inner(state, id_type, id_value, &settings, fanart_kind, None).await?;
+    let (bytes, _) = serve::handle_logo_backdrop_inner(state, id_type, id_value, &settings, lb_kind, None).await?;
 
     Ok((
         [(axum::http::header::CONTENT_TYPE, content_type)],

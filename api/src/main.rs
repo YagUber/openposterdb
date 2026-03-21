@@ -15,7 +15,7 @@ use openposterdb_api::services::fanart::FanartClient;
 use openposterdb_api::services::mdblist::MdblistClient;
 use openposterdb_api::services::omdb::OmdbClient;
 use openposterdb_api::services::tmdb::TmdbClient;
-use openposterdb_api::{build_app, AppState, FONT_BYTES, MIGRATIONS, SCHEMA_SQL};
+use openposterdb_api::{build_app, upgrade, AppState, FONT_BYTES, MIGRATIONS, SCHEMA_SQL};
 
 #[tokio::main]
 async fn main() {
@@ -134,6 +134,11 @@ async fn main() {
         }
     }
 
+    // Run data upgrades (cache key migrations, etc.)
+    upgrade::run(&database, &config.cache_dir, config.external_cache_only)
+        .await
+        .expect("data upgrade failed");
+
     // Clean up expired refresh tokens
     match db::delete_expired_refresh_tokens(&database).await {
         Ok(count) if count > 0 => tracing::info!("Cleaned up {count} expired refresh tokens"),
@@ -214,6 +219,11 @@ async fn main() {
         .time_to_live(Duration::from_secs(3600))
         .build();
 
+    let tmdb_images_cache = moka::future::Cache::builder()
+        .max_capacity(10_000)
+        .time_to_live(Duration::from_secs(1800))
+        .build();
+
     let settings_cache = moka::future::Cache::builder()
         .max_capacity(10_000)
         .time_to_live(Duration::from_secs(300))
@@ -284,6 +294,7 @@ async fn main() {
         fanart,
         fanart_cache,
         fanart_negative,
+        tmdb_images_cache,
         settings_cache,
         global_settings_cache,
         preview_cache,

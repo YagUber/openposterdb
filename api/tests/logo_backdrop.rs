@@ -5,6 +5,8 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+use common::TestAppOptions;
+
 fn json_body(json: serde_json::Value) -> Body {
     Body::from(json.to_string())
 }
@@ -34,7 +36,7 @@ async fn set_free_api_key_enabled(app: &axum::Router, token: &str, enabled: bool
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "free_api_key_enabled": enabled
         })))
         .unwrap();
@@ -303,33 +305,55 @@ async fn backdrop_no_fallback_returns_error() {
     assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
-// --- Negative cache prevents repeated lookups ---
+// --- Negative cache skips fanart but tries TMDB fallback ---
 
 #[tokio::test]
-async fn logo_negative_cache_short_circuits_request() {
+async fn logo_negative_cache_skips_fanart_tries_tmdb() {
     let (app, state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "logo-neg").await;
+
+    // Set fanart as the image source
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(json_body(serde_json::json!({ "image_source": "f" })))
+        .unwrap();
+    assert_eq!(app.clone().oneshot(req).await.unwrap().status(), StatusCode::OK);
 
     // Pre-populate the negative cache for this ID's logo
     // Key format: "{id_type}/{id_value}{kind_prefix}_f_{lang}_neg"
     state.fanart_negative.insert("imdb/tt9999999_l_f_en_neg".to_string(), ()).await;
     state.fanart_negative.run_pending_tasks().await;
 
-    // Request should fail immediately via the negative cache check.
+    // Fanart is skipped (negative-cached), TMDB is tried as fallback.
+    // Both fail in test env (fake API keys) so request returns an error.
     let req = Request::builder()
         .uri(format!("/{api_key}/imdb/logo-default/tt9999999.png"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
-async fn backdrop_negative_cache_short_circuits_request() {
+async fn backdrop_negative_cache_skips_fanart_tries_tmdb() {
     let (app, state) = common::setup_test_app().await;
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "backdrop-neg").await;
+
+    // Set fanart as the image source
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(json_body(serde_json::json!({ "image_source": "f" })))
+        .unwrap();
+    assert_eq!(app.clone().oneshot(req).await.unwrap().status(), StatusCode::OK);
 
     // Key format: "{id_type}/{id_value}{kind_prefix}_f_{lang}_neg" (backdrop lang is empty)
     state.fanart_negative.insert("imdb/tt9999999_b_f__neg".to_string(), ()).await;
@@ -340,7 +364,8 @@ async fn backdrop_negative_cache_short_circuits_request() {
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -349,16 +374,27 @@ async fn logo_negative_cache_with_fallback_returns_error() {
     let token = common::setup_admin(&app).await;
     let api_key = create_api_key(&app, &token, "logo-neg-fb").await;
 
+    // Set fanart as the image source
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(json_body(serde_json::json!({ "image_source": "f" })))
+        .unwrap();
+    assert_eq!(app.clone().oneshot(req).await.unwrap().status(), StatusCode::OK);
+
     state.fanart_negative.insert("imdb/tt9999999_l_f_en_neg".to_string(), ()).await;
     state.fanart_negative.run_pending_tasks().await;
 
-    // fallback=true is accepted but ignored — should return error
+    // fallback=true is accepted but ignored — request still fails
     let req = Request::builder()
         .uri(format!("/{api_key}/imdb/logo-default/tt9999999.png?fallback=true"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
-    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+    assert_ne!(res.status(), StatusCode::OK);
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
 // --- Language override on logo/backdrop ---
@@ -464,5 +500,48 @@ async fn backdrop_rejects_invalid_id_type() {
 
     let res = app.oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+// --- Logos and backdrops work without fanart configured ---
+
+#[tokio::test]
+async fn logo_without_fanart_does_not_return_501() {
+    let (app, _state) = common::setup_test_app_with_options(TestAppOptions {
+        disable_fanart: true,
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "logo-no-fanart").await;
+
+    let req = Request::builder()
+        .uri(format!("/{api_key}/imdb/logo-default/tt0000001.png"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    // Should NOT return 501 (Not Implemented) — fanart is no longer required
+    assert_ne!(res.status(), StatusCode::NOT_IMPLEMENTED, "logo should not return 501 without fanart");
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn backdrop_without_fanart_does_not_return_501() {
+    let (app, _state) = common::setup_test_app_with_options(TestAppOptions {
+        disable_fanart: true,
+        ..Default::default()
+    })
+    .await;
+    let token = common::setup_admin(&app).await;
+    let api_key = create_api_key(&app, &token, "backdrop-no-fanart").await;
+
+    let req = Request::builder()
+        .uri(format!("/{api_key}/imdb/backdrop-default/tt0000001.jpg"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_ne!(res.status(), StatusCode::NOT_IMPLEMENTED, "backdrop should not return 501 without fanart");
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
 }
 

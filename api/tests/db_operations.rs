@@ -352,22 +352,22 @@ async fn global_settings_empty_by_default() {
 #[tokio::test]
 async fn set_and_get_global_setting() {
     let (_app, state) = common::setup_test_app().await;
-    db::set_global_setting(&state.db, "poster_source", "f").await.unwrap();
-    db::set_global_setting(&state.db, "fanart_lang", "de").await.unwrap();
+    db::set_global_setting(&state.db, "image_source", "f").await.unwrap();
+    db::set_global_setting(&state.db, "lang", "de").await.unwrap();
 
     let settings = db::get_global_settings(&state.db).await.unwrap();
-    assert_eq!(settings.get("poster_source").unwrap(), "f");
-    assert_eq!(settings.get("fanart_lang").unwrap(), "de");
+    assert_eq!(settings.get("image_source").unwrap(), "f");
+    assert_eq!(settings.get("lang").unwrap(), "de");
 }
 
 #[tokio::test]
 async fn set_global_setting_upserts() {
     let (_app, state) = common::setup_test_app().await;
-    db::set_global_setting(&state.db, "poster_source", "t").await.unwrap();
-    db::set_global_setting(&state.db, "poster_source", "f").await.unwrap();
+    db::set_global_setting(&state.db, "image_source", "t").await.unwrap();
+    db::set_global_setting(&state.db, "image_source", "f").await.unwrap();
 
     let settings = db::get_global_settings(&state.db).await.unwrap();
-    assert_eq!(settings.get("poster_source").unwrap(), "f");
+    assert_eq!(settings.get("image_source").unwrap(), "f");
 }
 
 #[tokio::test]
@@ -376,18 +376,18 @@ async fn set_global_settings_batch_atomic() {
     db::set_global_settings_batch(
         &state.db,
         &[
-            ("poster_source", "f"),
-            ("fanart_lang", "fr"),
-            ("fanart_textless", "true"),
+            ("image_source", "f"),
+            ("lang", "fr"),
+            ("textless", "true"),
         ],
     )
     .await
     .unwrap();
 
     let settings = db::get_global_settings(&state.db).await.unwrap();
-    assert_eq!(settings.get("poster_source").unwrap(), "f");
-    assert_eq!(settings.get("fanart_lang").unwrap(), "fr");
-    assert_eq!(settings.get("fanart_textless").unwrap(), "true");
+    assert_eq!(settings.get("image_source").unwrap(), "f");
+    assert_eq!(settings.get("lang").unwrap(), "fr");
+    assert_eq!(settings.get("textless").unwrap(), "true");
 }
 
 // --- Per-key settings ---
@@ -423,7 +423,7 @@ async fn upsert_and_get_api_key_settings() {
     let key_id = json["id"].as_i64().unwrap() as i32;
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "f", fanart_lang: "ja", fanart_textless: true,
+        api_key_id: key_id, image_source: "f", lang: "ja", textless: true,
         ratings_limit: 0, ratings_order: "", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
@@ -432,9 +432,9 @@ async fn upsert_and_get_api_key_settings() {
     let settings = db::get_api_key_settings(&state.db, key_id).await.unwrap();
     assert!(settings.is_some());
     let s = settings.unwrap();
-    assert_eq!(s.poster_source, "f");
-    assert_eq!(s.fanart_lang, "ja");
-    assert!(s.fanart_textless);
+    assert_eq!(s.image_source, "f");
+    assert_eq!(s.lang, "ja");
+    assert!(s.textless);
     assert_eq!(s.ratings_limit, 0);
     assert_eq!(s.ratings_order, "");
     assert_eq!(s.poster_badge_direction, "d");
@@ -463,7 +463,7 @@ async fn upsert_api_key_settings_with_ratings() {
     let key_id = json["id"].as_i64().unwrap() as i32;
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "t", lang: "en", textless: false,
         ratings_limit: 3, ratings_order: "mal,imdb,trakt", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
@@ -480,7 +480,7 @@ async fn effective_settings_includes_ratings_from_global() {
     db::set_global_settings_batch(
         &state.db,
         &[
-            ("poster_source", "t"),
+            ("image_source", "t"),
             ("ratings_limit", "4"),
             ("ratings_order", "imdb,tmdb,rt,rta"),
         ],
@@ -523,7 +523,7 @@ async fn effective_settings_per_key_ratings_override_global() {
     .unwrap();
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "t", lang: "en", textless: false,
         ratings_limit: 5, ratings_order: "mal,lb", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
@@ -558,22 +558,22 @@ async fn upsert_api_key_settings_overwrites() {
     let key_id = json["id"].as_i64().unwrap() as i32;
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "t", lang: "en", textless: false,
         ratings_limit: 0, ratings_order: "", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
     }).await.unwrap();
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "f", fanart_lang: "de", fanart_textless: true,
+        api_key_id: key_id, image_source: "f", lang: "de", textless: true,
         ratings_limit: 0, ratings_order: "", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
     }).await.unwrap();
 
     let s = db::get_api_key_settings(&state.db, key_id).await.unwrap().unwrap();
-    assert_eq!(s.poster_source, "f");
-    assert_eq!(s.fanart_lang, "de");
-    assert!(s.fanart_textless);
+    assert_eq!(s.image_source, "f");
+    assert_eq!(s.lang, "de");
+    assert!(s.textless);
 }
 
 #[tokio::test]
@@ -599,7 +599,7 @@ async fn delete_api_key_settings_removes() {
     let key_id = json["id"].as_i64().unwrap() as i32;
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "f", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "f", lang: "en", textless: false,
         ratings_limit: 0, ratings_order: "", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
@@ -616,9 +616,9 @@ async fn delete_api_key_settings_removes() {
 async fn effective_settings_defaults_when_nothing_configured() {
     let (_app, state) = common::setup_test_app().await;
     let s = db::get_effective_render_settings(&state.db, 999, None).await;
-    assert_eq!(s.poster_source, db::PosterSource::Tmdb);
-    assert_eq!(&*s.fanart_lang, "en");
-    assert!(!s.fanart_textless);
+    assert_eq!(s.image_source, db::ImageSource::Tmdb);
+    assert_eq!(&*s.lang, "en");
+    assert!(!s.textless);
     assert!(s.is_default);
 }
 
@@ -628,18 +628,18 @@ async fn effective_settings_uses_global_when_no_per_key() {
     db::set_global_settings_batch(
         &state.db,
         &[
-            ("poster_source", "f"),
-            ("fanart_lang", "fr"),
-            ("fanart_textless", "true"),
+            ("image_source", "f"),
+            ("lang", "fr"),
+            ("textless", "true"),
         ],
     )
     .await
     .unwrap();
 
     let s = db::get_effective_render_settings(&state.db, 999, None).await;
-    assert_eq!(s.poster_source, db::PosterSource::Fanart);
-    assert_eq!(&*s.fanart_lang, "fr");
-    assert!(s.fanart_textless);
+    assert_eq!(s.image_source, db::ImageSource::Fanart);
+    assert_eq!(&*s.lang, "fr");
+    assert!(s.textless);
     assert!(s.is_default); // global settings still marked as "default"
 }
 
@@ -668,23 +668,23 @@ async fn effective_settings_per_key_overrides_global() {
     // Set global to fanart/fr
     db::set_global_settings_batch(
         &state.db,
-        &[("poster_source", "f"), ("fanart_lang", "fr")],
+        &[("image_source", "f"), ("lang", "fr")],
     )
     .await
     .unwrap();
 
     // Set per-key to tmdb/ja
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "ja", fanart_textless: true,
+        api_key_id: key_id, image_source: "t", lang: "ja", textless: true,
         ratings_limit: 0, ratings_order: "", poster_position: "bc", logo_ratings_limit: 3, backdrop_ratings_limit: 3,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
     }).await.unwrap();
 
     let s = db::get_effective_render_settings(&state.db, key_id, None).await;
-    assert_eq!(s.poster_source, db::PosterSource::Tmdb);
-    assert_eq!(&*s.fanart_lang, "ja");
-    assert!(s.fanart_textless);
+    assert_eq!(s.image_source, db::ImageSource::Tmdb);
+    assert_eq!(&*s.lang, "ja");
+    assert!(s.textless);
     assert!(!s.is_default); // per-key override
 }
 
@@ -713,7 +713,7 @@ async fn upsert_api_key_settings_with_poster_position() {
     let key_id = json["id"].as_i64().unwrap() as i32;
 
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "t", lang: "en", textless: false,
         ratings_limit: 3, ratings_order: "imdb,rt", poster_position: "l", logo_ratings_limit: 5, backdrop_ratings_limit: 1,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",
@@ -758,7 +758,7 @@ async fn effective_settings_include_new_fields() {
 
     // Set per-key with custom values
     db::upsert_api_key_settings(&state.db, UpsertApiKeySettings {
-        api_key_id: key_id, poster_source: "t", fanart_lang: "en", fanart_textless: false,
+        api_key_id: key_id, image_source: "t", lang: "en", textless: false,
         ratings_limit: 3, ratings_order: "", poster_position: "r", logo_ratings_limit: 2, backdrop_ratings_limit: 0,
         poster_badge_style: "h", logo_badge_style: "h", backdrop_badge_style: "v",
         poster_label_style: "t", logo_label_style: "t", backdrop_label_style: "t", poster_badge_direction: "d", poster_badge_size: "m", logo_badge_size: "m", backdrop_badge_size: "m",

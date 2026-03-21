@@ -8,9 +8,9 @@ import { shadcnStubs } from '@/__tests__/stubs'
 vi.mock('@/lib/api', () => ({}))
 
 const defaultSettings: RenderSettings = {
-  poster_source: 't',
-  fanart_lang: 'en',
-  fanart_textless: false,
+  image_source: 't',
+  lang: 'en',
+  textless: false,
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
@@ -168,10 +168,9 @@ describe('RenderSettingsForm', () => {
     expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'l', 'h', 'i', 'd', 'm')
   })
 
-  it('hides fanart options when fanart_available is false', () => {
+  it('hides fanart checkbox when fanart_available is false', () => {
     const wrapper = mountForm({ fanart_available: false })
     expect(wrapper.find('[data-testid="fanart-checkbox"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Fanart.tv API key')
   })
 
   it('shows fanart checkbox when fanart_available is true', () => {
@@ -180,26 +179,20 @@ describe('RenderSettingsForm', () => {
   })
 
   it('checks fanart checkbox when source is fanart', () => {
-    const wrapper = mountForm({ poster_source: 'f' })
+    const wrapper = mountForm({ image_source: 'f' })
     const checkbox = wrapper.find('[data-testid="fanart-checkbox"]')
     expect((checkbox.element as HTMLInputElement).checked).toBe(true)
   })
 
-  it('enables language and textless when fanart is checked', () => {
-    const wrapper = mountForm({ poster_source: 'f' })
+  it('language and textless are always enabled regardless of fanart checkbox', () => {
+    const wrapper = mountForm({ image_source: 't' })
     expect((wrapper.find('[data-testid="textless-checkbox"]').element as HTMLInputElement).disabled).toBe(false)
-    expect((wrapper.find('[data-testid="fanart-lang-select"]').element as HTMLInputElement).disabled).toBe(false)
+    expect((wrapper.find('[data-testid="lang-select"]').element as HTMLInputElement).disabled).toBe(false)
   })
 
-  it('disables language and textless when fanart is unchecked', () => {
-    const wrapper = mountForm({ poster_source: 't' })
-    expect((wrapper.find('[data-testid="textless-checkbox"]').element as HTMLInputElement).disabled).toBe(true)
-    expect((wrapper.find('[data-testid="fanart-lang-select"]').element as HTMLInputElement).disabled).toBe(true)
-  })
-
-  it('defaults language to en when fanart_lang is empty', async () => {
+  it('defaults language to en when lang is empty', async () => {
     const saveSettings = vi.fn().mockResolvedValue(null)
-    const settings = { ...defaultSettings, poster_source: 'f', fanart_lang: '' }
+    const settings = { ...defaultSettings, image_source: 'f', lang: '' }
     const wrapper = mount(RenderSettingsForm, {
       props: {
         settings,
@@ -218,7 +211,7 @@ describe('RenderSettingsForm', () => {
     await flushPromises()
 
     expect(saveSettings).toHaveBeenCalledWith(
-      expect.objectContaining({ fanart_lang: 'en' }),
+      expect.objectContaining({ lang: 'en' }),
     )
   })
 

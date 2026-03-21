@@ -23,14 +23,14 @@ echo "=== Frontend unit tests ==="
 (cd web && npx vitest run)
 
 echo ""
-echo "=== E2E tests ==="
+echo "=== Container setup ==="
 
 cleanup() {
     echo "=== Tearing down ==="
     $CTR rm -f "$CONTAINER_NAME" 2>/dev/null || true
     $CTR rmi -f "$IMAGE_NAME" 2>/dev/null || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 echo "Building container image..."
 $CTR build -t "$IMAGE_NAME" --build-arg CARGO_FEATURES=test-support -f Containerfile .
@@ -55,6 +55,7 @@ $CTR run -d --name "$CONTAINER_NAME" \
     -e COOKIE_SECURE=false \
     -e CACHE_DIR=/tmp/openposterdb-e2e \
     -e DB_DIR=/tmp/openposterdb-e2e \
+    -e FREE_KEY_ENABLED=true \
     "$IMAGE_NAME"
 
 echo "Waiting for backend..."
@@ -71,6 +72,12 @@ for i in $(seq 1 60); do
     sleep 1
 done
 
+echo ""
+echo "=== Visual report ==="
+scripts/visual-report.sh
+
+echo ""
+echo "=== E2E tests ==="
 (cd web && npx playwright test --workers=1 --project=setup --project=settings --project=chromium --project=live)
 
 echo ""

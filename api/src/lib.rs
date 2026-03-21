@@ -7,6 +7,7 @@ pub mod id;
 pub mod image;
 pub mod routes;
 pub mod services;
+pub mod upgrade;
 
 use std::sync::Arc;
 
@@ -49,6 +50,7 @@ pub struct AppState {
     /// Tracks negative fanart results — e.g. "movie:123:textless" means no textless poster exists.
     /// Entries expire after the same TTL as fanart_cache so we recheck periodically.
     pub fanart_negative: moka::future::Cache<String, ()>,
+    pub tmdb_images_cache: moka::future::Cache<String, Arc<services::tmdb::TmdbImagesResponse>>,
     pub settings_cache: moka::future::Cache<i32, Arc<RenderSettings>>,
     pub global_settings_cache: moka::future::Cache<(), Arc<RenderSettings>>,
     pub preview_cache: moka::future::Cache<String, bytes::Bytes>,
@@ -174,9 +176,9 @@ pub const SCHEMA_SQL: &[&str] = &[
     )",
     "CREATE TABLE IF NOT EXISTS api_key_settings (
         api_key_id             INTEGER PRIMARY KEY REFERENCES api_keys(id) ON DELETE CASCADE,
-        poster_source          TEXT NOT NULL DEFAULT 't',
-        fanart_lang            TEXT NOT NULL DEFAULT 'en',
-        fanart_textless        INTEGER NOT NULL DEFAULT 0,
+        image_source           TEXT NOT NULL DEFAULT 't',
+        lang                   TEXT NOT NULL DEFAULT 'en',
+        textless               INTEGER NOT NULL DEFAULT 0,
         ratings_limit          INTEGER NOT NULL DEFAULT 3,
         ratings_order          TEXT NOT NULL DEFAULT 'mal,imdb,lb,rt,mc,rta,tmdb,trakt',
         poster_position        TEXT NOT NULL DEFAULT 'bc',
@@ -275,5 +277,29 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "CREATE INDEX IF NOT EXISTS idx_image_meta_type_created ON image_meta(image_type, created_at DESC)",
         "already exists",
+    ),
+    (
+        "ALTER TABLE api_key_settings RENAME COLUMN poster_source TO image_source",
+        "no such column",
+    ),
+    (
+        "ALTER TABLE api_key_settings RENAME COLUMN fanart_lang TO lang",
+        "no such column",
+    ),
+    (
+        "ALTER TABLE api_key_settings RENAME COLUMN fanart_textless TO textless",
+        "no such column",
+    ),
+    (
+        "UPDATE global_settings SET key = 'image_source' WHERE key = 'poster_source'",
+        "no such table",
+    ),
+    (
+        "UPDATE global_settings SET key = 'lang' WHERE key = 'fanart_lang'",
+        "no such table",
+    ),
+    (
+        "UPDATE global_settings SET key = 'textless' WHERE key = 'fanart_textless'",
+        "no such table",
     ),
 ];

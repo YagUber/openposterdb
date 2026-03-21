@@ -207,28 +207,28 @@ describe('FreeApiKeyCard', () => {
   it('resets poster-only controls when switching away from poster', async () => {
     const wrapper = mountCard(true)
 
-    // Set poster-only controls
+    // Set poster-only controls and general image controls
     await setSelectById(wrapper, 'free-poster-position', 'tl')
     await setSelectById(wrapper, 'free-badge-direction', 'v')
-    await setSelectById(wrapper, 'free-poster-source', 'f')
-    await setSelectById(wrapper, 'free-fanart-textless', 'true')
+    await setSelectById(wrapper, 'free-image-source', 'f')
+    await setSelectById(wrapper, 'free-textless', 'true')
     expect(findCurlCode(wrapper).text()).toContain('position=tl')
     expect(findCurlCode(wrapper).text()).toContain('badge_direction=v')
-    expect(findCurlCode(wrapper).text()).toContain('poster_source=f')
-    expect(findCurlCode(wrapper).text()).toContain('fanart_textless=true')
+    expect(findCurlCode(wrapper).text()).toContain('image_source=f')
+    expect(findCurlCode(wrapper).text()).toContain('textless=true')
 
-    // Switch to logo — poster-only controls should reset
+    // Switch to logo — poster-only controls should reset, source persists
     await setSelectById(wrapper, 'free-image-type', 'logo')
     expect(findCurlCode(wrapper).text()).not.toContain('position=')
     expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
-    expect(findCurlCode(wrapper).text()).not.toContain('poster_source=')
-    expect(findCurlCode(wrapper).text()).not.toContain('fanart_textless=')
+    expect(findCurlCode(wrapper).text()).not.toContain('textless=')
+    expect(findCurlCode(wrapper).text()).toContain('image_source=f')
 
-    // Switch back to poster — controls should be at defaults (not persisted)
+    // Switch back to poster — poster-only controls at defaults, source still set
     await setSelectById(wrapper, 'free-image-type', 'poster')
     expect(findCurlCode(wrapper).text()).not.toContain('position=')
     expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
-    expect(findCurlCode(wrapper).text()).not.toContain('poster_source=')
-    expect(findCurlCode(wrapper).text()).not.toContain('fanart_textless=')
+    expect(findCurlCode(wrapper).text()).not.toContain('textless=')
+    expect(findCurlCode(wrapper).text()).toContain('image_source=f')
   })
 })

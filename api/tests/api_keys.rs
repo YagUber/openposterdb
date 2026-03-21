@@ -173,7 +173,7 @@ async fn key_settings_requires_auth() {
         .method("PUT")
         .uri("/api/keys/1/settings")
         .header("content-type", "application/json")
-        .body(json_body(serde_json::json!({"poster_source": "t"})))
+        .body(json_body(serde_json::json!({"image_source": "t"})))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -216,9 +216,9 @@ async fn get_key_settings_returns_defaults() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["poster_source"], "t");
-    assert_eq!(json["fanart_lang"], "en");
-    assert_eq!(json["fanart_textless"], false);
+    assert_eq!(json["image_source"], "t");
+    assert_eq!(json["lang"], "en");
+    assert_eq!(json["textless"], false);
     assert_eq!(json["is_default"], true);
     assert_eq!(json["ratings_limit"], 3);
     assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt");
@@ -249,9 +249,9 @@ async fn update_key_settings_and_read_back() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "f",
-            "fanart_lang": "ja",
-            "fanart_textless": true
+            "image_source": "f",
+            "lang": "ja",
+            "textless": true
         })))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
@@ -268,9 +268,9 @@ async fn update_key_settings_and_read_back() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["poster_source"], "f");
-    assert_eq!(json["fanart_lang"], "ja");
-    assert_eq!(json["fanart_textless"], true);
+    assert_eq!(json["image_source"], "f");
+    assert_eq!(json["lang"], "ja");
+    assert_eq!(json["textless"], true);
     assert_eq!(json["is_default"], false);
 }
 
@@ -299,9 +299,9 @@ async fn delete_key_settings_resets_to_defaults() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "f",
-            "fanart_lang": "de",
-            "fanart_textless": true
+            "image_source": "f",
+            "lang": "de",
+            "textless": true
         })))
         .unwrap();
     app.clone().oneshot(req).await.unwrap();
@@ -325,7 +325,7 @@ async fn delete_key_settings_resets_to_defaults() {
     let res = app.oneshot(req).await.unwrap();
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["poster_source"], "t");
+    assert_eq!(json["image_source"], "t");
     assert_eq!(json["is_default"], true);
 }
 
@@ -353,7 +353,7 @@ async fn update_key_settings_rejects_invalid_source() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "invalid"
+            "image_source": "invalid"
         })))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -385,8 +385,8 @@ async fn update_key_settings_rejects_invalid_lang() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "f",
-            "fanart_lang": "a"
+            "image_source": "f",
+            "lang": "a"
         })))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -416,7 +416,7 @@ async fn update_key_settings_with_ratings_and_read_back() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "ratings_limit": 4,
             "ratings_order": "trakt,imdb,mal,lb"
         })))
@@ -462,7 +462,7 @@ async fn update_key_settings_rejects_invalid_ratings_limit() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "ratings_limit": -1
         })))
         .unwrap();
@@ -493,7 +493,7 @@ async fn update_key_settings_rejects_invalid_ratings_order() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "ratings_order": "invalid_source"
         })))
         .unwrap();
@@ -559,7 +559,7 @@ async fn update_key_settings_with_poster_position_and_read_back() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "poster_position": "r",
             "logo_ratings_limit": 1,
             "backdrop_ratings_limit": 0
@@ -607,7 +607,7 @@ async fn update_key_settings_rejects_invalid_poster_position() {
         .header("content-type", "application/json")
         .header("authorization", format!("Bearer {token}"))
         .body(json_body(serde_json::json!({
-            "poster_source": "t",
+            "image_source": "t",
             "poster_position": "center-bottom"
         })))
         .unwrap();

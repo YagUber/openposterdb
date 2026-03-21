@@ -18,9 +18,9 @@ vi.mock('@/lib/api', () => ({
 }))
 
 const defaultSettings = {
-  poster_source: 't',
-  fanart_lang: 'en',
-  fanart_textless: false,
+  image_source: 't',
+  lang: 'en',
+  textless: false,
   fanart_available: true,
   ratings_limit: 3,
   ratings_order: 'mal,imdb,lb,rt,rta,mc,tmdb,trakt',
@@ -83,9 +83,9 @@ describe('SettingsView', () => {
       json: () =>
         Promise.resolve({
           ...defaultSettings,
-          poster_source: 'f',
-          fanart_lang: 'de',
-          fanart_textless: true,
+          image_source: 'f',
+          lang: 'de',
+          textless: true,
         }),
     })
 
@@ -119,7 +119,6 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="fanart-checkbox"]').exists()).toBe(false)
-    expect(wrapper.text()).toContain('Fanart.tv API key')
   })
 
   it('auto-saves when fanart checkbox is toggled', async () => {
@@ -136,9 +135,9 @@ describe('SettingsView', () => {
 
     expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        poster_source: 'f',
-        fanart_lang: 'en',
-        fanart_textless: false,
+        image_source: 'f',
+        lang: 'en',
+        textless: false,
       }),
     )
     vi.useRealTimers()

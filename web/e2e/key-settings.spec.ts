@@ -46,7 +46,7 @@ test.describe('key settings (self-service)', () => {
         Authorization: `Bearer ${adminToken}`,
         'Content-Type': 'application/json',
       },
-      data: { poster_source: 't' },
+      data: { image_source: 't' },
     })
 
     await loginWithApiKey(page, request)
@@ -68,28 +68,10 @@ test.describe('key settings (self-service)', () => {
     await expect(page.locator('text=Saved')).toBeVisible({ timeout: 5000 })
   })
 
-  test('fanart options enabled when fanart is checked', async ({ page, request }) => {
-    // Ensure global source is "tmdb" so fanart is unchecked
-    const adminToken = await ensureAdmin(request)
-    await request.put('/api/admin/settings', {
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        'Content-Type': 'application/json',
-      },
-      data: { poster_source: 't' },
-    })
-
+  test('language and textless options are always enabled', async ({ page, request }) => {
     await loginWithApiKey(page, request)
 
-    // Language and textless should be visible but disabled initially
-    await expect(page.getByTestId('fanart-lang-select')).toBeDisabled()
-    await expect(page.getByTestId('textless-checkbox')).toBeDisabled()
-
-    // Check fanart
-    await page.getByTestId('fanart-checkbox').check()
-
-    // Now language and textless should be enabled
-    await expect(page.getByTestId('fanart-lang-select')).toBeEnabled()
+    await expect(page.getByTestId('lang-select')).toBeEnabled()
     await expect(page.getByTestId('textless-checkbox')).toBeEnabled()
   })
 
@@ -135,7 +117,7 @@ test.describe('key settings (self-service)', () => {
         Authorization: `Bearer ${adminToken}`,
         'Content-Type': 'application/json',
       },
-      data: { poster_source: 't' },
+      data: { image_source: 't' },
     })
 
     await loginWithApiKey(page, request)
@@ -165,7 +147,7 @@ test.describe('key settings (self-service)', () => {
         Authorization: `Bearer ${adminToken}`,
         'Content-Type': 'application/json',
       },
-      data: { poster_source: 't' },
+      data: { image_source: 't' },
     })
 
     await loginWithApiKey(page, request)

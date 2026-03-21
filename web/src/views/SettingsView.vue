@@ -49,9 +49,9 @@ async function toggleFreeApiKey() {
   freeKeyError.value = ''
   const newVal = !freeApiKeyEnabled.value
   const res = await adminApi.updateSettings({
-    poster_source: settings.value.poster_source,
-    fanart_lang: settings.value.fanart_lang,
-    fanart_textless: settings.value.fanart_textless,
+    image_source: settings.value.image_source,
+    lang: settings.value.lang,
+    textless: settings.value.textless,
     ratings_limit: settings.value.ratings_limit,
     ratings_order: settings.value.ratings_order,
     poster_position: settings.value.poster_position,

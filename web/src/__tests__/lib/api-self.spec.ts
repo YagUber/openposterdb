@@ -43,7 +43,7 @@ describe('selfApi', () => {
   })
 
   it('getSettings sends GET to /api/key/me/settings', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200, { poster_source: 't' }))
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200, { image_source: 't' }))
     vi.stubGlobal('fetch', fetchMock)
 
     await selfApi.getSettings()
@@ -57,9 +57,9 @@ describe('selfApi', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     await selfApi.updateSettings({
-      poster_source: 'f',
-      fanart_lang: 'de',
-      fanart_textless: true,
+      image_source: 'f',
+      lang: 'de',
+      textless: true,
       ratings_limit: 3,
       ratings_order: 'mal,imdb,trakt',
       poster_position: 'bc',
@@ -82,9 +82,9 @@ describe('selfApi', () => {
     expect(options.method).toBe('PUT')
     expect(options.headers.get('Content-Type')).toBe('application/json')
     expect(JSON.parse(options.body)).toEqual({
-      poster_source: 'f',
-      fanart_lang: 'de',
-      fanart_textless: true,
+      image_source: 'f',
+      lang: 'de',
+      textless: true,
       ratings_limit: 3,
       ratings_order: 'mal,imdb,trakt',
       poster_position: 'bc',

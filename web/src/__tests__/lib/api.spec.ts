@@ -152,12 +152,12 @@ describe('api', () => {
     const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
     vi.stubGlobal('fetch', fetchMock)
 
-    await put('/api/settings', { poster_source: 'f' })
+    await put('/api/settings', { image_source: 'f' })
 
     const [, options] = fetchMock.mock.calls[0]
     expect(options.method).toBe('PUT')
     expect(options.headers.get('Content-Type')).toBe('application/json')
-    expect(options.body).toBe(JSON.stringify({ poster_source: 'f' }))
+    expect(options.body).toBe(JSON.stringify({ image_source: 'f' }))
   })
 
   it('post without body does not set Content-Type', async () => {

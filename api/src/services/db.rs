@@ -196,12 +196,12 @@ impl LabelStyle {
 impl_str_enum!(LabelStyle);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PosterSource {
+pub enum ImageSource {
     Tmdb,
     Fanart,
 }
 
-impl PosterSource {
+impl ImageSource {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Tmdb => SOURCE_TMDB,
@@ -214,7 +214,7 @@ impl PosterSource {
             SOURCE_TMDB => Ok(Self::Tmdb),
             SOURCE_FANART => Ok(Self::Fanart),
             _ => Err(AppError::BadRequest(
-                format!("poster_source must be '{SOURCE_TMDB}' or '{SOURCE_FANART}'"),
+                format!("image_source must be '{SOURCE_TMDB}' or '{SOURCE_FANART}'"),
             )),
         }
     }
@@ -224,7 +224,7 @@ impl PosterSource {
     }
 }
 
-impl_str_enum!(PosterSource);
+impl_str_enum!(ImageSource);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BadgePosition {
@@ -409,7 +409,7 @@ pub fn validate_image_size(size_str: &str, kind: crate::cache::ImageType) -> Res
     Ok(size)
 }
 
-pub fn default_fanart_lang() -> String {
+pub fn default_lang() -> String {
     "en".to_string()
 }
 
@@ -546,8 +546,8 @@ pub fn validate_ratings_order(order: &str) -> Result<(), AppError> {
 }
 
 
-/// Validate a fanart language code: 2–5 ASCII alphanumeric chars or hyphens (e.g. "en", "pt-BR").
-pub fn validate_fanart_lang(lang: &str) -> Result<(), AppError> {
+/// Validate a language code: 2–5 ASCII alphanumeric chars or hyphens (e.g. "en", "pt-BR").
+pub fn validate_lang(lang: &str) -> Result<(), AppError> {
     if lang.len() >= 2
         && lang.len() <= 5
         && lang
@@ -557,7 +557,7 @@ pub fn validate_fanart_lang(lang: &str) -> Result<(), AppError> {
         Ok(())
     } else {
         Err(AppError::BadRequest(
-            "fanart_lang must be 2-5 ASCII alphanumeric characters (e.g. 'en', 'de', 'pt-BR')"
+            "lang must be 2-5 ASCII alphanumeric characters (e.g. 'en', 'de', 'pt-BR')"
                 .into(),
         ))
     }
@@ -565,13 +565,13 @@ pub fn validate_fanart_lang(lang: &str) -> Result<(), AppError> {
 
 /// Validate the remaining string-based render settings that aren't covered by enum deserialization.
 pub fn validate_render_settings(
-    fanart_lang: &str,
+    lang: &str,
     ratings_limit: i32,
     ratings_order: &str,
     logo_ratings_limit: i32,
     backdrop_ratings_limit: i32,
 ) -> Result<(), AppError> {
-    validate_fanart_lang(fanart_lang)?;
+    validate_lang(lang)?;
     validate_ratings_limit(ratings_limit)?;
     validate_ratings_order(ratings_order)?;
     validate_ratings_limit(logo_ratings_limit)?;
@@ -694,8 +694,8 @@ mod tests {
     }
 
     #[test]
-    fn default_fanart_lang_returns_en() {
-        assert_eq!(default_fanart_lang(), "en");
+    fn default_lang_returns_en() {
+        assert_eq!(default_lang(), "en");
     }
 
     #[test]
@@ -740,47 +740,47 @@ mod tests {
     }
 
     #[test]
-    fn validate_fanart_lang_valid_codes() {
-        assert!(validate_fanart_lang("en").is_ok());
-        assert!(validate_fanart_lang("de").is_ok());
-        assert!(validate_fanart_lang("fr").is_ok());
-        assert!(validate_fanart_lang("ja").is_ok());
-        assert!(validate_fanart_lang("pt-BR").is_ok());
-        assert!(validate_fanart_lang("zh-CN").is_ok());
+    fn validate_lang_valid_codes() {
+        assert!(validate_lang("en").is_ok());
+        assert!(validate_lang("de").is_ok());
+        assert!(validate_lang("fr").is_ok());
+        assert!(validate_lang("ja").is_ok());
+        assert!(validate_lang("pt-BR").is_ok());
+        assert!(validate_lang("zh-CN").is_ok());
     }
 
     #[test]
-    fn validate_fanart_lang_rejects_too_short() {
-        assert!(validate_fanart_lang("e").is_err());
-        assert!(validate_fanart_lang("").is_err());
+    fn validate_lang_rejects_too_short() {
+        assert!(validate_lang("e").is_err());
+        assert!(validate_lang("").is_err());
     }
 
     #[test]
-    fn validate_fanart_lang_rejects_too_long() {
-        assert!(validate_fanart_lang("abcdef").is_err());
-        assert!(validate_fanart_lang("toolongvalue").is_err());
+    fn validate_lang_rejects_too_long() {
+        assert!(validate_lang("abcdef").is_err());
+        assert!(validate_lang("toolongvalue").is_err());
     }
 
     #[test]
-    fn validate_fanart_lang_rejects_special_chars() {
-        assert!(validate_fanart_lang("../../").is_err());
-        assert!(validate_fanart_lang("en\0").is_err());
-        assert!(validate_fanart_lang("a b").is_err());
-        assert!(validate_fanart_lang("en/de").is_err());
+    fn validate_lang_rejects_special_chars() {
+        assert!(validate_lang("../../").is_err());
+        assert!(validate_lang("en\0").is_err());
+        assert!(validate_lang("a b").is_err());
+        assert!(validate_lang("en/de").is_err());
     }
 
     #[test]
-    fn validate_poster_source_accepts_valid() {
-        assert!(PosterSource::parse("t").is_ok());
-        assert!(PosterSource::parse("f").is_ok());
+    fn validate_image_source_accepts_valid() {
+        assert!(ImageSource::parse("t").is_ok());
+        assert!(ImageSource::parse("f").is_ok());
     }
 
     #[test]
-    fn validate_poster_source_rejects_invalid() {
-        assert!(PosterSource::parse("tmdb").is_err());
-        assert!(PosterSource::parse("fanart").is_err());
-        assert!(PosterSource::parse("").is_err());
-        assert!(PosterSource::parse("x").is_err());
+    fn validate_image_source_rejects_invalid() {
+        assert!(ImageSource::parse("tmdb").is_err());
+        assert!(ImageSource::parse("fanart").is_err());
+        assert!(ImageSource::parse("").is_err());
+        assert!(ImageSource::parse("x").is_err());
     }
 
     #[test]
@@ -1050,13 +1050,13 @@ mod tests {
     }
 
     #[test]
-    fn poster_source_round_trip() {
-        for variant in [PosterSource::Tmdb, PosterSource::Fanart] {
+    fn image_source_round_trip() {
+        for variant in [ImageSource::Tmdb, ImageSource::Fanart] {
             let s = variant.as_str();
-            let parsed = PosterSource::parse(s).unwrap();
+            let parsed = ImageSource::parse(s).unwrap();
             assert_eq!(parsed, variant);
             let json = serde_json::to_string(&variant).unwrap();
-            let deser: PosterSource = serde_json::from_str(&json).unwrap();
+            let deser: ImageSource = serde_json::from_str(&json).unwrap();
             assert_eq!(deser, variant);
         }
     }
@@ -1136,9 +1136,9 @@ mod tests {
     }
 
     #[test]
-    fn poster_source_is_fanart() {
-        assert!(PosterSource::Fanart.is_fanart());
-        assert!(!PosterSource::Tmdb.is_fanart());
+    fn image_source_is_fanart() {
+        assert!(ImageSource::Fanart.is_fanart());
+        assert!(!ImageSource::Tmdb.is_fanart());
     }
 
     #[test]
@@ -1157,7 +1157,7 @@ mod tests {
     #[test]
     fn parse_global_render_settings_with_all_enum_fields() {
         let mut globals = HashMap::new();
-        globals.insert("poster_source".into(), "f".into());
+        globals.insert("image_source".into(), "f".into());
         globals.insert("poster_position".into(), "tl".into());
         globals.insert("poster_badge_style".into(), "v".into());
         globals.insert("logo_badge_style".into(), "h".into());
@@ -1171,7 +1171,7 @@ mod tests {
         globals.insert("backdrop_badge_size".into(), "l".into());
 
         let settings = parse_global_render_settings(&globals);
-        assert_eq!(settings.poster_source, PosterSource::Fanart);
+        assert_eq!(settings.image_source, ImageSource::Fanart);
         assert_eq!(settings.poster_position, BadgePosition::TopLeft);
         assert_eq!(settings.poster_badge_style, BadgeStyle::Vertical);
         assert_eq!(settings.logo_badge_style, BadgeStyle::Horizontal);
@@ -1202,7 +1202,7 @@ mod tests {
     #[test]
     fn render_settings_default_values() {
         let defaults = RenderSettings::default();
-        assert_eq!(defaults.poster_source, PosterSource::Tmdb);
+        assert_eq!(defaults.image_source, ImageSource::Tmdb);
         assert_eq!(defaults.poster_position, BadgePosition::BottomCenter);
         assert_eq!(defaults.poster_badge_style, BadgeStyle::Default);
         assert_eq!(defaults.logo_badge_style, BadgeStyle::Vertical);
@@ -1213,7 +1213,6 @@ mod tests {
         assert_eq!(defaults.logo_badge_size, BadgeSize::Medium);
         assert_eq!(defaults.backdrop_badge_size, BadgeSize::Medium);
         assert!(defaults.is_default);
-        assert!(!defaults.fanart_override);
     }
 }
 
@@ -1577,9 +1576,9 @@ pub async fn get_api_key_settings(
 
 pub struct UpsertApiKeySettings<'a> {
     pub api_key_id: i32,
-    pub poster_source: &'a str,
-    pub fanart_lang: &'a str,
-    pub fanart_textless: bool,
+    pub image_source: &'a str,
+    pub lang: &'a str,
+    pub textless: bool,
     pub ratings_limit: i32,
     pub ratings_order: &'a str,
     pub poster_position: &'a str,
@@ -1603,9 +1602,9 @@ pub async fn upsert_api_key_settings(
 ) -> Result<(), AppError> {
     let model = api_key_settings::ActiveModel {
         api_key_id: Set(params.api_key_id),
-        poster_source: Set(params.poster_source.to_string()),
-        fanart_lang: Set(params.fanart_lang.to_string()),
-        fanart_textless: Set(params.fanart_textless),
+        image_source: Set(params.image_source.to_string()),
+        lang: Set(params.lang.to_string()),
+        textless: Set(params.textless),
         ratings_limit: Set(params.ratings_limit),
         ratings_order: Set(params.ratings_order.to_string()),
         poster_position: Set(params.poster_position.to_string()),
@@ -1626,9 +1625,9 @@ pub async fn upsert_api_key_settings(
         .on_conflict(
             sea_orm::sea_query::OnConflict::column(api_key_settings::Column::ApiKeyId)
                 .update_columns([
-                    api_key_settings::Column::PosterSource,
-                    api_key_settings::Column::FanartLang,
-                    api_key_settings::Column::FanartTextless,
+                    api_key_settings::Column::ImageSource,
+                    api_key_settings::Column::Lang,
+                    api_key_settings::Column::Textless,
                     api_key_settings::Column::RatingsLimit,
                     api_key_settings::Column::RatingsOrder,
                     api_key_settings::Column::PosterPosition,
@@ -1668,9 +1667,9 @@ pub async fn delete_api_key_settings(
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RenderSettings {
-    pub poster_source: PosterSource,
-    pub fanart_lang: Arc<str>,
-    pub fanart_textless: bool,
+    pub image_source: ImageSource,
+    pub lang: Arc<str>,
+    pub textless: bool,
     pub ratings_limit: i32,
     pub ratings_order: Arc<str>,
     pub is_default: bool,
@@ -1687,17 +1686,14 @@ pub struct RenderSettings {
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
-    /// Set when a query param override (e.g. `?lang=`, `?fanart_textless=true`) forces the fanart code path at request time.
-    #[serde(skip)]
-    pub fanart_override: bool,
 }
 
 impl Default for RenderSettings {
     fn default() -> Self {
         Self {
-            poster_source: PosterSource::Tmdb,
-            fanart_lang: Arc::from("en"),
-            fanart_textless: false,
+            image_source: ImageSource::Tmdb,
+            lang: Arc::from("en"),
+            textless: false,
             ratings_limit: default_ratings_limit(),
             ratings_order: Arc::from("mal,imdb,lb,rt,mc,rta,tmdb,trakt"),
             is_default: true,
@@ -1714,7 +1710,6 @@ impl Default for RenderSettings {
             poster_badge_size: BadgeSize::Medium,
             logo_badge_size: BadgeSize::Medium,
             backdrop_badge_size: BadgeSize::Medium,
-            fanart_override: false,
         }
     }
 }
@@ -1733,12 +1728,12 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         globals.get(key).map(|s| parse_setting_or_default(s, key, parse, default)).unwrap_or(default)
     }
     RenderSettings {
-        poster_source: global_or(globals, "poster_source", PosterSource::parse, defaults.poster_source),
-        fanart_lang: arc_or("fanart_lang", defaults.fanart_lang),
-        fanart_textless: globals
-            .get("fanart_textless")
+        image_source: global_or(globals, "image_source", ImageSource::parse, defaults.image_source),
+        lang: arc_or("lang", defaults.lang),
+        textless: globals
+            .get("textless")
             .map(|v| v == "true")
-            .unwrap_or(defaults.fanart_textless),
+            .unwrap_or(defaults.textless),
         ratings_limit: globals
             .get("ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -1764,7 +1759,6 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         poster_badge_size: global_or(globals, "poster_badge_size", BadgeSize::parse, defaults.poster_badge_size),
         logo_badge_size: global_or(globals, "logo_badge_size", BadgeSize::parse, defaults.logo_badge_size),
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
-        fanart_override: false,
     }
 }
 
@@ -1777,9 +1771,9 @@ pub async fn get_effective_render_settings(
     match get_api_key_settings(db, api_key_id).await {
         Ok(Some(s)) => {
             return RenderSettings {
-                poster_source: parse_setting_or_default(&s.poster_source, "poster_source", PosterSource::parse, PosterSource::Tmdb),
-                fanart_lang: Arc::from(s.fanart_lang.as_str()),
-                fanart_textless: s.fanart_textless,
+                image_source: parse_setting_or_default(&s.image_source, "image_source", ImageSource::parse, ImageSource::Tmdb),
+                lang: Arc::from(s.lang.as_str()),
+                textless: s.textless,
                 ratings_limit: s.ratings_limit,
                 ratings_order: Arc::from(s.ratings_order.as_str()),
                 is_default: false,
@@ -1796,7 +1790,6 @@ pub async fn get_effective_render_settings(
                 poster_badge_size: parse_setting_or_default(&s.poster_badge_size, "poster_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 logo_badge_size: parse_setting_or_default(&s.logo_badge_size, "logo_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),
-                fanart_override: false,
             };
         }
         Ok(None) => {} // no per-key override, fall through

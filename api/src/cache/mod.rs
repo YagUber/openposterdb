@@ -96,9 +96,6 @@ impl ImageType {
         }
     }
 
-    pub fn requires_fanart(self) -> bool {
-        matches!(self, ImageType::Logo | ImageType::Backdrop)
-    }
 }
 
 /// Path for a rendered (composited) image: `{cache_dir}/{subdir}/{id_type}/{id_value}.{ext}`

@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource};
+use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
 use crate::services::validation;
 use crate::AppState;
 
@@ -93,9 +93,9 @@ pub async fn delete(
 
 #[derive(Serialize)]
 pub struct RenderSettingsResponse {
-    pub poster_source: PosterSource,
-    pub fanart_lang: String,
-    pub fanart_textless: bool,
+    pub image_source: ImageSource,
+    pub lang: String,
+    pub textless: bool,
     pub fanart_available: bool,
     pub is_default: bool,
     pub ratings_limit: i32,
@@ -128,9 +128,9 @@ pub async fn get_settings(
 
 fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -> RenderSettingsResponse {
     RenderSettingsResponse {
-        poster_source: settings.poster_source,
-        fanart_lang: settings.fanart_lang.to_string(),
-        fanart_textless: settings.fanart_textless,
+        image_source: settings.image_source,
+        lang: settings.lang.to_string(),
+        textless: settings.textless,
         fanart_available,
         is_default: settings.is_default,
         ratings_limit: settings.ratings_limit,
@@ -153,11 +153,12 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
 
 #[derive(Deserialize)]
 pub struct UpdateSettingsRequest {
-    pub poster_source: PosterSource,
-    #[serde(default = "db::default_fanart_lang")]
-    pub fanart_lang: String,
-    #[serde(default)]
-    pub fanart_textless: bool,
+    #[serde(alias = "poster_source")]
+    pub image_source: ImageSource,
+    #[serde(default = "db::default_lang", alias = "fanart_lang")]
+    pub lang: String,
+    #[serde(default, alias = "fanart_textless")]
+    pub textless: bool,
     #[serde(default = "default_ratings_limit")]
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
@@ -193,9 +194,9 @@ pub struct UpdateSettingsRequest {
 fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySettings<'_> {
     db::UpsertApiKeySettings {
         api_key_id: id,
-        poster_source: req.poster_source.as_str(),
-        fanart_lang: &req.fanart_lang,
-        fanart_textless: req.fanart_textless,
+        image_source: req.image_source.as_str(),
+        lang: &req.lang,
+        textless: req.textless,
         ratings_limit: req.ratings_limit,
         ratings_order: &req.ratings_order,
         poster_position: req.poster_position.as_str(),
@@ -222,7 +223,7 @@ pub async fn update_settings(
     db::find_api_key_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
-    db::validate_render_settings(&req.fanart_lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
@@ -270,7 +271,7 @@ pub async fn update_own_settings(
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<Value>, AppError> {
     let id = api_key_user.key_id;
-    db::validate_render_settings(&req.fanart_lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))

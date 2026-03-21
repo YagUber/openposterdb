@@ -15,7 +15,7 @@ test.describe('api keys', () => {
     // Reset global settings to defaults so tests start from a known state
     await request.put('/api/admin/settings', {
       headers: { Authorization: `Bearer ${token}` },
-      data: { poster_source: 't' },
+      data: { image_source: 't' },
     })
 
     await page.goto('/login')

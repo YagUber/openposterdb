@@ -17,9 +17,9 @@ import type { SaveSettingsPayload } from '@/lib/api'
 import { LANGUAGES, parseRatingsOrder } from '@/lib/constants'
 
 export interface RenderSettings {
-  poster_source: string
-  fanart_lang: string
-  fanart_textless: boolean
+  image_source: string
+  lang: string
+  textless: boolean
   fanart_available: boolean
   ratings_limit: number
   ratings_order: string
@@ -50,9 +50,9 @@ const props = defineProps<{
   fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
 }>()
 
-const editFanart = ref(props.settings.poster_source === 'f')
-const editLang = ref(props.settings.fanart_lang || 'en')
-const editTextless = ref(props.settings.fanart_textless)
+const editFanart = ref(props.settings.image_source === 'f')
+const editLang = ref(props.settings.lang || 'en')
+const editTextless = ref(props.settings.textless)
 const editSource = computed(() => editFanart.value ? 'f' : 't')
 const editRatingsLimit = ref(props.settings.ratings_limit)
 const editRatingsOrder = ref<string[]>(parseRatingsOrder(props.settings.ratings_order))
@@ -71,9 +71,9 @@ const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 
 function applySettings(s: RenderSettings) {
-  editFanart.value = s.poster_source === 'f'
-  editLang.value = s.fanart_lang || 'en'
-  editTextless.value = s.fanart_textless
+  editFanart.value = s.image_source === 'f'
+  editLang.value = s.lang || 'en'
+  editTextless.value = s.textless
   editRatingsLimit.value = s.ratings_limit
   editRatingsOrder.value = parseRatingsOrder(s.ratings_order)
   editPosterPosition.value = s.poster_position || 'bc'
@@ -125,9 +125,9 @@ async function autoSave() {
   if (checkTimeout) clearTimeout(checkTimeout)
   try {
     const err = await props.saveSettings({
-      poster_source: editSource.value,
-      fanart_lang: editLang.value,
-      fanart_textless: editTextless.value,
+      image_source: editSource.value,
+      lang: editLang.value,
+      textless: editTextless.value,
       ratings_limit: editRatingsLimit.value,
       ratings_order: editRatingsOrder.value.join(','),
       poster_position: editPosterPosition.value,
@@ -339,7 +339,28 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
       </span>
     </div>
 
-    <!-- Fanart options -->
+    <!-- Image Settings: Language (always visible) -->
+    <div class="space-y-1">
+      <div class="flex items-center gap-3">
+        <Label :for="inputId('lang')">Language</Label>
+        <Select
+          :model-value="editLang"
+          @update:model-value="editLang = $event as string"
+        >
+          <SelectTrigger :id="inputId('lang')" class="max-w-[200px]" data-testid="lang-select">
+            <SelectValue placeholder="Select language" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
+              {{ lang.code }} - {{ lang.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <p class="text-xs text-muted-foreground">Best effort — falls back to English if unavailable.</p>
+    </div>
+
+    <!-- Fanart.tv preference -->
     <template v-if="currentSettings.fanart_available">
       <div class="flex items-center gap-2">
         <Checkbox
@@ -348,46 +369,9 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
           data-testid="fanart-checkbox"
           @update:model-value="(v) => editFanart = !!v"
         />
-        <Label :for="inputId('fanart')">Use Fanart.tv for custom language and textless posters</Label>
-      </div>
-
-      <div class="pl-6 space-y-3" :class="{ 'opacity-50': !editFanart }">
-        <div class="space-y-1">
-          <div class="flex items-center gap-3">
-            <Label :for="inputId('fanart-lang')">Language</Label>
-            <Select
-              :model-value="editLang"
-              :disabled="!editFanart"
-              @update:model-value="editLang = $event as string"
-            >
-              <SelectTrigger :id="inputId('fanart-lang')" class="max-w-[200px]" data-testid="fanart-lang-select">
-                <SelectValue placeholder="Select language" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem v-for="lang in LANGUAGES" :key="lang.code" :value="lang.code">
-                  {{ lang.code }} - {{ lang.name }}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <p class="text-xs text-muted-foreground">Best effort — falls back to English if unavailable.</p>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <Checkbox
-            :id="inputId('textless')"
-            :model-value="editTextless"
-            :disabled="!editFanart"
-            data-testid="textless-checkbox"
-            @update:model-value="(v) => editTextless = !!v"
-          />
-          <Label :for="inputId('textless')">Prefer textless posters</Label>
-        </div>
+        <Label :for="inputId('fanart')">Prefer Fanart.tv as image source</Label>
       </div>
     </template>
-    <p v-else class="text-sm text-muted-foreground">
-      Fanart.tv options require a <span class="font-medium">Fanart.tv API key</span>.
-    </p>
 
     <div class="space-y-2 pt-2">
       <p class="text-sm font-semibold">Rating Display</p>
@@ -519,6 +503,15 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
             </div>
             <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
           </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <Checkbox
+          :id="inputId('textless')"
+          :model-value="editTextless"
+          data-testid="textless-checkbox"
+          @update:model-value="(v) => editTextless = !!v"
+        />
+        <Label :for="inputId('textless')">Prefer textless posters</Label>
       </div>
     </div>
 

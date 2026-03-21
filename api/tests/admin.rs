@@ -175,9 +175,9 @@ async fn get_settings_returns_defaults() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["poster_source"], "t");
-    assert_eq!(json["fanart_lang"], "en");
-    assert_eq!(json["fanart_textless"], false);
+    assert_eq!(json["image_source"], "t");
+    assert_eq!(json["lang"], "en");
+    assert_eq!(json["textless"], false);
     assert_eq!(json["fanart_available"], true);
     assert_eq!(json["ratings_limit"], 3);
     assert_eq!(json["ratings_order"], "mal,imdb,lb,rt,mc,rta,tmdb,trakt");
@@ -196,9 +196,9 @@ async fn update_settings_and_read_back() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "f",
-                "fanart_lang": "de",
-                "fanart_textless": true
+                "image_source": "f",
+                "lang": "de",
+                "textless": true
             })
             .to_string(),
         ))
@@ -217,9 +217,9 @@ async fn update_settings_and_read_back() {
 
     let body = res.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["poster_source"], "f");
-    assert_eq!(json["fanart_lang"], "de");
-    assert_eq!(json["fanart_textless"], true);
+    assert_eq!(json["image_source"], "f");
+    assert_eq!(json["lang"], "de");
+    assert_eq!(json["textless"], true);
 }
 
 #[tokio::test]
@@ -234,8 +234,8 @@ async fn update_settings_rejects_invalid_source() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "invalid",
-                "fanart_lang": "en"
+                "image_source": "invalid",
+                "lang": "en"
             })
             .to_string(),
         ))
@@ -257,8 +257,8 @@ async fn update_settings_rejects_invalid_lang() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "f",
-                "fanart_lang": "../../etc"
+                "image_source": "f",
+                "lang": "../../etc"
             })
             .to_string(),
         ))
@@ -279,7 +279,7 @@ async fn update_settings_with_ratings_and_read_back() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "t",
+                "image_source": "t",
                 "ratings_limit": 3,
                 "ratings_order": "mal,imdb,rta"
             })
@@ -315,7 +315,7 @@ async fn update_settings_rejects_invalid_ratings_limit() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "t",
+                "image_source": "t",
                 "ratings_limit": 9
             })
             .to_string(),
@@ -394,7 +394,7 @@ async fn update_settings_rejects_invalid_ratings_order() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "t",
+                "image_source": "t",
                 "ratings_order": "imdb,bogus"
             })
             .to_string(),
@@ -601,7 +601,7 @@ async fn update_settings_with_poster_position_and_read_back() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "t",
+                "image_source": "t",
                 "poster_position": "l",
                 "logo_ratings_limit": 5,
                 "backdrop_ratings_limit": 2
@@ -639,7 +639,7 @@ async fn update_settings_rejects_invalid_poster_position() {
         .header("authorization", format!("Bearer {token}"))
         .body(Body::from(
             serde_json::json!({
-                "poster_source": "t",
+                "image_source": "t",
                 "poster_position": "invalid"
             })
             .to_string(),

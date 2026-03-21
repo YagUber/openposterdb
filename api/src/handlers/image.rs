@@ -11,7 +11,7 @@ use crate::handlers::auth::hash_api_key;
 use crate::image::serve;
 use crate::services::db;
 use crate::services::db::{
-    BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, PosterSource,
+    BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource,
     RenderSettings,
 };
 use crate::AppState;
@@ -86,14 +86,14 @@ pub struct ImageQuery {
     #[serde(default)]
     #[param(value_type = Option<String>)]
     pub position: Option<BadgePosition>,
-    /// Poster image source (poster only): `t` (TMDB), `f` (Fanart.tv).
-    #[serde(default)]
+    /// Image source: `t` (TMDB), `f` (Fanart.tv).
+    #[serde(default, alias = "poster_source")]
     #[param(value_type = Option<String>)]
-    pub poster_source: Option<PosterSource>,
-    /// Use textless Fanart.tv posters when available (poster only).
-    #[serde(default)]
+    pub image_source: Option<ImageSource>,
+    /// Prefer textless images when available.
+    #[serde(default, alias = "fanart_textless")]
     #[param(value_type = Option<bool>)]
-    pub fanart_textless: Option<bool>,
+    pub textless: Option<bool>,
 }
 
 impl ImageQuery {
@@ -106,8 +106,8 @@ impl ImageQuery {
             || self.badge_size.is_some()
             || self.badge_direction.is_some()
             || self.position.is_some()
-            || self.poster_source.is_some()
-            || self.fanart_textless.is_some()
+            || self.image_source.is_some()
+            || self.textless.is_some()
     }
 }
 
@@ -220,23 +220,6 @@ pub async fn is_valid_handler(
     }
 }
 
-/// If `?lang=` was provided, validate it, override `fanart_lang`, and set
-/// `fanart_override` to force the fanart code path.
-fn apply_fanart_override(
-    settings: Arc<db::RenderSettings>,
-    lang: &Option<String>,
-) -> Result<Arc<db::RenderSettings>, Response> {
-    if let Some(lang) = lang {
-        db::validate_fanart_lang(lang).map_err(|e| e.into_response())?;
-        let mut s = (*settings).clone();
-        s.fanart_lang = Arc::from(lang.as_str());
-        s.fanart_override = true;
-        Ok(Arc::new(s))
-    } else {
-        Ok(settings)
-    }
-}
-
 /// Apply query-parameter overrides to render settings, returning a new `Arc` only
 /// when at least one override is present. Poster-only params are silently ignored
 /// on logo/backdrop endpoints.
@@ -294,14 +277,16 @@ fn apply_query_overrides(
         if let Some(pos) = query.position {
             s.poster_position = pos;
         }
-        if let Some(src) = query.poster_source {
-            s.poster_source = src;
-        }
-        if let Some(textless) = query.fanart_textless {
-            s.fanart_textless = textless;
-            if textless {
-                s.fanart_override = true;
-            }
+    }
+
+    // -- source override (applies to all image types) --
+    if let Some(src) = query.image_source {
+        s.image_source = src;
+    }
+    // -- textless is poster-only (logos ARE text, backdrops have none) --
+    if kind == cache::ImageType::Poster {
+        if let Some(textless) = query.textless {
+            s.textless = textless;
         }
     }
 
@@ -358,18 +343,7 @@ fn parse_image_size(
     }
 }
 
-fn require_fanart(state: &AppState) -> Result<(), Response> {
-    if state.fanart.is_none() {
-        return Err((
-            axum::http::StatusCode::NOT_IMPLEMENTED,
-            axum::Json(serde_json::json!({"error": "FANART_API_KEY not configured"})),
-        )
-            .into_response());
-    }
-    Ok(())
-}
-
-/// Dispatch image generation to the correct backend (TMDB for posters, fanart.tv for logos/backdrops).
+/// Dispatch image generation to the correct backend (poster vs logo/backdrop).
 async fn dispatch_image(
     state: &Arc<AppState>,
     id_type_str: &str,
@@ -383,10 +357,10 @@ async fn dispatch_image(
             serve::handle_inner(state, id_type_str, id_value_raw, settings.clone(), image_size).await
         }
         cache::ImageType::Logo => {
-            serve::handle_fanart_image_inner(state, id_type_str, id_value_raw, settings, serve::FanartImageKind::Logo, image_size).await
+            serve::handle_logo_backdrop_inner(state, id_type_str, id_value_raw, settings, serve::LogoBackdropKind::Logo, image_size).await
         }
         cache::ImageType::Backdrop => {
-            serve::handle_fanart_image_inner(state, id_type_str, id_value_raw, settings, serve::FanartImageKind::Backdrop, image_size).await
+            serve::handle_logo_backdrop_inner(state, id_type_str, id_value_raw, settings, serve::LogoBackdropKind::Backdrop, image_size).await
         }
     }
 }
@@ -419,19 +393,22 @@ async fn image_handler_inner(
         Err(resp) => return resp,
     };
 
-    if kind.requires_fanart() {
-        if let Err(resp) = require_fanart(&state) {
-            return resp;
-        }
-    }
-
     let settings = match resolve_settings(&state, api_key).await {
         Ok(s) => s,
         Err(resp) => return resp,
     };
-    let settings = match apply_fanart_override(settings, &query.lang) {
-        Ok(s) => s,
-        Err(resp) => return resp,
+    // Apply ?lang= override directly
+    let settings = if let Some(ref lang) = query.lang {
+        match db::validate_lang(lang) {
+            Ok(()) => {
+                let mut s = (*settings).clone();
+                s.lang = Arc::from(lang.as_str());
+                Arc::new(s)
+            }
+            Err(e) => return e.into_response(),
+        }
+    } else {
+        settings
     };
     let settings = match apply_query_overrides(settings, &query, kind) {
         Ok(s) => s,
@@ -490,7 +467,7 @@ pub async fn handler(
     operation_id = "getLogo",
     tag = "Images",
     summary = "Get logo",
-    description = "Returns a PNG logo image with rating badge overlays for the given media item. Requires the Fanart.tv integration to be configured on the server.",
+    description = "Returns a PNG logo image with rating badge overlays for the given media item. Uses TMDB as the default source with Fanart.tv as fallback (or vice versa when configured).",
     params(
         ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
         ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
@@ -503,7 +480,6 @@ pub async fn handler(
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
         (status = 404, description = "Media item not found."),
-        (status = 501, description = "Fanart.tv integration is not configured on this server. Logos and backdrops require a Fanart.tv API key."),
     ),
 )]
 pub async fn logo_handler(
@@ -520,7 +496,7 @@ pub async fn logo_handler(
     operation_id = "getBackdrop",
     tag = "Images",
     summary = "Get backdrop",
-    description = "Returns a JPEG backdrop image with rating badge overlays for the given media item. Requires the Fanart.tv integration to be configured on the server.",
+    description = "Returns a JPEG backdrop image with rating badge overlays for the given media item. Uses TMDB as the default source with Fanart.tv as fallback (or vice versa when configured).",
     params(
         ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
         ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
@@ -533,7 +509,6 @@ pub async fn logo_handler(
         (status = 400, description = "Invalid request — bad ID type, image size, or language format."),
         (status = 401, description = "Invalid or missing API key."),
         (status = 404, description = "Media item not found."),
-        (status = 501, description = "Fanart.tv integration is not configured on this server. Logos and backdrops require a Fanart.tv API key."),
     ),
 )]
 pub async fn backdrop_handler(
@@ -580,12 +555,6 @@ async fn cdn_handler_inner(
         Some(s) => s,
         None => return cdn_not_found(),
     };
-
-    if kind.requires_fanart() {
-        if let Err(resp) = require_fanart(&state) {
-            return resp;
-        }
-    }
 
     let image_size = match parse_image_size(&query.image_size, kind) {
         Ok(s) => s,
@@ -673,8 +642,8 @@ mod tests {
             badge_size: None,
             badge_direction: None,
             position: None,
-            poster_source: None,
-            fanart_textless: None,
+            image_source: None,
+            textless: None,
         }
     }
 
@@ -697,8 +666,8 @@ mod tests {
             badge_size: Some(BadgeSize::Large),
             badge_direction: Some(BadgeDirection::Horizontal),
             position: Some(BadgePosition::TopLeft),
-            poster_source: Some(PosterSource::Fanart),
-            fanart_textless: Some(true),
+            image_source: Some(ImageSource::Fanart),
+            textless: Some(true),
             ratings_order: Some("imdb,tmdb".into()),
             ..empty_query()
         };
@@ -710,9 +679,8 @@ mod tests {
         assert_eq!(result.poster_badge_size, BadgeSize::Large);
         assert_eq!(result.poster_badge_direction, BadgeDirection::Horizontal);
         assert_eq!(result.poster_position, BadgePosition::TopLeft);
-        assert_eq!(result.poster_source, PosterSource::Fanart);
-        assert!(result.fanart_textless);
-        assert!(result.fanart_override, "fanart_textless=true should set fanart_override to trigger fanart path");
+        assert_eq!(result.image_source, ImageSource::Fanart);
+        assert!(result.textless);
         assert_eq!(&*result.ratings_order, "imdb,tmdb");
     }
 
@@ -721,8 +689,6 @@ mod tests {
         let settings = Arc::new(db::RenderSettings::default());
         let original_position = settings.poster_position;
         let original_direction = settings.poster_badge_direction;
-        let original_source = settings.poster_source;
-        let original_textless = settings.fanart_textless;
 
         let query = ImageQuery {
             ratings_limit: Some(2),
@@ -731,8 +697,8 @@ mod tests {
             badge_size: Some(BadgeSize::Small),
             badge_direction: Some(BadgeDirection::Horizontal),
             position: Some(BadgePosition::TopRight),
-            poster_source: Some(PosterSource::Fanart),
-            fanart_textless: Some(true),
+            image_source: Some(ImageSource::Fanart),
+            textless: Some(true),
             ..empty_query()
         };
         let result =
@@ -745,8 +711,10 @@ mod tests {
         // Poster-only fields unchanged
         assert_eq!(result.poster_position, original_position);
         assert_eq!(result.poster_badge_direction, original_direction);
-        assert_eq!(result.poster_source, original_source);
-        assert_eq!(result.fanart_textless, original_textless);
+        // Source override applies to all image types
+        assert_eq!(result.image_source, ImageSource::Fanart);
+        // Textless is poster-only — should remain at default for logo
+        assert!(!result.textless);
     }
 
     #[test]
@@ -786,15 +754,14 @@ mod tests {
     }
 
     #[test]
-    fn apply_query_overrides_fanart_textless_false_does_not_set_fanart_override() {
+    fn apply_query_overrides_textless_false() {
         let settings = Arc::new(db::RenderSettings::default());
         let query = ImageQuery {
-            fanart_textless: Some(false),
+            textless: Some(false),
             ..empty_query()
         };
         let result =
             apply_query_overrides(settings, &query, cache::ImageType::Poster).unwrap();
-        assert!(!result.fanart_textless);
-        assert!(!result.fanart_override);
+        assert!(!result.textless);
     }
 }

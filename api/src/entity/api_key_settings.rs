@@ -5,9 +5,9 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub api_key_id: i32,
-    pub poster_source: String,
-    pub fanart_lang: String,
-    pub fanart_textless: bool,
+    pub image_source: String,
+    pub lang: String,
+    pub textless: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
     pub poster_position: String,

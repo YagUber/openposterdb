@@ -65,9 +65,9 @@ export async function del(path: string): Promise<Response> {
 }
 
 export interface SaveSettingsPayload {
-  poster_source: string
-  fanart_lang: string
-  fanart_textless: boolean
+  image_source: string
+  lang: string
+  textless: boolean
   ratings_limit: number
   ratings_order: string
   poster_position: string
@@ -106,7 +106,7 @@ export const adminApi = {
   getPosterImage: (key: string): Promise<Response> =>
     get(`/api/admin/posters/${key}/image`),
   getSettings: (): Promise<Response> => get('/api/admin/settings'),
-  updateSettings: (settings: Partial<SaveSettingsPayload> & { poster_source: string; free_api_key_enabled?: boolean }): Promise<Response> => put('/api/admin/settings', settings),
+  updateSettings: (settings: Partial<SaveSettingsPayload> & { image_source: string; free_api_key_enabled?: boolean }): Promise<Response> => put('/api/admin/settings', settings),
   fetchPoster: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/posters/${idType}/${idValue}/fetch`),
   getLogos: (page: number, pageSize: number): Promise<Response> =>

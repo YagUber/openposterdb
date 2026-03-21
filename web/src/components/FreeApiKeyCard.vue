@@ -30,8 +30,8 @@ const badgeSize = ref('default')
 const ratingsLimit = ref('default')
 const badgeDirection = ref('default')
 const posterPosition = ref('default')
-const posterSource = ref('default')
-const fanartTextless = ref('default')
+const imageSource = ref('default')
+const textless = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
 const ratingsOrderChanged = ref(false)
 const fetchError = ref('')
@@ -71,8 +71,7 @@ watch(imageType, (newType) => {
   if (newType !== 'poster') {
     badgeDirection.value = 'default'
     posterPosition.value = 'default'
-    posterSource.value = 'default'
-    fanartTextless.value = 'default'
+    textless.value = 'default'
   }
 })
 
@@ -101,8 +100,8 @@ const queryString = computed(() => {
   if (ratingsLimit.value !== 'default') params.set('ratings_limit', ratingsLimit.value)
   if (imageType.value === 'poster' && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
   if (imageType.value === 'poster' && posterPosition.value !== 'default') params.set('position', posterPosition.value)
-  if (imageType.value === 'poster' && posterSource.value !== 'default') params.set('poster_source', posterSource.value)
-  if (imageType.value === 'poster' && fanartTextless.value !== 'default') params.set('fanart_textless', fanartTextless.value)
+  if (imageSource.value !== 'default') params.set('image_source', imageSource.value)
+  if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -231,7 +230,27 @@ async function handleFetch() {
               <SelectItem value="xl">Extra Large</SelectItem>
             </SelectContent>
           </Select>
+          <Select v-model="imageSource">
+            <SelectTrigger id="free-image-source" aria-label="Image source" class="bg-background">
+              <SelectValue placeholder="Source: default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Source: default</SelectItem>
+              <SelectItem value="t">TMDB</SelectItem>
+              <SelectItem value="f">Fanart.tv</SelectItem>
+            </SelectContent>
+          </Select>
           <template v-if="imageType === 'poster'">
+            <Select v-model="textless">
+              <SelectTrigger id="free-textless" aria-label="Textless" class="bg-background">
+                <SelectValue placeholder="Textless: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Textless: default</SelectItem>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
             <Select v-model="posterPosition">
               <SelectTrigger id="free-poster-position" aria-label="Position" class="bg-background">
                 <SelectValue placeholder="Position: default" />
@@ -257,26 +276,6 @@ async function handleFetch() {
                 <SelectItem value="d">Auto</SelectItem>
                 <SelectItem value="h">Horizontal</SelectItem>
                 <SelectItem value="v">Vertical</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select v-model="posterSource">
-              <SelectTrigger id="free-poster-source" aria-label="Poster source" class="bg-background">
-                <SelectValue placeholder="Source: default" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Source: default</SelectItem>
-                <SelectItem value="t">TMDB</SelectItem>
-                <SelectItem value="f">Fanart.tv</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select v-model="fanartTextless">
-              <SelectTrigger id="free-fanart-textless" aria-label="Textless poster" class="bg-background">
-                <SelectValue placeholder="Textless: default" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="default">Textless: default</SelectItem>
-                <SelectItem value="true">Yes</SelectItem>
-                <SelectItem value="false">No</SelectItem>
               </SelectContent>
             </Select>
           </template>

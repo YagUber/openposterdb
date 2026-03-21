@@ -12,7 +12,7 @@ services:
       MDBLIST_API_KEY: ${MDBLIST_API_KEY:-}
       OMDB_API_KEY: ${OMDB_API_KEY:-}
 
-      # Optional — enables Fanart.tv as alternative poster source; required for logo/backdrop endpoints
+      # Optional — enables Fanart.tv as an alternative or preferred image source
       FANART_API_KEY: ${FANART_API_KEY:-}
 
       # Optional

@@ -60,7 +60,7 @@ GET /{api_key}/{id_type}/logo-default/{id_value}.png
 ```
 
 - Returns transparent PNG with rating badges stacked below the logo
-- Requires `FANART_API_KEY` (returns 501 if not configured)
+- Uses TMDB (default) or Fanart.tv as the image source
 
 ### Backdrop
 
@@ -69,7 +69,7 @@ GET /{api_key}/{id_type}/backdrop-default/{id_value}.jpg
 ```
 
 - Returns JPEG with rating badges stacked vertically in the top-right corner
-- Requires `FANART_API_KEY` (returns 501 if not configured)
+- Uses TMDB (default) or Fanart.tv as the image source
 
 ### Key Validation
 
@@ -85,20 +85,20 @@ GET /{api_key}/isValid
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
-- `?lang={code}`: override the Fanart.tv language for this request (e.g. `?lang=de` for German posters). Automatically switches the poster source to Fanart.tv even if TMDB is configured
+- `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German). Applies to posters and logos — selects language-specific images from TMDB or Fanart.tv. Falls back to English if the requested language is unavailable. Backdrops are language-agnostic and ignore this parameter
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
 - `?ratings_limit={0-8}`: maximum number of rating badges to display (0 = no ratings)
 - `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`
 - `?badge_style={h|v|d}`: badge layout — `h` (horizontal), `v` (vertical), `d` (default)
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
 - `?badge_size={xs|s|m|l|xl}`: badge scale — extra-small, small, medium, large, extra-large
+- `?image_source={t|f}`: image source — `t` (TMDB, default), `f` (Fanart.tv). Applies to all image types. The non-selected source is used as fallback
 - `?badge_direction={d|h|v}`: badge stacking direction (poster only) — `d` (default), `h` (horizontal), `v` (vertical)
 - `?position={bc|tc|l|r|tl|tr|bl|br}`: badge anchor position (poster only)
-- `?poster_source={t|f}`: poster image source (poster only) — `t` (TMDB), `f` (Fanart.tv)
-- `?fanart_textless={true|false}`: use textless Fanart.tv posters when available (poster only)
-- RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`)
+- `?textless={true|false}`: prefer textless images when available (poster only). Works with both TMDB and Fanart.tv sources
+- RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
-Poster-only parameters (`badge_direction`, `position`, `poster_source`, `fanart_textless`) are silently ignored on logo and backdrop endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
+Poster-only parameters (`badge_direction`, `position`, `textless`) are silently ignored on logo and backdrop endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -135,8 +135,8 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 ## Features
 
 - **Multi-source ratings** — Aggregates from MDBList (IMDb, RT Critics, RT Audience, Metacritic, Trakt, Letterboxd, MAL) and optionally OMDb
-- **Alternative poster sources** — Use TMDB (default) or Fanart.tv with language preference and textless poster support
-- **Configurable per API key** — Override poster source, language, and textless settings per key, or set global defaults
+- **Multiple image sources** — Uses TMDB as the primary source for posters, logos, and backdrops, with Fanart.tv as an optional fallback (or preferred source). Supports language selection and textless posters from both sources
+- **Configurable per API key** — Override image source, language, and textless settings per key, or set global defaults
 - **ID resolution** — Accepts IMDb, TMDB, or TVDB IDs
 - **Multi-layer caching** — In-memory (moka), filesystem, and SQLite metadata with background refresh and request coalescing
 - **Admin UI** — Vue 3 web panel for API key management, poster settings, and global configuration
@@ -168,7 +168,7 @@ docker compose up -d
 - Node.js 20.19+ (for admin UI)
 - A [TMDB API key](https://www.themoviedb.org/settings/api)
 - At least one of: [MDBList API key](https://mdblist.com/preferences/) (preferred — covers all 7 rating sources), [OMDb API key](https://www.omdbapi.com/apikey.aspx)
-- Optional: [Fanart.tv API key](https://fanart.tv/get-an-api-key/) (for alternative poster source with language/textless support)
+- Optional: [Fanart.tv API key](https://fanart.tv/get-an-api-key/) (enables Fanart.tv as an alternative or preferred image source)
 
 
 ### API
@@ -213,7 +213,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `IMAGE_STALE_SECS` | `0` | Base image cache lifetime (0 = never re-fetch) |
 | `COOKIE_SECURE` | `true` | HTTPS-only cookies |
 | `RUST_LOG` | `warn` | Log level filter — levels: `error`, `warn`, `info`, `debug`, `trace`. Supports comma-separated per-module overrides. Relevant modules: `openposterdb_api` (app), `tower_http` (HTTP tracing), `sea_orm` / `sqlx` (database), `reqwest` / `hyper` (HTTP client/server). Example: `warn,openposterdb_api=info,tower_http=debug` |
-| `FANART_API_KEY` | — | [Fanart.tv](https://fanart.tv/get-an-api-key/) key (enables Fanart.tv as alternative poster source; required for logo and backdrop endpoints) |
+| `FANART_API_KEY` | — | [Fanart.tv](https://fanart.tv/get-an-api-key/) key (enables Fanart.tv as an alternative or preferred image source for posters, logos, and backdrops) |
 | `CORS_ORIGIN` | — | Allowed origin for admin requests |
 | `RENDER_CONCURRENCY` | `CPUs × 2` | Max concurrent image render tasks |
 | `CROSS_ID_CONCURRENCY` | `CPUs` | Max concurrent cross-ID cache write tasks |
@@ -281,16 +281,21 @@ Logos and backdrops include a kind prefix in their cache keys to distinguish the
 | Logo | `_l` |
 | Backdrop | `_b` |
 
-### Fanart Variant Markers
+### Source Variant Markers
 
-When the poster source is fanart.tv, the cache key includes a variant marker indicating which fanart tier was used:
+Logos and backdrops include a source marker (`_t` for TMDB, `_f` for Fanart.tv) to distinguish images from different sources. Posters use a separate variant scheme — the default case (English, non-textless) has no marker for backward compatibility:
 
-| Variant | Marker | Description |
-|---|---|---|
-| Textless | `_f_tl` | Fanart image with no text overlay |
-| Language | `_f_{lang}` | Fanart image matching language (e.g. `_f_en`) |
-| Negative (textless) | `_f_tl_neg` | No textless image available (stored in negative cache) |
-| Negative (language) | `_f_{lang}_neg` | No language image available |
+| Image type | Variant | Marker | Description |
+|---|---|---|---|
+| Poster | TMDB default | *(none)* | Default English poster from TMDB (backward-compatible) |
+| Poster | TMDB language | `_t_{lang}` | Language-specific TMDB poster (e.g. `_t_de`) |
+| Poster | TMDB textless | `_t_tl` | Textless TMDB poster |
+| Poster | Fanart textless | `_f_tl` | Fanart image with no text overlay |
+| Poster | Fanart language | `_f_{lang}` | Fanart image matching language (e.g. `_f_en`) |
+| Logo/Backdrop | TMDB | `_t` or `_t_{lang}` | Image sourced from TMDB |
+| Logo/Backdrop | Fanart | `_f` or `_f_{lang}` | Image sourced from Fanart.tv |
+| *(negative)* | Textless miss | `_f_tl_neg` | No textless fanart image available |
+| *(negative)* | Language miss | `_f_{lang}_neg` | No fanart image for this language |
 
 ### Database Values
 
@@ -308,7 +313,7 @@ Settings are stored as short single-character or two-character codes:
 
 | Setting | Values | Meaning |
 |---|---|---|
-| `poster_source` | `t`, `f` | TMDB, Fanart.tv |
+| `image_source` | `t`, `f` | TMDB, Fanart.tv |
 | `badge_style` | `h`, `v` | Horizontal, Vertical |
 | `label_style` | `t`, `i`, `o` | Text, Icon, Official |
 | `badge_direction` | `d`, `h`, `v` | Default (auto-resolved by position), Horizontal, Vertical |
@@ -327,11 +332,14 @@ imdb/tt0111161@mil.pbc.sh.lo.dh.bl.zl
 # Fanart textless poster
 imdb/tt0111161_f_tl@mil.pbc.sh.lo.dh.bm.zm
 
-# Logo with 3 ratings, horizontal badges, text labels, medium badge size
+# Logo from TMDB with English language, 3 ratings, horizontal badges, text labels
+imdb/tt0111161_l_t_en@mil.sh.lt.bm.zm
+
+# Logo from Fanart.tv with English language
 imdb/tt0111161_l_f_en@mil.sh.lt.bm.zm
 
-# Backdrop with vertical badges, official labels, extra-large badge size, large image
-imdb/tt0111161_b@mil.sv.lo.bxl.zl
+# Backdrop from TMDB with vertical badges, official labels, extra-large badge size, large image
+imdb/tt0111161_b_t@mil.sv.lo.bxl.zl
 ```
 
 ### Cross-ID Cache
@@ -496,7 +504,7 @@ OpenPosterDB is made possible by these third-party services and projects:
 - **[TMDB (The Movie Database)](https://www.themoviedb.org/)** ([get API key](https://www.themoviedb.org/settings/api)) — Movie and TV metadata, poster images. This product uses the TMDB API but is not endorsed or certified by TMDB.
 - **[MDBList](https://mdblist.com/)** ([get API key](https://mdblist.com/preferences/)) — Aggregated ratings from multiple sources in a single API
 - **[OMDb (Open Movie Database)](https://www.omdbapi.com/)** ([get API key](https://www.omdbapi.com/apikey.aspx)) — Alternative ratings source for IMDb, Rotten Tomatoes, and Metacritic
-- **[Fanart.tv](https://fanart.tv/)** ([get API key](https://fanart.tv/get-an-api-key/)) — High-quality fan art, logos, and backdrops with language and textless support
+- **[Fanart.tv](https://fanart.tv/)** ([get API key](https://fanart.tv/get-an-api-key/)) — Optional alternative source for high-quality fan art, logos, and backdrops with language and textless support
 - **[RPDB (Rating Poster Database)](https://ratingposterdb.com/)** — The original project that inspired OpenPosterDB's API design
 - **[Simple Icons](https://simpleicons.org/)** — SVG icons for popular brands
 

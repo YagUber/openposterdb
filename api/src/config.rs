@@ -1,6 +1,6 @@
 use std::env;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Config {
     pub tmdb_api_key: String,
     pub omdb_api_key: Option<String>,
@@ -19,6 +19,30 @@ pub struct Config {
     pub enable_cdn_redirects: bool,
     pub external_cache_only: bool,
     pub free_key_enabled: Option<bool>,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("tmdb_api_key", &"[REDACTED]")
+            .field("omdb_api_key", &self.omdb_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("cache_dir", &self.cache_dir)
+            .field("db_dir", &self.db_dir)
+            .field("listen_addr", &self.listen_addr)
+            .field("ratings_min_stale_secs", &self.ratings_min_stale_secs)
+            .field("ratings_max_age_secs", &self.ratings_max_age_secs)
+            .field("image_stale_secs", &self.image_stale_secs)
+            .field("image_quality", &self.image_quality)
+            .field("mdblist_api_key", &self.mdblist_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("image_mem_cache_mb", &self.image_mem_cache_mb)
+            .field("static_dir", &self.static_dir)
+            .field("cors_origin", &self.cors_origin)
+            .field("fanart_api_key", &self.fanart_api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("enable_cdn_redirects", &self.enable_cdn_redirects)
+            .field("external_cache_only", &self.external_cache_only)
+            .field("free_key_enabled", &self.free_key_enabled)
+            .finish()
+    }
 }
 
 impl Config {

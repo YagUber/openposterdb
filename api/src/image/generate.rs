@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ab_glyph::FontArc;
 use image::codecs::jpeg::JpegEncoder;
-use image::{imageops, DynamicImage, RgbaImage};
+use image::{imageops, DynamicImage, ImageDecoder, ImageReader, Limits, RgbaImage};
 use tokio::sync::Semaphore;
 
 use crate::cache;
@@ -237,6 +237,26 @@ fn overlay_horizontal_rows(canvas: &mut RgbaImage, badge_images: &[RgbaImage], p
     }
 }
 
+/// Maximum total pixels allowed for a decoded source image (width * height).
+/// 8192x8192 = 67M pixels (~256 MB as RGBA) is generous for poster/backdrop art
+/// while preventing OOM from crafted images with extreme dimensions.
+const MAX_IMAGE_PIXELS: u64 = 8192 * 8192;
+
+/// Decode an image from bytes, rejecting oversized images *before* full decode
+/// to avoid OOM from crafted inputs (e.g. PNG bombs).
+fn load_image_with_limits(bytes: &[u8]) -> Result<image::DynamicImage, AppError> {
+    let reader = ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|e| AppError::Other(format!("image format detection failed: {e}")))?;
+
+    let mut limits = Limits::default();
+    limits.max_alloc = Some(MAX_IMAGE_PIXELS * 4); // RGBA = 4 bytes/pixel
+    let mut decoder = reader.into_decoder().map_err(AppError::Image)?;
+    decoder.set_limits(limits).map_err(AppError::Image)?;
+
+    image::DynamicImage::from_decoder(decoder).map_err(AppError::Image)
+}
+
 pub fn render_poster_sync(
     poster_bytes: &[u8],
     badges: &[RatingBadge],
@@ -250,8 +270,7 @@ pub fn render_poster_sync(
     badge_scale: f32,
     badge_size: BadgeSize,
 ) -> Result<Vec<u8>, AppError> {
-    let base = image::load_from_memory(poster_bytes)
-        .map_err(AppError::Image)?;
+    let base = load_image_with_limits(poster_bytes)?;
 
     let base = if base.width() != target_width {
         let scale = target_width as f64 / base.width() as f64;
@@ -309,7 +328,7 @@ pub fn render_logo_sync(
     target_width: u32,
     badge_scale: f32,
 ) -> Result<Vec<u8>, AppError> {
-    let base = image::load_from_memory(logo_bytes).map_err(AppError::Image)?;
+    let base = load_image_with_limits(logo_bytes)?;
 
     let base = if base.width() != target_width {
         let scale = target_width as f64 / base.width() as f64;
@@ -490,7 +509,7 @@ pub fn render_backdrop_sync(
     target_width: u32,
     badge_scale: f32,
 ) -> Result<Vec<u8>, AppError> {
-    let base = image::load_from_memory(backdrop_bytes).map_err(AppError::Image)?;
+    let base = load_image_with_limits(backdrop_bytes)?;
 
     let base = if base.width() != target_width {
         let scale = target_width as f64 / base.width() as f64;

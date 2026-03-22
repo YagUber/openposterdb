@@ -196,6 +196,10 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
         ));
 
     app.layer(cors_layer).with_state(state)

@@ -31,6 +31,130 @@ async fn create_api_key(app: &axum::Router, token: &str) -> (i32, String) {
     (json["id"].as_i64().unwrap() as i32, json["key"].as_str().unwrap().to_string())
 }
 
+// --- Auth enforcement ---
+
+#[tokio::test]
+async fn global_settings_get_requires_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .uri("/api/admin/settings")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn global_settings_put_requires_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .method("PUT")
+        .uri("/api/admin/settings")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"image_source": "t"}).to_string()))
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn per_key_settings_endpoints_require_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    for (method, uri) in [
+        ("GET", "/api/keys/1/settings"),
+        ("PUT", "/api/keys/1/settings"),
+        ("DELETE", "/api/keys/1/settings"),
+    ] {
+        let body = if method == "PUT" {
+            Body::from(json!({"image_source": "t"}).to_string())
+        } else {
+            Body::empty()
+        };
+        let mut builder = Request::builder().method(method).uri(uri);
+        if method == "PUT" {
+            builder = builder.header("content-type", "application/json");
+        }
+        let req = builder.body(body).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {uri} should require admin auth"
+        );
+    }
+}
+
+#[tokio::test]
+async fn self_service_settings_endpoints_require_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    for (method, uri) in [
+        ("GET", "/api/key/me/settings"),
+        ("PUT", "/api/key/me/settings"),
+        ("DELETE", "/api/key/me/settings"),
+    ] {
+        let body = if method == "PUT" {
+            Body::from(json!({"image_source": "t"}).to_string())
+        } else {
+            Body::empty()
+        };
+        let mut builder = Request::builder().method(method).uri(uri);
+        if method == "PUT" {
+            builder = builder.header("content-type", "application/json");
+        }
+        let req = builder.body(body).unwrap();
+        let res = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::UNAUTHORIZED,
+            "{method} {uri} should require API key auth"
+        );
+    }
+}
+
+// --- Cross-key isolation via admin endpoints ---
+
+#[tokio::test]
+async fn per_key_settings_are_isolated_between_keys() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    // Create two API keys
+    let (key_a_id, _) = create_api_key(&app, &token).await;
+    let (key_b_id, _) = create_api_key(&app, &token).await;
+
+    // Customize key A's settings
+    let update = json!({
+        "image_source": "f",
+        "lang": "ja",
+        "ratings_limit": 1,
+        "ratings_order": "imdb",
+    });
+    let req = authed_request("PUT", &format!("/api/keys/{key_a_id}/settings"), &token, Some(update));
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Key B should still have defaults
+    let req = authed_request("GET", &format!("/api/keys/{key_b_id}/settings"), &token, None);
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let settings = parse_json(res).await;
+    assert_eq!(settings["is_default"], true, "key B should not be affected by key A's settings");
+    assert_eq!(settings["image_source"], "t");
+
+    // Key A should have its custom settings
+    let req = authed_request("GET", &format!("/api/keys/{key_a_id}/settings"), &token, None);
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let settings = parse_json(res).await;
+    assert_eq!(settings["is_default"], false);
+    assert_eq!(settings["image_source"], "f");
+    assert_eq!(settings["lang"], "ja");
+}
+
 // --- Global settings round-trip ---
 
 #[tokio::test]

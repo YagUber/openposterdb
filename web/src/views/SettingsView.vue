@@ -48,22 +48,26 @@ async function toggleFreeApiKey() {
   freeKeyLoading.value = true
   freeKeyError.value = ''
   const newVal = !freeApiKeyEnabled.value
+  const s = settings.value
   const res = await adminApi.updateSettings({
-    image_source: settings.value.image_source,
-    lang: settings.value.lang,
-    textless: settings.value.textless,
-    ratings_limit: settings.value.ratings_limit,
-    ratings_order: settings.value.ratings_order,
-    poster_position: settings.value.poster_position,
-    logo_ratings_limit: settings.value.logo_ratings_limit,
-    backdrop_ratings_limit: settings.value.backdrop_ratings_limit,
-    poster_badge_style: settings.value.poster_badge_style,
-    logo_badge_style: settings.value.logo_badge_style,
-    backdrop_badge_style: settings.value.backdrop_badge_style,
-    poster_label_style: settings.value.poster_label_style,
-    logo_label_style: settings.value.logo_label_style,
-    backdrop_label_style: settings.value.backdrop_label_style,
-    poster_badge_direction: settings.value.poster_badge_direction,
+    image_source: s.image_source,
+    lang: s.lang,
+    textless: s.textless,
+    ratings_limit: s.ratings_limit,
+    ratings_order: s.ratings_order,
+    poster_position: s.poster_position,
+    logo_ratings_limit: s.logo_ratings_limit,
+    backdrop_ratings_limit: s.backdrop_ratings_limit,
+    poster_badge_style: s.poster_badge_style,
+    logo_badge_style: s.logo_badge_style,
+    backdrop_badge_style: s.backdrop_badge_style,
+    poster_label_style: s.poster_label_style,
+    logo_label_style: s.logo_label_style,
+    backdrop_label_style: s.backdrop_label_style,
+    poster_badge_direction: s.poster_badge_direction,
+    poster_badge_size: s.poster_badge_size,
+    logo_badge_size: s.logo_badge_size,
+    backdrop_badge_size: s.backdrop_badge_size,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {

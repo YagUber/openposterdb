@@ -13,7 +13,13 @@ pub async fn run(
     cache_dir: &str,
     external_cache_only: bool,
 ) -> Result<(), AppError> {
-    // Update SQLite image_meta cache keys
+    run_db(db).await?;
+    run_fs(cache_dir, external_cache_only).await?;
+    Ok(())
+}
+
+/// Database step — idempotent.
+pub async fn run_db(db: &impl ConnectionTrait) -> Result<(), AppError> {
     let result = db
         .execute(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Sqlite,
@@ -22,20 +28,26 @@ pub async fn run(
                 .to_string(),
         ))
         .await?;
-    let db_rows = result.rows_affected();
+    tracing::info!(db_rows = result.rows_affected(), "backdrop cache keys migrated in DB (_b@ → _b_f@)");
+    Ok(())
+}
 
-    // Rename filesystem cache files (potentially thousands — run off the async runtime)
-    if !external_cache_only {
-        let backdrop_dir = std::path::Path::new(cache_dir).join("backdrops");
-        let renamed = tokio::task::spawn_blocking(move || rename_files(&backdrop_dir))
-            .await
-            .map_err(|e| AppError::Other(format!("rename task panicked: {e}")))?
-            ?;
-        tracing::info!(db_rows, fs_renamed = renamed, "backdrop cache keys migrated (_b@ → _b_f@)");
-    } else {
-        tracing::info!(db_rows, "backdrop cache keys migrated in DB (_b@ → _b_f@), filesystem skipped (external_cache_only)");
+/// Migrate backdrop cache keys — filesystem step (idempotent).
+///
+/// Renames files containing `_b@` to `_b_f@`. Safe to call multiple times;
+/// already-renamed files are skipped.
+pub async fn run_fs(cache_dir: &str, external_cache_only: bool) -> Result<(), AppError> {
+    if external_cache_only {
+        tracing::info!("backdrop filesystem rename skipped (external_cache_only)");
+        return Ok(());
     }
 
+    let backdrop_dir = std::path::Path::new(cache_dir).join("backdrops");
+    let renamed = tokio::task::spawn_blocking(move || rename_files(&backdrop_dir))
+        .await
+        .map_err(|e| AppError::Other(format!("rename task panicked: {e}")))?
+        ?;
+    tracing::info!(fs_renamed = renamed, "backdrop cache files renamed (_b@ → _b_f@)");
     Ok(())
 }
 

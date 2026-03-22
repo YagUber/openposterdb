@@ -7,14 +7,27 @@ use axum::http::Request;
 use crate::handlers::image;
 use crate::AppState;
 
-/// Extract client IP from `X-Forwarded-For` or `X-Real-IP` headers.
+/// Extract client IP, supporting both Cloudflare and plain reverse-proxy deployments.
+///
+/// Priority:
+/// 1. `CF-Connecting-IP` — set (not appended) by Cloudflare to the real client IP,
+///    cannot be spoofed as long as traffic flows through CF.
+/// 2. Rightmost `X-Forwarded-For` — the IP appended by the nearest trusted proxy.
+///    Correct for a single-proxy setup (e.g. just Caddy).
+/// 3. `X-Real-IP` — fallback for proxies that set this instead.
 #[cfg(not(any(test, feature = "test-support")))]
 fn extract_client_ip<T>(req: &Request<T>) -> String {
     req.headers()
-        .get("x-forwarded-for")
+        .get("cf-connecting-ip")
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
+        .or_else(|| {
+            req.headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.rsplit(',').next())
+                .map(|s| s.trim().to_string())
+        })
         .or_else(|| {
             req.headers()
                 .get("x-real-ip")

@@ -15,6 +15,7 @@ mkdir -p "$IMG_DIR"
 
 # Test IDs
 IMDB_ID="tt0111161"
+EPISODE_ID="tt0529483"
 
 PASS=0
 FAIL=0
@@ -28,7 +29,9 @@ fetch_image() {
     # Sanitise label for filename
     local filename
     filename="$(echo "$label" | tr ' /=' '_' | tr -cd 'a-zA-Z0-9_-').${ext}"
-    local url="${BASE_URL}/${API_KEY}/imdb/${endpoint}/${IMDB_ID}.${ext}"
+    local id_type="${5:-imdb}"
+    local id_value="${6:-$IMDB_ID}"
+    local url="${BASE_URL}/${API_KEY}/${id_type}/${endpoint}/${id_value}.${ext}"
     if [ -n "$query" ]; then
         url="${url}?${query}"
     fi
@@ -290,6 +293,101 @@ for bs in h v; do
 done
 end_section
 
+echo "Fetching episode permutations..."
+
+# --- Episodes ---
+
+add_section "Episode - Default"
+path=$(fetch_image "episode_default" "episode-default" "ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+add_image "default" "$path"
+end_section
+
+add_section "Episode - badge_style"
+for val in h v d; do
+    path=$(fetch_image "episode_badge_style=$val" "episode-default" "badge_style=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "badge_style=$val" "$path"
+done
+end_section
+
+add_section "Episode - label_style"
+for val in t i o; do
+    path=$(fetch_image "episode_label_style=$val" "episode-default" "label_style=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "label_style=$val" "$path"
+done
+end_section
+
+add_section "Episode - badge_size"
+for val in xs s m l xl; do
+    path=$(fetch_image "episode_badge_size=$val" "episode-default" "badge_size=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "badge_size=$val" "$path"
+done
+end_section
+
+add_section "Episode - badge_direction"
+for val in h v d; do
+    path=$(fetch_image "episode_badge_direction=$val" "episode-default" "badge_direction=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "badge_direction=$val" "$path"
+done
+end_section
+
+add_section "Episode - position"
+for val in bc tc l r tl tr bl br; do
+    path=$(fetch_image "episode_position=$val" "episode-default" "position=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "position=$val" "$path"
+done
+end_section
+
+add_section "Episode - blur"
+for val in true false; do
+    path=$(fetch_image "episode_blur=$val" "episode-default" "blur=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "blur=$val" "$path"
+done
+end_section
+
+add_section "Episode - ratings_limit"
+for val in 0 1 3 5 8; do
+    path=$(fetch_image "episode_ratings_limit=$val" "episode-default" "ratings_limit=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "ratings_limit=$val" "$path"
+done
+end_section
+
+add_section "Episode - imageSize"
+for val in medium large; do
+    path=$(fetch_image "episode_imageSize=$val" "episode-default" "imageSize=$val&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+    add_image "imageSize=$val" "$path"
+done
+end_section
+
+# Combined episode: position × badge_direction (needs 2 ratings to see direction)
+add_section "Episode - position × badge_direction"
+for pos in bc tc l r tl tr bl br; do
+    for dir in h v; do
+        path=$(fetch_image "ep_pos=${pos}_dir=${dir}" "episode-default" "position=${pos}&badge_direction=${dir}&ratings_limit=2&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+        add_image "position=$pos badge_direction=$dir" "$path"
+    done
+done
+end_section
+
+# Combined episode: badge_style × label_style
+add_section "Episode - badge_style × label_style"
+for bs in h v; do
+    for ls in t i o; do
+        path=$(fetch_image "ep_bs=${bs}_ls=${ls}" "episode-default" "badge_style=${bs}&label_style=${ls}&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+        add_image "badge_style=$bs label_style=$ls" "$path"
+    done
+done
+end_section
+
+# Combined episode: blur × badge_style
+add_section "Episode - blur × badge_style"
+for blur in true false; do
+    for bs in h v d; do
+        path=$(fetch_image "ep_blur=${blur}_bs=${bs}" "episode-default" "blur=${blur}&badge_style=${bs}&ratings_order=imdb,tmdb" "jpg" "imdb" "$EPISODE_ID")
+        add_image "blur=$blur badge_style=$bs" "$path"
+    done
+done
+end_section
+
 echo "Generating HTML report..."
 
 cat > "$REPORT_FILE" <<'HTMLHEAD'
@@ -317,7 +415,7 @@ cat > "$REPORT_FILE" <<'HTMLHEAD'
 </head>
 <body>
 <h1>OpenPosterDB Visual Test Report</h1>
-<p class="meta">Generated at TIMESTAMP_PLACEHOLDER using free API key (t0-free-rpdb) against tt0111161 (The Shawshank Redemption)</p>
+<p class="meta">Generated at TIMESTAMP_PLACEHOLDER using free API key (t0-free-rpdb) against tt0111161 (The Shawshank Redemption) and tt0529483 (Bonanza S1E1)</p>
 <div class="summary">PASS_PLACEHOLDER passed, FAIL_PLACEHOLDER failed out of TOTAL_PLACEHOLDER images</div>
 HTMLHEAD
 

@@ -48,6 +48,7 @@ impl MdblistClient {
         let kind = match media_type {
             MediaType::Movie => "movie",
             MediaType::Tv => "show",
+            MediaType::Episode => return Err(AppError::Other("mdblist does not support episode ratings".into())),
         };
 
         let url = format!("https://api.mdblist.com/imdb/{kind}/{imdb_id}");

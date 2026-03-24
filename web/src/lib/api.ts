@@ -83,6 +83,13 @@ export interface SaveSettingsPayload {
   poster_badge_size: string
   logo_badge_size: string
   backdrop_badge_size: string
+  episode_ratings_limit: number
+  episode_badge_style: string
+  episode_label_style: string
+  episode_badge_size: string
+  episode_position: string
+  episode_badge_direction: string
+  episode_blur: boolean
 }
 
 /** Build a URL path with query parameters, omitting entries with nullish values. */
@@ -121,12 +128,20 @@ export const adminApi = {
     get(`/api/admin/backdrops/${key}`),
   fetchBackdrop: (idType: string, idValue: string): Promise<Response> =>
     post(`/api/admin/backdrops/${idType}/${idValue}/fetch`),
+  getEpisodes: (page: number, pageSize: number): Promise<Response> =>
+    get(`/api/admin/episodes?page=${page}&page_size=${pageSize}`),
+  getEpisodeImage: (key: string): Promise<Response> =>
+    get(`/api/admin/episodes/${key}/image`),
+  fetchEpisode: (idType: string, idValue: string): Promise<Response> =>
+    post(`/api/admin/episodes/${idType}/${idValue}/fetch`),
   previewPoster: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string): Promise<Response> =>
     get(buildUrl('/api/admin/preview/poster', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, position: posterPosition, badge_style: badgeStyle, label_style: labelStyle, badge_direction: badgeDirection, badge_size: badgeSize })),
   previewLogo: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string): Promise<Response> =>
     get(buildUrl('/api/admin/preview/logo', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize })),
   previewBackdrop: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string): Promise<Response> =>
     get(buildUrl('/api/admin/preview/backdrop', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize })),
+  previewEpisode: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean): Promise<Response> =>
+    get(buildUrl('/api/admin/preview/episode', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize, position, badge_direction: badgeDirection, blur: blur ? 'true' : undefined })),
 }
 
 // --- Self-service API (API key session JWT auth) ---
@@ -164,6 +179,8 @@ export const selfApi = {
     keyRequest(buildUrl('/api/key/me/preview/logo', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize })),
   previewBackdrop: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string): Promise<Response> =>
     keyRequest(buildUrl('/api/key/me/preview/backdrop', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize })),
+  previewEpisode: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean): Promise<Response> =>
+    keyRequest(buildUrl('/api/key/me/preview/episode', { ratings_limit: ratingsLimit, ratings_order: ratingsOrder, badge_style: badgeStyle, label_style: labelStyle, badge_size: badgeSize, position, badge_direction: badgeDirection, blur: blur ? 'true' : undefined })),
 }
 
 export const keysApi = {

@@ -45,7 +45,7 @@ interface ListResponse {
 }
 
 const props = defineProps<{
-  kind: 'poster' | 'logo' | 'backdrop'
+  kind: 'poster' | 'logo' | 'backdrop' | 'episode'
   listFn: (page: number, pageSize: number) => Promise<Response>
   imageFn: (key: string) => Promise<Response>
   fetchFn: (idType: string, idValue: string) => Promise<Response>
@@ -184,6 +184,7 @@ function nextPage() {
 
 const previewSizeClass = computed(() => {
   if (props.kind === 'backdrop') return 'max-w-2xl'
+  if (props.kind === 'episode') return 'max-w-xl'
   return 'max-w-md'
 })
 

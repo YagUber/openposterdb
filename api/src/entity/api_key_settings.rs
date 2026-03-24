@@ -23,6 +23,13 @@ pub struct Model {
     pub poster_badge_size: String,
     pub logo_badge_size: String,
     pub backdrop_badge_size: String,
+    pub episode_ratings_limit: i32,
+    pub episode_badge_style: String,
+    pub episode_label_style: String,
+    pub episode_badge_size: String,
+    pub episode_position: String,
+    pub episode_badge_direction: String,
+    pub episode_blur: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

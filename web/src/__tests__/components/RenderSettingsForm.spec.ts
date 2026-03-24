@@ -27,6 +27,13 @@ const defaultSettings: RenderSettings = {
   poster_badge_size: 'm',
   logo_badge_size: 'm',
   backdrop_badge_size: 'm',
+  episode_ratings_limit: 1,
+  episode_badge_style: 'v',
+  episode_label_style: 'o',
+  episode_badge_size: 'l',
+  episode_position: 'tr',
+  episode_badge_direction: 'v',
+  episode_blur: false,
 }
 
 function makeFetchPreview() {
@@ -227,5 +234,84 @@ describe('RenderSettingsForm', () => {
     await flushPromises()
 
     expect(fetchPreview).toHaveBeenCalledWith(3, expect.any(String), 'bc', 'h', 'i', 'v', 'm')
+  })
+
+  // --- Episode preview ---
+
+  it('renders episode section when fetchEpisodePreview is provided', () => {
+    const fetchEpisodePreview = makeFetchPreview()
+    const settings = { ...defaultSettings }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings: vi.fn().mockResolvedValue(null),
+        fetchPreview: makeFetchPreview(),
+        fetchEpisodePreview,
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+    expect(wrapper.text()).toContain('Episode')
+    expect(wrapper.find('img[alt="Episode preview"]').exists()).toBe(true)
+  })
+
+  it('does not render episode section when fetchEpisodePreview is absent', () => {
+    const wrapper = mountForm()
+    expect(wrapper.find('img[alt="Episode preview"]').exists()).toBe(false)
+  })
+
+  it('calls fetchEpisodePreview on mount with episode settings', async () => {
+    const fetchEpisodePreview = makeFetchPreview()
+    const settings = { ...defaultSettings }
+    mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings: vi.fn().mockResolvedValue(null),
+        fetchPreview: makeFetchPreview(),
+        fetchEpisodePreview,
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+    await flushPromises()
+
+    expect(fetchEpisodePreview).toHaveBeenCalledWith(
+      1, // episode_ratings_limit
+      expect.any(String), // ratings_order
+      'v', // episode_badge_style
+      'o', // episode_label_style
+      'l', // episode_badge_size
+      'tr', // episode_position
+      'v', // episode_badge_direction
+      false, // episode_blur
+    )
+  })
+
+  it('renders episode position and blur controls', () => {
+    const fetchEpisodePreview = makeFetchPreview()
+    const settings = { ...defaultSettings }
+    const wrapper = mount(RenderSettingsForm, {
+      props: {
+        settings,
+        loadSettings: vi.fn().mockResolvedValue(settings),
+        saveSettings: vi.fn().mockResolvedValue(null),
+        fetchPreview: makeFetchPreview(),
+        fetchEpisodePreview,
+      },
+      global: {
+        plugins: [createPinia()],
+        stubs: shadcnStubs,
+      },
+    })
+    expect(wrapper.find('[data-testid="episode-position-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="episode-badge-style-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="episode-badge-direction-select"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="episode-blur-checkbox"]').exists()).toBe(true)
   })
 })

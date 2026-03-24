@@ -96,6 +96,12 @@ const router = createRouter({
           meta: { title: 'Backdrops' },
         },
         {
+          path: 'episodes',
+          name: 'episodes',
+          component: () => import('@/views/EpisodesView.vue'),
+          meta: { title: 'Episodes' },
+        },
+        {
           path: 'keys',
           name: 'keys',
           component: () => import('@/views/ApiKeysView.vue'),

@@ -13,6 +13,15 @@ pub enum IdType {
 pub enum MediaType {
     Movie,
     Tv,
+    Episode,
+}
+
+#[derive(Debug, Clone)]
+pub struct EpisodeInfo {
+    pub show_tmdb_id: u64,
+    pub season_number: u32,
+    pub episode_number: u32,
+    pub still_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,12 +32,17 @@ pub struct ResolvedId {
     pub media_type: MediaType,
     pub poster_path: Option<String>,
     pub release_date: Option<String>,
+    pub episode: Option<EpisodeInfo>,
 }
 
-pub fn format_tmdb_id_value(tmdb_id: u64, media_type: &MediaType) -> String {
+pub fn format_tmdb_id_value(tmdb_id: u64, media_type: &MediaType, episode: Option<&EpisodeInfo>) -> String {
     match media_type {
         MediaType::Movie => format!("movie-{tmdb_id}"),
         MediaType::Tv => format!("series-{tmdb_id}"),
+        MediaType::Episode => match episode {
+            Some(ep) => format!("episode-{}-S{}E{}", ep.show_tmdb_id, ep.season_number, ep.episode_number),
+            None => format!("series-{tmdb_id}"),
+        },
     }
 }
 
@@ -57,6 +71,16 @@ struct FindResult {
     movie_results: Vec<FindEntry>,
     #[serde(default)]
     tv_results: Vec<FindEntry>,
+    #[serde(default)]
+    tv_episode_results: Vec<EpisodeFindEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EpisodeFindEntry {
+    show_id: u64,
+    season_number: u32,
+    episode_number: u32,
+    still_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +131,11 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
         .get(&format!("/find/{imdb_id}"), &[("external_source", "imdb_id")])
         .await?;
 
+    // Check episode results first — an episode IMDb ID is unambiguous.
+    if let Some(ep) = result.tv_episode_results.first() {
+        return resolve_episode_details(tmdb, ep.show_id, ep.season_number, ep.episode_number, ep.still_path.clone(), Some(imdb_id.to_string())).await;
+    }
+
     // Pick the most popular entry across all movie and TV results.
     let best_movie = result.movie_results.iter().max_by(|a, b| a.popularity.total_cmp(&b.popularity));
     let best_tv = result.tv_results.iter().max_by(|a, b| a.popularity.total_cmp(&b.popularity));
@@ -129,6 +158,7 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
                 media_type: MediaType::Movie,
                 poster_path: movie.poster_path.clone(),
                 release_date: movie.release_date.clone(),
+                episode: None,
             });
         }
     }
@@ -140,19 +170,25 @@ async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             media_type: MediaType::Tv,
             poster_path: tv.poster_path.clone(),
             release_date: tv.first_air_date.clone(),
+            episode: None,
         });
     }
     Err(AppError::IdNotFound(format!("{imdb_id} (not found on TMDB)")))
 }
 
 async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
+    // Handle episode format: episode-{show_id}-S{season}E{episode}
+    if let Some(rest) = id_value.strip_prefix("episode-") {
+        return resolve_tmdb_episode(rest, id_value, tmdb).await;
+    }
+
     let (media_type, tmdb_id) = if let Some(rest) = id_value.strip_prefix("movie-") {
         (MediaType::Movie, rest.parse::<u64>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?)
     } else if let Some(rest) = id_value.strip_prefix("series-") {
         (MediaType::Tv, rest.parse::<u64>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?)
     } else {
         return Err(AppError::InvalidIdType(format!(
-            "tmdb id must be prefixed with movie- or series-: {id_value}"
+            "tmdb id must be prefixed with movie-, series-, or episode-: {id_value}"
         )));
     };
 
@@ -174,6 +210,7 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
     let path = match media_type {
         MediaType::Movie => format!("/movie/{tmdb_id}"),
         MediaType::Tv => format!("/tv/{tmdb_id}?append_to_response=external_ids"),
+        MediaType::Episode => return Err(AppError::Other("unexpected Episode media type in resolve_tmdb".into())),
     };
     let details: Details = tmdb.get(&path, &[]).await?;
 
@@ -186,6 +223,7 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
     let release_date = match media_type {
         MediaType::Movie => details.release_date,
         MediaType::Tv => details.first_air_date,
+        MediaType::Episode => return Err(AppError::Other("unexpected Episode media type in resolve_tmdb".into())),
     };
 
     Ok(ResolvedId {
@@ -195,6 +233,107 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
         media_type,
         poster_path: details.poster_path,
         release_date,
+        episode: None,
+    })
+}
+
+/// Parse the `{show_id}-S{season}E{episode}` portion of an episode ID.
+/// Returns `(show_id, season, episode)` on success.
+fn parse_episode_id(rest: &str, id_value: &str) -> Result<(u64, u32, u32), AppError> {
+    // Accept both uppercase and lowercase S/E (e.g. episode-1396-S1E1 or episode-1396-s1e1)
+    let upper = rest.to_ascii_uppercase();
+    let parts: Vec<&str> = upper.splitn(2, "-S").collect();
+    if parts.len() != 2 {
+        return Err(AppError::InvalidIdType(format!(
+            "episode id must be episode-{{show_id}}-S{{season}}E{{episode}}: {id_value}"
+        )));
+    }
+    let show_id = parts[0].parse::<u64>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
+    let se_parts: Vec<&str> = parts[1].splitn(2, 'E').collect();
+    if se_parts.len() != 2 {
+        return Err(AppError::InvalidIdType(format!(
+            "episode id must be episode-{{show_id}}-S{{season}}E{{episode}}: {id_value}"
+        )));
+    }
+    let season = se_parts[0].parse::<u32>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
+    let episode = se_parts[1].parse::<u32>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
+    if season > 10_000 || episode > 100_000 {
+        return Err(AppError::BadRequest(
+            "season must be ≤ 10 000 and episode must be ≤ 100 000".into(),
+        ));
+    }
+    Ok((show_id, season, episode))
+}
+
+/// Parse `episode-{show_id}-S{season}E{episode}` and resolve via TMDB.
+async fn resolve_tmdb_episode(rest: &str, id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
+    let (show_id, season, episode) = parse_episode_id(rest, id_value)?;
+    resolve_episode_details(tmdb, show_id, season, episode, None, None).await
+}
+
+/// Shared helper: fetch episode details from TMDB and build a `ResolvedId`.
+///
+/// Called by all three resolvers (IMDb, TMDB, TVDB) after they determine the
+/// show ID and season/episode numbers. `hint_still_path` and `hint_imdb_id` are
+/// values already known from the `/find` response (if any) to avoid redundant lookups.
+async fn resolve_episode_details(
+    tmdb: &TmdbClient,
+    show_tmdb_id: u64,
+    season: u32,
+    episode: u32,
+    hint_still_path: Option<String>,
+    hint_imdb_id: Option<String>,
+) -> Result<ResolvedId, AppError> {
+    #[derive(Deserialize)]
+    struct EpDetails {
+        still_path: Option<String>,
+        air_date: Option<String>,
+        #[serde(default)]
+        external_ids: Option<EpExternalIds>,
+    }
+    #[derive(Deserialize)]
+    struct EpExternalIds {
+        imdb_id: Option<String>,
+        tvdb_id: Option<u64>,
+    }
+
+    let details: EpDetails = tmdb
+        .get(
+            &format!("/tv/{show_tmdb_id}/season/{season}/episode/{episode}"),
+            &[("append_to_response", "external_ids")],
+        )
+        .await?;
+
+    let imdb_id = hint_imdb_id
+        .or_else(|| details.external_ids.as_ref().and_then(|e| e.imdb_id.clone()));
+    let tvdb_id = details.external_ids.as_ref().and_then(|e| e.tvdb_id);
+    let still_path = hint_still_path.or(details.still_path.clone());
+
+    // Use still_path as poster_path; fallback to series poster if no still
+    let poster_path = if still_path.is_some() {
+        still_path.clone()
+    } else {
+        #[derive(Deserialize)]
+        struct ShowInfo {
+            poster_path: Option<String>,
+        }
+        let show: ShowInfo = tmdb.get(&format!("/tv/{show_tmdb_id}"), &[]).await?;
+        show.poster_path
+    };
+
+    Ok(ResolvedId {
+        imdb_id,
+        tmdb_id: show_tmdb_id,
+        tvdb_id,
+        media_type: MediaType::Episode,
+        poster_path,
+        release_date: details.air_date,
+        episode: Some(EpisodeInfo {
+            show_tmdb_id,
+            season_number: season,
+            episode_number: episode,
+            still_path,
+        }),
     })
 }
 
@@ -236,12 +375,108 @@ mod tests {
 
     #[test]
     fn format_tmdb_id_value_movie() {
-        assert_eq!(format_tmdb_id_value(278, &MediaType::Movie), "movie-278");
+        assert_eq!(format_tmdb_id_value(278, &MediaType::Movie, None), "movie-278");
     }
 
     #[test]
     fn format_tmdb_id_value_tv() {
-        assert_eq!(format_tmdb_id_value(1396, &MediaType::Tv), "series-1396");
+        assert_eq!(format_tmdb_id_value(1396, &MediaType::Tv, None), "series-1396");
+    }
+
+    #[test]
+    fn format_tmdb_id_value_episode() {
+        let ep = EpisodeInfo {
+            show_tmdb_id: 1396,
+            season_number: 1,
+            episode_number: 1,
+            still_path: None,
+        };
+        assert_eq!(
+            format_tmdb_id_value(1396, &MediaType::Episode, Some(&ep)),
+            "episode-1396-S1E1"
+        );
+    }
+
+    #[test]
+    fn format_tmdb_id_value_episode_large_numbers() {
+        let ep = EpisodeInfo {
+            show_tmdb_id: 456,
+            season_number: 12,
+            episode_number: 24,
+            still_path: Some("/still.jpg".into()),
+        };
+        assert_eq!(
+            format_tmdb_id_value(456, &MediaType::Episode, Some(&ep)),
+            "episode-456-S12E24"
+        );
+    }
+
+    #[test]
+    fn format_tmdb_id_value_episode_none_falls_back() {
+        // Episode with missing EpisodeInfo should not panic, falls back to series format
+        assert_eq!(
+            format_tmdb_id_value(1396, &MediaType::Episode, None),
+            "series-1396"
+        );
+    }
+
+    // --- parse_episode_id ---
+
+    #[test]
+    fn parse_episode_id_valid() {
+        let (show, season, ep) = parse_episode_id("1396-S1E1", "episode-1396-S1E1").unwrap();
+        assert_eq!(show, 1396);
+        assert_eq!(season, 1);
+        assert_eq!(ep, 1);
+    }
+
+    #[test]
+    fn parse_episode_id_multi_digit() {
+        let (show, season, ep) = parse_episode_id("456-S12E24", "episode-456-S12E24").unwrap();
+        assert_eq!(show, 456);
+        assert_eq!(season, 12);
+        assert_eq!(ep, 24);
+    }
+
+    #[test]
+    fn parse_episode_id_missing_season() {
+        assert!(parse_episode_id("1396", "episode-1396").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_missing_episode() {
+        assert!(parse_episode_id("1396-S1", "episode-1396-S1").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_non_numeric_show() {
+        assert!(parse_episode_id("abc-S1E1", "episode-abc-S1E1").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_non_numeric_season() {
+        assert!(parse_episode_id("1396-SaE1", "episode-1396-SaE1").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_non_numeric_episode() {
+        assert!(parse_episode_id("1396-S1Eb", "episode-1396-S1Eb").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_lowercase() {
+        let (show, season, ep) = parse_episode_id("1396-s1e1", "episode-1396-s1e1").unwrap();
+        assert_eq!(show, 1396);
+        assert_eq!(season, 1);
+        assert_eq!(ep, 1);
+    }
+
+    #[test]
+    fn parse_episode_id_mixed_case() {
+        let (show, season, ep) = parse_episode_id("456-s12E24", "episode-456-s12E24").unwrap();
+        assert_eq!(show, 456);
+        assert_eq!(season, 12);
+        assert_eq!(ep, 24);
     }
 }
 
@@ -250,6 +485,11 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
     let result: FindResult = tmdb
         .get(&format!("/find/{tvdb_id}"), &[("external_source", "tvdb_id")])
         .await?;
+
+    // Check episode results first — a TVDB episode ID is unambiguous.
+    if let Some(ep) = result.tv_episode_results.first() {
+        return resolve_episode_details(tmdb, ep.show_id, ep.season_number, ep.episode_number, ep.still_path.clone(), None).await;
+    }
 
     if let Some(tv) = result.tv_results.first() {
         // We need to fetch details to get the imdb_id
@@ -278,6 +518,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             media_type: MediaType::Tv,
             poster_path: details.poster_path.or_else(|| tv.poster_path.clone()),
             release_date: details.first_air_date,
+            episode: None,
         });
     }
     if let Some(movie) = result.movie_results.first() {
@@ -297,6 +538,7 @@ async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, Ap
             media_type: MediaType::Movie,
             poster_path: details.poster_path.or_else(|| movie.poster_path.clone()),
             release_date: details.release_date,
+            episode: None,
         });
     }
     Err(AppError::IdNotFound(format!("{tvdb_id} (not found on TMDB via TVDB lookup)")))

@@ -92,7 +92,7 @@ pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
         license(name = "MIT"),
     ),
     tags(
-        (name = "Images", description = "Poster, logo, and backdrop image endpoints"),
+        (name = "Images", description = "Poster, logo, backdrop, and episode image endpoints"),
         (name = "Auth", description = "API key validation"),
     ),
     servers((url = "/", description = "This instance")),
@@ -100,6 +100,7 @@ pub static FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/Inter-Bold.ttf");
         handlers::image::handler,
         handlers::image::logo_handler,
         handlers::image::backdrop_handler,
+        handlers::image::episode_handler,
         handlers::image::is_valid_handler,
     ),
     components(schemas(
@@ -121,8 +122,9 @@ mod tests {
         assert!(paths.contains(&"/{api_key}/{id_type}/poster-default/{id_value}"));
         assert!(paths.contains(&"/{api_key}/{id_type}/logo-default/{id_value}"));
         assert!(paths.contains(&"/{api_key}/{id_type}/backdrop-default/{id_value}"));
+        assert!(paths.contains(&"/{api_key}/{id_type}/episode-default/{id_value}"));
         assert!(paths.contains(&"/{api_key}/isValid"));
-        assert_eq!(paths.len(), 4);
+        assert_eq!(paths.len(), 5);
     }
 
     #[test]
@@ -301,5 +303,33 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "UPDATE global_settings SET key = 'textless' WHERE key = 'fanart_textless'",
         "no such table",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_ratings_limit INTEGER NOT NULL DEFAULT 1",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_badge_style TEXT NOT NULL DEFAULT 'v'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_label_style TEXT NOT NULL DEFAULT 'o'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_badge_size TEXT NOT NULL DEFAULT 'l'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_position TEXT NOT NULL DEFAULT 'tr'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_badge_direction TEXT NOT NULL DEFAULT 'v'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_blur INTEGER NOT NULL DEFAULT 0",
+        "duplicate column",
     ),
 ];

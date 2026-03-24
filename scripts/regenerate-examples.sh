@@ -16,6 +16,10 @@ declare -A POSTERS=(
   [the-general]=tt0017925
 )
 
+declare -A EPISODES=(
+  [bonanza]=tt0529483
+)
+
 # --- Standard examples (no settings changes needed) ---
 
 echo "=== Posters ==="
@@ -46,6 +50,32 @@ for name in "${!POSTERS[@]}"; do
     echo "OK"
   else
     rm -f "$OUT/backdrop-$name.jpg"
+    echo "SKIP (not available)"
+  fi
+done
+
+echo "=== Episodes ==="
+for name in "${!EPISODES[@]}"; do
+  id="${EPISODES[$name]}"
+  echo -n "episode: $name ($id)... "
+  if curl -sf "$BASE/$KEY/imdb/episode-default/$id.jpg" -o "$OUT/episode-$name.jpg"; then
+    echo "OK"
+  else
+    rm -f "$OUT/episode-$name.jpg"
+    echo "SKIP (not available)"
+  fi
+  echo -n "episode: $name horizontal ($id)... "
+  if curl -sf "$BASE/$KEY/imdb/episode-default/$id.jpg?badge_style=h" -o "$OUT/episode-$name-h.jpg"; then
+    echo "OK"
+  else
+    rm -f "$OUT/episode-$name-h.jpg"
+    echo "SKIP (not available)"
+  fi
+  echo -n "episode: $name blur ($id)... "
+  if curl -sf "$BASE/$KEY/imdb/episode-default/$id.jpg?blur=true" -o "$OUT/episode-$name-blur.jpg"; then
+    echo "OK"
+  else
+    rm -f "$OUT/episode-$name-blur.jpg"
     echo "SKIP (not available)"
   fi
 done
@@ -113,7 +143,7 @@ for label_val in i t o; do
   esac
   echo -n "label-$label_name... "
   curl -sf "${AUTH[@]}" \
-    "$PREVIEW/poster?label_style=$label_val&ratings_limit=0" \
+    "$PREVIEW/poster?label_style=$label_val" \
     -o "$OUT/label-$label_name.jpg"
   echo "OK"
 done

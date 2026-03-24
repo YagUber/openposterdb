@@ -185,4 +185,109 @@ describe('selfApi', () => {
     const [url] = fetchMock.mock.calls[0]
     expect(url).toContain('label_style=i')
   })
+
+  it('previewEpisode calls GET with correct URL and params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt,tmdb')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/key/me/preview/episode')
+    expect(url).toContain('ratings_limit=3')
+    expect(url).toContain('ratings_order=imdb%2Crt%2Ctmdb')
+  })
+
+  it('previewEpisode includes position when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, 'tr')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('position=tr')
+  })
+
+  it('previewEpisode includes badge_direction when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, 'tr', 'h')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('badge_direction=h')
+  })
+
+  it('previewEpisode includes blur=true when enabled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, undefined, undefined, true)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('blur=true')
+  })
+
+  it('previewEpisode omits blur when false', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, undefined, undefined, false)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).not.toContain('blur')
+  })
+
+  it('previewEpisode includes label_style when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.previewEpisode(3, 'imdb,rt', 'v', 'i')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('label_style=i')
+  })
+
+  it('updateSettings includes episode fields', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200, { ok: true }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await selfApi.updateSettings({
+      image_source: 't',
+      lang: 'en',
+      textless: false,
+      ratings_limit: 3,
+      ratings_order: 'imdb,rt,tmdb',
+      poster_position: 'bc',
+      logo_ratings_limit: 3,
+      backdrop_ratings_limit: 3,
+      poster_badge_style: 'h',
+      logo_badge_style: 'h',
+      backdrop_badge_style: 'v',
+      poster_label_style: 't',
+      logo_label_style: 't',
+      backdrop_label_style: 't',
+      poster_badge_direction: 'd',
+      poster_badge_size: 'l',
+      logo_badge_size: 's',
+      backdrop_badge_size: 'xl',
+      episode_ratings_limit: 1,
+      episode_badge_style: 'v',
+      episode_label_style: 'o',
+      episode_badge_size: 'l',
+      episode_position: 'tr',
+      episode_badge_direction: 'v',
+      episode_blur: false,
+    })
+
+    const [, options] = fetchMock.mock.calls[0]
+    const body = JSON.parse(options.body)
+    expect(body.episode_ratings_limit).toBe(1)
+    expect(body.episode_badge_style).toBe('v')
+    expect(body.episode_label_style).toBe('o')
+    expect(body.episode_badge_size).toBe('l')
+    expect(body.episode_position).toBe('tr')
+    expect(body.episode_badge_direction).toBe('v')
+    expect(body.episode_blur).toBe(false)
+  })
 })

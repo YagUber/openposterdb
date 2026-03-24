@@ -68,6 +68,13 @@ async function toggleFreeApiKey() {
     poster_badge_size: s.poster_badge_size,
     logo_badge_size: s.logo_badge_size,
     backdrop_badge_size: s.backdrop_badge_size,
+    episode_ratings_limit: s.episode_ratings_limit,
+    episode_badge_style: s.episode_badge_style,
+    episode_label_style: s.episode_label_style,
+    episode_badge_size: s.episode_badge_size,
+    episode_position: s.episode_position,
+    episode_badge_direction: s.episode_badge_direction,
+    episode_blur: s.episode_blur,
     free_api_key_enabled: newVal,
   })
   if (res.ok) {
@@ -133,6 +140,7 @@ async function toggleFreeApiKey() {
           :fetch-preview="adminApi.previewPoster"
           :fetch-logo-preview="adminApi.previewLogo"
           :fetch-backdrop-preview="adminApi.previewBackdrop"
+          :fetch-episode-preview="adminApi.previewEpisode"
         />
       </div>
     </div>

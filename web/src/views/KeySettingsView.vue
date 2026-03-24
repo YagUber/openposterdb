@@ -101,6 +101,7 @@ function handleLogout() {
           :fetch-preview="selfApi.previewPoster"
           :fetch-logo-preview="selfApi.previewLogo"
           :fetch-backdrop-preview="selfApi.previewBackdrop"
+          :fetch-episode-preview="selfApi.previewEpisode"
         />
       </div>
     </div>

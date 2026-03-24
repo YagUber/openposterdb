@@ -198,7 +198,7 @@ describe('FreeApiKeyCard', () => {
     expect(getPlaceholder()).toBe('tt0013442')
 
     await setSelectById(wrapper, 'free-id-type', 'tmdb')
-    expect(getPlaceholder()).toBe('movie-872585')
+    expect(getPlaceholder()).toBe('movie-872585 or episode-1396-S1E1')
 
     await setSelectById(wrapper, 'free-id-type', 'tvdb')
     expect(getPlaceholder()).toBe('253573')
@@ -230,5 +230,78 @@ describe('FreeApiKeyCard', () => {
     expect(findCurlCode(wrapper).text()).not.toContain('badge_direction=')
     expect(findCurlCode(wrapper).text()).not.toContain('textless=')
     expect(findCurlCode(wrapper).text()).toContain('image_source=f')
+  })
+
+  // --- Episode support ---
+
+  it('episode queryString includes badge_direction, position, and blur', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    await setSelectById(wrapper, 'free-badge-direction', 'v')
+    await setSelectById(wrapper, 'free-poster-position', 'tr')
+    await setSelectById(wrapper, 'free-blur', 'true')
+
+    const curlText = findCurlCode(wrapper).text()
+    expect(curlText).toContain('badge_direction=v')
+    expect(curlText).toContain('position=tr')
+    expect(curlText).toContain('blur=true')
+  })
+
+  it('blur selector only appears for episode image type', async () => {
+    const wrapper = mountCard(true)
+
+    // Default is poster — no blur select
+    expect(wrapper.find('#free-blur').exists()).toBe(false)
+
+    // Switch to episode — blur should appear
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    expect(wrapper.find('#free-blur').exists()).toBe(true)
+
+    // Switch to backdrop — blur should disappear
+    await setSelectById(wrapper, 'free-image-type', 'backdrop')
+    expect(wrapper.find('#free-blur').exists()).toBe(false)
+  })
+
+  it('switching from episode to logo resets blur', async () => {
+    const wrapper = mountCard(true)
+
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    await setSelectById(wrapper, 'free-blur', 'true')
+    expect(findCurlCode(wrapper).text()).toContain('blur=true')
+
+    // Switch to logo — blur should reset
+    await setSelectById(wrapper, 'free-image-type', 'logo')
+    expect(findCurlCode(wrapper).text()).not.toContain('blur=')
+  })
+
+  it('episode uses .jpg extension in curl example', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+
+    const curlText = findCurlCode(wrapper).text()
+    expect(curlText).toContain('episode-default/')
+    expect(curlText).toContain('.jpg')
+  })
+
+  it('sizeOptions includes small for episode', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+    await setSelectById(wrapper, 'free-image-size', 'small')
+    expect(findCurlCode(wrapper).text()).toContain('imageSize=small')
+  })
+
+  it('episode keeps position and badge_direction controls', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+
+    expect(wrapper.find('#free-poster-position').exists()).toBe(true)
+    expect(wrapper.find('#free-badge-direction').exists()).toBe(true)
+  })
+
+  it('episode does not show textless control', async () => {
+    const wrapper = mountCard(true)
+    await setSelectById(wrapper, 'free-image-type', 'episode')
+
+    expect(wrapper.find('#free-textless').exists()).toBe(false)
   })
 })

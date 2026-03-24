@@ -214,6 +214,7 @@ async function deleteKey(id: number) {
             :fetch-preview="adminApi.previewPoster"
             :fetch-logo-preview="adminApi.previewLogo"
             :fetch-backdrop-preview="adminApi.previewBackdrop"
+            :fetch-episode-preview="adminApi.previewEpisode"
           />
         </div>
       </div>

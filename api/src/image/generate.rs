@@ -577,6 +577,76 @@ pub async fn generate_backdrop(
     Ok(buf)
 }
 
+/// Episode still rendering with configurable position, direction, and optional blur.
+/// Reuses the poster badge overlay functions but with episode-specific settings.
+pub fn render_episode_sync(
+    image_bytes: &[u8],
+    badges: &[RatingBadge],
+    font: &FontArc,
+    quality: u8,
+    position: BadgePosition,
+    badge_style: BadgeStyle,
+    label_style: LabelStyle,
+    badge_direction: BadgeDirection,
+    target_width: u32,
+    badge_scale: f32,
+    badge_size: BadgeSize,
+    blur: bool,
+) -> Result<Vec<u8>, AppError> {
+    let base = image::load_from_memory(image_bytes)
+        .map_err(AppError::Image)?;
+
+    let base = if base.width() != target_width {
+        let scale = target_width as f64 / base.width() as f64;
+        let target_height = (base.height() as f64 * scale).round() as u32;
+        base.resize_exact(target_width, target_height, image::imageops::FilterType::Lanczos3)
+    } else {
+        base
+    };
+
+    let mut canvas: RgbaImage = base.to_rgba8();
+
+    // Apply blur for spoiler protection (before badge overlay).
+    // Downscale → small blur → upscale is much faster than a large-radius Gaussian
+    // and visually equivalent for spoiler hiding.
+    if blur && canvas.width() >= 8 && canvas.height() >= 8 {
+        let (w, h) = (canvas.width(), canvas.height());
+        let small = image::imageops::resize(&canvas, w / 8, h / 8, image::imageops::FilterType::Triangle);
+        let small = imageproc::filter::gaussian_blur_f32(&small, 3.0);
+        canvas = image::imageops::resize(&small, w, h, image::imageops::FilterType::Triangle);
+    }
+
+    if !badges.is_empty() {
+        let badge_images: Vec<RgbaImage> = if badge_style.is_vertical() {
+            badges.iter().map(|b| badge::render_vertical_badge(b, font, label_style, badge_scale)).collect()
+        } else {
+            badge::render_badges_uniform(badges, font, label_style, badge_scale)
+        };
+
+        if badge_direction.is_vertical() {
+            overlay_vertical_stack(&mut canvas, &badge_images, position, badge_scale);
+        } else {
+            let max_per_row = match badge_size {
+                BadgeSize::Large | BadgeSize::ExtraLarge => {
+                    if badge_style == BadgeStyle::Horizontal { 2 } else { 4 }
+                }
+                _ => {
+                    if badge_style.is_vertical() { MAX_VERT_BADGES_PER_ROW } else { MAX_BADGES_PER_ROW }
+                }
+            };
+            overlay_horizontal_rows(&mut canvas, &badge_images, position, max_per_row, badge_scale);
+        }
+    }
+
+    // Encode as JPEG
+    let dynamic = DynamicImage::ImageRgba8(canvas);
+    let rgb = dynamic.to_rgb8();
+    let mut buf = Vec::new();
+    let encoder = JpegEncoder::new_with_quality(&mut buf, quality);
+    rgb.write_with_encoder(encoder)?;
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -753,6 +823,66 @@ mod tests {
     fn render_backdrop_invalid_bytes() {
         let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
         let result = render_backdrop_sync(b"not an image", &[], &font, 85, BadgeStyle::Vertical, LabelStyle::Text, 1280, 1.0);
+        assert!(result.is_err());
+    }
+
+    // --- Episode rendering tests ---
+
+    #[test]
+    fn render_episode_no_badges() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(780, 439);
+        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_episode_with_badges() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(780, 439);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+            RatingBadge { source: RatingSource::Tmdb, value: "85%".to_string() },
+        ];
+        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_episode_with_blur() {
+        use crate::services::ratings::{RatingBadge, RatingSource};
+
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(780, 439);
+        let badges = vec![
+            RatingBadge { source: RatingSource::Imdb, value: "8.5".to_string() },
+        ];
+        let result = render_episode_sync(&png, &badges, &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, true).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_episode_downscales_wide_image() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let png = test_png(1920, 1080);
+        let result = render_episode_sync(&png, &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false).unwrap();
+        assert!(!result.is_empty());
+        assert_eq!(result[0], 0xFF);
+        assert_eq!(result[1], 0xD8);
+    }
+
+    #[test]
+    fn render_episode_invalid_bytes() {
+        let font = FontArc::try_from_slice(crate::FONT_BYTES).unwrap();
+        let result = render_episode_sync(b"not an image", &[], &font, 85, BadgePosition::TopRight, BadgeStyle::Vertical, LabelStyle::Official, BadgeDirection::Vertical, 780, 1.0, BadgeSize::Large, false);
         assert!(result.is_err());
     }
 

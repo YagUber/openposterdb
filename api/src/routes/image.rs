@@ -88,6 +88,10 @@ pub fn image_routes() -> Router<Arc<AppState>> {
         .route(
             "/{api_key}/{id_type}/backdrop-default/{id_value}",
             axum::routing::get(image::backdrop_handler),
+        )
+        .route(
+            "/{api_key}/{id_type}/episode-default/{id_value}",
+            axum::routing::get(image::episode_handler),
         );
 
     #[cfg(not(any(test, feature = "test-support")))]
@@ -145,6 +149,10 @@ pub fn cdn_routes() -> Router<Arc<AppState>> {
         .route(
             "/c/{settings_hash}/{id_type}/backdrop-default/{id_value}",
             axum::routing::get(image::cdn_backdrop_handler),
+        )
+        .route(
+            "/c/{settings_hash}/{id_type}/episode-default/{id_value}",
+            axum::routing::get(image::cdn_episode_handler),
         );
 
     #[cfg(not(any(test, feature = "test-support")))]

@@ -20,7 +20,7 @@ const isOpen = ref(false)
 const auth = useAuthStore()
 
 const idType = ref<'imdb' | 'tmdb' | 'tvdb'>('imdb')
-const imageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
+const imageType = ref<'poster' | 'logo' | 'backdrop' | 'episode'>('poster')
 const idValue = ref('tt0013442')
 const lang = ref('any')
 const imageSize = ref<'default' | 'small' | 'medium' | 'large' | 'verylarge'>('default')
@@ -33,14 +33,15 @@ const posterPosition = ref('default')
 const imageSource = ref('default')
 const textless = ref('default')
 const ratingsOrderList = ref<string[]>(parseRatingsOrder(DEFAULT_RATINGS_ORDER))
+const blur = ref('default')
 const ratingsOrderChanged = ref(false)
 const fetchError = ref('')
 const fetchLoading = ref(false)
 const resultUrl = ref('')
-const resultImageType = ref<'poster' | 'logo' | 'backdrop'>('poster')
+const resultImageType = ref<'poster' | 'logo' | 'backdrop' | 'episode'>('poster')
 
 const sizeOptions = computed(() => {
-  if (imageType.value === 'backdrop') {
+  if (imageType.value === 'backdrop' || imageType.value === 'episode') {
     return [
       { value: 'default', label: 'Size: default' },
       { value: 'small', label: 'Small' },
@@ -68,10 +69,18 @@ watch(imageType, (newType) => {
   if (!validValues.includes(imageSize.value)) {
     imageSize.value = 'default'
   }
-  if (newType !== 'poster') {
+  if (newType !== 'poster' && newType !== 'episode') {
     badgeDirection.value = 'default'
     posterPosition.value = 'default'
+  }
+  if (newType !== 'poster') {
     textless.value = 'default'
+  }
+  if (newType === 'episode') {
+    imageSource.value = 'default'
+  }
+  if (newType !== 'episode') {
+    blur.value = 'default'
   }
 })
 
@@ -83,7 +92,7 @@ onUnmounted(() => {
 
 const idPlaceholder = computed(() => {
   if (idType.value === 'imdb') return 'tt0013442'
-  if (idType.value === 'tmdb') return 'movie-872585'
+  if (idType.value === 'tmdb') return 'movie-872585 or episode-1396-S1E1'
   return '253573'
 })
 
@@ -98,10 +107,11 @@ const queryString = computed(() => {
   if (labelStyle.value !== 'default') params.set('label_style', labelStyle.value)
   if (badgeSize.value !== 'default') params.set('badge_size', badgeSize.value)
   if (ratingsLimit.value !== 'default') params.set('ratings_limit', ratingsLimit.value)
-  if (imageType.value === 'poster' && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
-  if (imageType.value === 'poster' && posterPosition.value !== 'default') params.set('position', posterPosition.value)
-  if (imageSource.value !== 'default') params.set('image_source', imageSource.value)
+  if ((imageType.value === 'poster' || imageType.value === 'episode') && badgeDirection.value !== 'default') params.set('badge_direction', badgeDirection.value)
+  if ((imageType.value === 'poster' || imageType.value === 'episode') && posterPosition.value !== 'default') params.set('position', posterPosition.value)
+  if (imageType.value !== 'episode' && imageSource.value !== 'default') params.set('image_source', imageSource.value)
   if (imageType.value === 'poster' && textless.value !== 'default') params.set('textless', textless.value)
+  if (imageType.value === 'episode' && blur.value !== 'default') params.set('blur', blur.value)
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 })
@@ -114,7 +124,7 @@ const curlExample = computed(() => {
 
 const resultClass = computed(() => {
   if (resultImageType.value === 'logo') return 'max-w-[400px]'
-  if (resultImageType.value === 'backdrop') return 'max-w-[500px] rounded-lg shadow-lg'
+  if (resultImageType.value === 'backdrop' || resultImageType.value === 'episode') return 'max-w-[500px] rounded-lg shadow-lg'
   return 'max-w-[200px] rounded-lg shadow-lg'
 })
 
@@ -230,7 +240,7 @@ async function handleFetch() {
               <SelectItem value="xl">Extra Large</SelectItem>
             </SelectContent>
           </Select>
-          <Select v-model="imageSource">
+          <Select v-if="imageType !== 'episode'" v-model="imageSource">
             <SelectTrigger id="free-image-source" aria-label="Image source" class="bg-background">
               <SelectValue placeholder="Source: default" />
             </SelectTrigger>
@@ -251,6 +261,8 @@ async function handleFetch() {
                 <SelectItem value="false">No</SelectItem>
               </SelectContent>
             </Select>
+          </template>
+          <template v-if="imageType === 'poster' || imageType === 'episode'">
             <Select v-model="posterPosition">
               <SelectTrigger id="free-poster-position" aria-label="Position" class="bg-background">
                 <SelectValue placeholder="Position: default" />
@@ -279,6 +291,18 @@ async function handleFetch() {
               </SelectContent>
             </Select>
           </template>
+          <template v-if="imageType === 'episode'">
+            <Select v-model="blur">
+              <SelectTrigger id="free-blur" aria-label="Blur" class="bg-background">
+                <SelectValue placeholder="Blur: default" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Blur: default</SelectItem>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </SelectContent>
+            </Select>
+          </template>
         </div>
         <div class="space-y-1 flex flex-col items-center">
           <p class="text-xs text-muted-foreground">Rating priority</p>
@@ -304,6 +328,7 @@ async function handleFetch() {
               <SelectItem value="poster">Poster</SelectItem>
               <SelectItem value="logo">Logo</SelectItem>
               <SelectItem value="backdrop">Backdrop</SelectItem>
+              <SelectItem value="episode">Episode</SelectItem>
             </SelectContent>
           </Select>
           <div class="flex gap-2 flex-1 min-w-[200px]">

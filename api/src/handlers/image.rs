@@ -94,6 +94,10 @@ pub struct ImageQuery {
     #[serde(default, alias = "fanart_textless")]
     #[param(value_type = Option<bool>)]
     pub textless: Option<bool>,
+    /// Apply Gaussian blur to the base image (episode only, for spoiler protection).
+    #[serde(default)]
+    #[param(value_type = Option<bool>)]
+    pub blur: Option<bool>,
 }
 
 impl ImageQuery {
@@ -108,6 +112,7 @@ impl ImageQuery {
             || self.position.is_some()
             || self.image_source.is_some()
             || self.textless.is_some()
+            || self.blur.is_some()
     }
 }
 
@@ -241,6 +246,7 @@ fn apply_query_overrides(
             cache::ImageType::Poster => s.ratings_limit = limit,
             cache::ImageType::Logo => s.logo_ratings_limit = limit,
             cache::ImageType::Backdrop => s.backdrop_ratings_limit = limit,
+            cache::ImageType::Episode => s.episode_ratings_limit = limit,
         }
     }
     if let Some(ref order) = query.ratings_order {
@@ -252,6 +258,7 @@ fn apply_query_overrides(
             cache::ImageType::Poster => s.poster_badge_style = style,
             cache::ImageType::Logo => s.logo_badge_style = style,
             cache::ImageType::Backdrop => s.backdrop_badge_style = style,
+            cache::ImageType::Episode => s.episode_badge_style = style,
         }
     }
     if let Some(style) = query.label_style {
@@ -259,6 +266,7 @@ fn apply_query_overrides(
             cache::ImageType::Poster => s.poster_label_style = style,
             cache::ImageType::Logo => s.logo_label_style = style,
             cache::ImageType::Backdrop => s.backdrop_label_style = style,
+            cache::ImageType::Episode => s.episode_label_style = style,
         }
     }
     if let Some(size) = query.badge_size {
@@ -266,16 +274,28 @@ fn apply_query_overrides(
             cache::ImageType::Poster => s.poster_badge_size = size,
             cache::ImageType::Logo => s.logo_badge_size = size,
             cache::ImageType::Backdrop => s.backdrop_badge_size = size,
+            cache::ImageType::Episode => s.episode_badge_size = size,
         }
     }
 
-    // -- poster-only overrides (silently ignored for logo/backdrop) --
+    // -- poster/episode position and direction overrides --
     if kind == cache::ImageType::Poster {
         if let Some(dir) = query.badge_direction {
             s.poster_badge_direction = dir;
         }
         if let Some(pos) = query.position {
             s.poster_position = pos;
+        }
+    }
+    if kind == cache::ImageType::Episode {
+        if let Some(dir) = query.badge_direction {
+            s.episode_badge_direction = dir;
+        }
+        if let Some(pos) = query.position {
+            s.episode_position = pos;
+        }
+        if let Some(blur) = query.blur {
+            s.episode_blur = blur;
         }
     }
 
@@ -299,6 +319,7 @@ fn cdn_route_segment(kind: cache::ImageType) -> &'static str {
         cache::ImageType::Poster => "poster-default",
         cache::ImageType::Logo => "logo-default",
         cache::ImageType::Backdrop => "backdrop-default",
+        cache::ImageType::Episode => "episode-default",
     }
 }
 
@@ -361,6 +382,9 @@ async fn dispatch_image(
         }
         cache::ImageType::Backdrop => {
             serve::handle_logo_backdrop_inner(state, id_type_str, id_value_raw, settings, serve::LogoBackdropKind::Backdrop, image_size).await
+        }
+        cache::ImageType::Episode => {
+            serve::handle_episode_inner(state, id_type_str, id_value_raw, settings.clone(), image_size).await
         }
     }
 }
@@ -442,7 +466,7 @@ async fn image_handler_inner(
     params(
         ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
         ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
-        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-` or `series-` (e.g. `movie-550`, `series-1399`). For TVDB use the numeric ID."),
+        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-`, `series-`, or `episode-` (e.g. `movie-550`, `series-1399`, `episode-1396-S1E1`). For TVDB use the numeric ID. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported."),
         ImageQuery,
     ),
     responses(
@@ -471,7 +495,7 @@ pub async fn handler(
     params(
         ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
         ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
-        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-` or `series-` (e.g. `movie-550`, `series-1399`). For TVDB use the numeric ID."),
+        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-`, `series-`, or `episode-` (e.g. `movie-550`, `series-1399`, `episode-1396-S1E1`). For TVDB use the numeric ID. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported."),
         ImageQuery,
     ),
     responses(
@@ -500,7 +524,7 @@ pub async fn logo_handler(
     params(
         ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
         ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
-        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-` or `series-` (e.g. `movie-550`, `series-1399`). For TVDB use the numeric ID."),
+        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-`, `series-`, or `episode-` (e.g. `movie-550`, `series-1399`, `episode-1396-S1E1`). For TVDB use the numeric ID. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported."),
         ImageQuery,
     ),
     responses(
@@ -517,6 +541,35 @@ pub async fn backdrop_handler(
     Query(query): Query<ImageQuery>,
 ) -> Response {
     image_handler_inner(state, &api_key, &id_type_str, &id_value, query, cache::ImageType::Backdrop).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/{api_key}/{id_type}/episode-default/{id_value}",
+    operation_id = "getEpisode",
+    tag = "Images",
+    summary = "Get episode",
+    description = "Returns a JPEG episode still image with rating badge overlays. Supports optional Gaussian blur for spoiler protection. Falls back to the series poster when no episode still is available.",
+    params(
+        ("api_key" = String, Path, description = "Your API key (64-character hex string). Use `t0-free-rpdb` as a free public key if enabled on this instance."),
+        ("id_type" = IdTypeParam, Path, description = "The type of media ID being used.", example = "imdb"),
+        ("id_value" = String, Path, description = "The media ID value. For IMDB use the `tt` prefixed ID (e.g. `tt1234567`). For TMDB prefix with `movie-`, `series-`, or `episode-` (e.g. `movie-550`, `series-1399`, `episode-1396-S1E1`). For TVDB use the numeric ID. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported."),
+        ImageQuery,
+    ),
+    responses(
+        (status = 200, description = "Episode image", content_type = "image/jpeg",
+            headers(("Cache-Control" = String, description = "Cache directive, e.g. `public, max-age=3600, stale-while-revalidate=86400`"))),
+        (status = 400, description = "Invalid request — bad ID type, image size, or language format, or non-episode ID used on episode endpoint."),
+        (status = 401, description = "Invalid or missing API key."),
+        (status = 404, description = "Episode not found."),
+    ),
+)]
+pub async fn episode_handler(
+    State(state): State<Arc<AppState>>,
+    Path((api_key, id_type_str, id_value)): Path<(String, String, String)>,
+    Query(query): Query<ImageQuery>,
+) -> Response {
+    image_handler_inner(state, &api_key, &id_type_str, &id_value, query, cache::ImageType::Episode).await
 }
 
 // --- Content-addressed CDN handlers (`/c/{settings_hash}/...`) ---
@@ -596,6 +649,14 @@ pub async fn cdn_backdrop_handler(
     cdn_handler_inner(state, &settings_hash, &id_type_str, &id_value, query, cache::ImageType::Backdrop).await
 }
 
+pub async fn cdn_episode_handler(
+    State(state): State<Arc<AppState>>,
+    Path((settings_hash, id_type_str, id_value)): Path<(String, String, String)>,
+    Query(query): Query<ImageQuery>,
+) -> Response {
+    cdn_handler_inner(state, &settings_hash, &id_type_str, &id_value, query, cache::ImageType::Episode).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -644,6 +705,7 @@ mod tests {
             position: None,
             image_source: None,
             textless: None,
+            blur: None,
         }
     }
 

@@ -71,6 +71,19 @@ GET /{api_key}/{id_type}/backdrop-default/{id_value}.jpg
 - Returns JPEG with rating badges stacked vertically in the top-right corner
 - Uses TMDB (default) or Fanart.tv as the image source
 
+### Episode
+
+```
+GET /{api_key}/{id_type}/episode-default/{id_value}.jpg
+```
+
+- Returns JPEG with per-episode ratings on an episode still image (landscape)
+- Falls back to the series poster when no episode still is available
+- Supports episode IMDb IDs (e.g. `tt0959621`), TMDB episode format (`episode-1396-S1E1`), and TVDB episode IDs
+- Dedicated episode settings: position, direction, badge style/size, label style, ratings limit
+- `?blur=true` applies Gaussian blur for spoiler protection (badges remain sharp)
+- IMDB episode ratings require an OMDb API key (MDBList does not support episode-level ratings)
+
 ### Key Validation
 
 ```
@@ -83,7 +96,7 @@ GET /{api_key}/isValid
 **Common parameters:**
 
 - `id_type`: `imdb`, `tmdb`, `tvdb`
-- `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`
+- `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`, `episode-1396-S1E1`. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German). Applies to posters and logos — selects language-specific images from TMDB or Fanart.tv. Falls back to English if the requested language is unavailable. Backdrops are language-agnostic and ignore this parameter
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
@@ -96,9 +109,10 @@ GET /{api_key}/isValid
 - `?badge_direction={d|h|v}`: badge stacking direction (poster only) — `d` (default), `h` (horizontal), `v` (vertical)
 - `?position={bc|tc|l|r|tl|tr|bl|br}`: badge anchor position (poster only)
 - `?textless={true|false}`: prefer textless images when available (poster only). Works with both TMDB and Fanart.tv sources
+- `?blur={true|false}`: apply Gaussian blur for spoiler protection (episode only). Badges remain sharp over the blurred still image
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
-Poster-only parameters (`badge_direction`, `position`, `textless`) are silently ignored on logo and backdrop endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
+Poster/episode parameters (`badge_direction`, `position`) are silently ignored on logo and backdrop endpoints. `textless` is poster-only. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -130,7 +144,16 @@ The `?imageSize=` parameter controls the output dimensions. When omitted, `mediu
 | `medium` *(default)* | 1920 × 1080 |
 | `large` | 3840 × 2160 |
 
-`small` is only valid for backdrops — requesting it for posters or logos returns `400 Bad Request`. `verylarge` is accepted as an alias for `very-large` for RPDB compatibility.
+**Episode sizes:**
+
+| Size | Dimensions |
+|---|---|
+| `small` | 480 × 270 |
+| `medium` *(default)* | 780 × 439 |
+| `large` | 1280 × 720 |
+| `very-large` / `verylarge` | 1920 × 1080 |
+
+`small` is only valid for backdrops and episodes — requesting it for posters or logos returns `400 Bad Request`. `verylarge` is accepted as an alias for `very-large` for RPDB compatibility.
 
 ## Features
 
@@ -237,6 +260,7 @@ Images are cached in three layers: in-memory (moka), filesystem, and SQLite meta
 ├── posters/{id_type}/    # Rendered poster JPEGs
 ├── logos/{id_type}/       # Rendered logo PNGs
 ├── backdrops/{id_type}/   # Rendered backdrop JPEGs
+├── episodes/{id_type}/   # Rendered episode JPEGs
 └── preview/{subdir}/      # Preview images for the settings UI
 ```
 
@@ -273,13 +297,14 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 
 ### Image Kind Prefixes
 
-Logos and backdrops include a kind prefix in their cache keys to distinguish them from posters:
+Logos, backdrops, and episodes include a kind prefix in their cache keys to distinguish them from posters:
 
 | Kind | Prefix |
 |---|---|
 | Poster | *(none)* |
 | Logo | `_l` |
 | Backdrop | `_b` |
+| Episode | `_e` |
 
 ### Source Variant Markers
 
@@ -306,6 +331,7 @@ The `image_meta` table tracks metadata for cached images:
 | `image_type` | `p` | Poster |
 | `image_type` | `l` | Logo |
 | `image_type` | `b` | Backdrop |
+| `image_type` | `e` | Episode |
 
 ### Settings Short Values
 
@@ -340,6 +366,9 @@ imdb/tt0111161_l_f_en@mil.sh.lt.bm.zm
 
 # Backdrop from TMDB with vertical badges, official labels, extra-large badge size, large image
 imdb/tt0111161_b_t@mil.sv.lo.bxl.zl
+
+# Episode with 1 rating, top-right position, vertical direction, vertical badges, official labels, medium badge size, blur enabled
+imdb/tt0959621_e@i.ptr.sv.lo.dv.bm.blur.zm
 ```
 
 ### Cross-ID Cache

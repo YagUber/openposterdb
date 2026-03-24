@@ -37,6 +37,13 @@ export interface RenderSettings {
   poster_badge_size: string
   logo_badge_size: string
   backdrop_badge_size: string
+  episode_ratings_limit: number
+  episode_badge_style: string
+  episode_label_style: string
+  episode_badge_size: string
+  episode_position: string
+  episode_badge_direction: string
+  episode_blur: boolean
 }
 
 const props = defineProps<{
@@ -48,6 +55,7 @@ const props = defineProps<{
   fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>
   fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
   fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
+  fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean) => Promise<Response>
 }>()
 
 const editFanart = ref(props.settings.image_source === 'f')
@@ -69,6 +77,13 @@ const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd
 const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
+const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit ?? 1)
+const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
+const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
+const editEpisodeBadgeSize = ref(props.settings.episode_badge_size || 'l')
+const editEpisodePosition = ref(props.settings.episode_position || 'tr')
+const editEpisodeBadgeDirection = ref(props.settings.episode_badge_direction || 'v')
+const editEpisodeBlur = ref(props.settings.episode_blur ?? false)
 
 function applySettings(s: RenderSettings) {
   editFanart.value = s.image_source === 'f'
@@ -89,6 +104,13 @@ function applySettings(s: RenderSettings) {
   editPosterBadgeSize.value = s.poster_badge_size || 'm'
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
+  editEpisodeRatingsLimit.value = s.episode_ratings_limit ?? 1
+  editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
+  editEpisodeLabelStyle.value = s.episode_label_style || 'o'
+  editEpisodeBadgeSize.value = s.episode_badge_size || 'l'
+  editEpisodePosition.value = s.episode_position || 'tr'
+  editEpisodeBadgeDirection.value = s.episode_badge_direction || 'v'
+  editEpisodeBlur.value = s.episode_blur ?? false
 }
 const currentSettings = ref<RenderSettings>(props.settings)
 const saving = ref(false)
@@ -143,6 +165,13 @@ async function autoSave() {
       poster_badge_size: editPosterBadgeSize.value,
       logo_badge_size: editLogoBadgeSize.value,
       backdrop_badge_size: editBackdropBadgeSize.value,
+      episode_ratings_limit: editEpisodeRatingsLimit.value,
+      episode_badge_style: editEpisodeBadgeStyle.value,
+      episode_label_style: editEpisodeLabelStyle.value,
+      episode_badge_size: editEpisodeBadgeSize.value,
+      episode_position: editEpisodePosition.value,
+      episode_badge_direction: editEpisodeBadgeDirection.value,
+      episode_blur: editEpisodeBlur.value,
     })
     if (err) {
       error.value = err
@@ -169,7 +198,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
   () => {
     if (syncing) return
     autoSave()
@@ -215,6 +244,7 @@ function makePreviewState(): PreviewState {
 const posterPreview = ref<PreviewState>(makePreviewState())
 const logoPreview = ref<PreviewState>(makePreviewState())
 const backdropPreview = ref<PreviewState>(makePreviewState())
+const episodePreview = ref<PreviewState>(makePreviewState())
 
 function onPreviewLoad(state: PreviewState, e: Event) {
   const img = e.target as HTMLImageElement
@@ -257,6 +287,7 @@ async function fetchPreviewImage(
 let posterPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let logoPreviewTimer: ReturnType<typeof setTimeout> | null = null
 let backdropPreviewTimer: ReturnType<typeof setTimeout> | null = null
+let episodePreviewTimer: ReturnType<typeof setTimeout> | null = null
 
 function updatePosterPreview() {
   fetchPreviewImage(posterPreview.value, props.fetchPreview, { posterPosition: editPosterPosition.value, badgeStyle: editPosterBadgeStyle.value, labelStyle: editPosterLabelStyle.value, badgeDirection: editPosterBadgeDirection.value, badgeSize: editPosterBadgeSize.value })
@@ -274,10 +305,17 @@ function updateBackdropPreview() {
   }
 }
 
+function updateEpisodePreview() {
+  if (props.fetchEpisodePreview) {
+    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value))
+  }
+}
+
 function updateAllPreviews() {
   updatePosterPreview()
   updateLogoPreview()
   updateBackdropPreview()
+  updateEpisodePreview()
 }
 
 // Global settings: refresh all previews
@@ -286,9 +324,11 @@ watch([editRatingsOrder], () => {
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
+  if (episodePreviewTimer) clearTimeout(episodePreviewTimer)
   posterPreviewTimer = setTimeout(updatePosterPreview, 500)
   logoPreviewTimer = setTimeout(updateLogoPreview, 500)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
+  episodePreviewTimer = setTimeout(updateEpisodePreview, 500)
 }, { deep: true })
 
 // Poster-only settings
@@ -312,6 +352,13 @@ watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle,
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
 })
 
+// Episode-only settings
+watch([editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur], () => {
+  if (syncing) return
+  if (episodePreviewTimer) clearTimeout(episodePreviewTimer)
+  episodePreviewTimer = setTimeout(updateEpisodePreview, 500)
+})
+
 // Initial preview on mount
 updateAllPreviews()
 
@@ -319,9 +366,11 @@ onBeforeUnmount(() => {
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
+  if (episodePreviewTimer) clearTimeout(episodePreviewTimer)
   if (posterPreview.value.src) URL.revokeObjectURL(posterPreview.value.src)
   if (logoPreview.value.src) URL.revokeObjectURL(logoPreview.value.src)
   if (backdropPreview.value.src) URL.revokeObjectURL(backdropPreview.value.src)
+  if (episodePreview.value.src) URL.revokeObjectURL(episodePreview.value.src)
 })
 
 const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
@@ -602,7 +651,7 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
 
     <!-- Section 4: Backdrop -->
     <div v-if="fetchBackdropPreview" class="rounded-md border p-4 space-y-3">
-      <p class="text-sm font-semibold">Backdrop</p>
+      <p class="text-sm font-semibold">Backdrop (series/movie)</p>
       <div class="relative w-[280px]" :style="backdropPreview.size ? { aspectRatio: `${backdropPreview.size.w} / ${backdropPreview.size.h}` } : undefined">
         <img
           v-show="backdropPreview.src && !backdropPreview.error"
@@ -681,6 +730,137 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               />
             </div>
             <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+          </div>
+      </div>
+    </div>
+
+    <!-- Section 5: Episode -->
+    <div v-if="fetchEpisodePreview" class="rounded-md border p-4 space-y-3">
+      <p class="text-sm font-semibold">Episode</p>
+      <div class="relative w-[280px]" :style="episodePreview.size ? { aspectRatio: `${episodePreview.size.w} / ${episodePreview.size.h}` } : undefined">
+        <img
+          v-show="episodePreview.src && !episodePreview.error"
+          :src="episodePreview.src"
+          alt="Episode preview"
+          class="rounded border w-full"
+          @load="(e: Event) => onPreviewLoad(episodePreview, e)"
+          @error="episodePreview.loading = false; episodePreview.error = true"
+        />
+        <p v-if="episodePreview.error && !episodePreview.loading" class="text-sm text-muted-foreground py-4">Failed</p>
+        <div v-if="episodePreview.loading" class="absolute inset-0 flex items-center justify-center rounded">
+          <Loader2 class="size-5 animate-spin text-white drop-shadow-md" />
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg">
+          <div class="space-y-2">
+            <Label :for="inputId('episode-position')">Position</Label>
+            <Select
+              :model-value="editEpisodePosition"
+              @update:model-value="editEpisodePosition = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-position')" class="max-w-xs" data-testid="episode-position-select">
+                <SelectValue placeholder="Select position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bc">Bottom Center</SelectItem>
+                <SelectItem value="tc">Top Center</SelectItem>
+                <SelectItem value="l">Left</SelectItem>
+                <SelectItem value="r">Right</SelectItem>
+                <SelectItem value="tl">Top Left</SelectItem>
+                <SelectItem value="tr">Top Right</SelectItem>
+                <SelectItem value="bl">Bottom Left</SelectItem>
+                <SelectItem value="br">Bottom Right</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-badge-direction')">Direction</Label>
+            <Select
+              :model-value="editEpisodeBadgeDirection"
+              @update:model-value="editEpisodeBadgeDirection = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-badge-direction')" class="max-w-xs" data-testid="episode-badge-direction-select">
+                <SelectValue placeholder="Select direction" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Auto</SelectItem>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-badge-style')">Badge style</Label>
+            <Select
+              :model-value="editEpisodeBadgeStyle"
+              @update:model-value="editEpisodeBadgeStyle = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-badge-style')" class="max-w-xs" data-testid="episode-badge-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-label-style')">Label style</Label>
+            <Select
+              :model-value="editEpisodeLabelStyle"
+              @update:model-value="editEpisodeLabelStyle = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-label-style')" class="max-w-xs" data-testid="episode-label-style-select">
+                <SelectValue placeholder="Select style" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="t">Text</SelectItem>
+                <SelectItem value="i">Icon</SelectItem>
+                <SelectItem value="o">Official</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('episode-badge-size')">Badge size</Label>
+            <Select
+              :model-value="editEpisodeBadgeSize"
+              @update:model-value="editEpisodeBadgeSize = $event as string"
+            >
+              <SelectTrigger :id="inputId('episode-badge-size')" class="max-w-xs" data-testid="episode-badge-size-select">
+                <SelectValue placeholder="Select size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xs">Extra Small</SelectItem>
+                <SelectItem value="s">Small</SelectItem>
+                <SelectItem value="m">Medium</SelectItem>
+                <SelectItem value="l">Large</SelectItem>
+                <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <Label :for="inputId('episode-ratings-limit')">Max ratings</Label>
+              <Input
+                :id="inputId('episode-ratings-limit')"
+                v-model.number="editEpisodeRatingsLimit"
+                type="number"
+                :min="0"
+                :max="8"
+                class="w-[80px]"
+                title="0 = show all"
+              />
+            </div>
+            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+          </div>
+          <div class="flex items-center gap-2 col-span-full">
+            <Checkbox
+              :id="inputId('episode-blur')"
+              :model-value="editEpisodeBlur"
+              data-testid="episode-blur-checkbox"
+              @update:model-value="(v) => editEpisodeBlur = !!v"
+            />
+            <Label :for="inputId('episode-blur')">Blur (spoiler protection)</Label>
           </div>
       </div>
     </div>

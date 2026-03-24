@@ -571,3 +571,198 @@ async fn preview_self_serve_backdrop() {
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
 }
+
+// --- Episode preview tests ---
+
+#[tokio::test]
+async fn preview_episode_returns_jpeg() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/episode", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert!(body.len() > 100, "JPEG should have substantial content");
+    assert_eq!(body[0], 0xFF);
+    assert_eq!(body[1], 0xD8);
+}
+
+#[tokio::test]
+async fn preview_episode_accepts_all_settings() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get(
+        "/api/admin/preview/episode?ratings_limit=3&ratings_order=imdb,tmdb,rt&position=tl&badge_style=h&label_style=i&badge_direction=h&badge_size=m&blur=true",
+        &token
+    )).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(body[0], 0xFF);
+    assert!(body.len() > 100);
+}
+
+#[tokio::test]
+async fn preview_episode_blur_produces_different_image() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let params = "ratings_limit=2&ratings_order=imdb,tmdb";
+
+    let res_noblur = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/episode?{params}"), &token
+    )).await.unwrap();
+    let body_noblur = res_noblur.into_body().collect().await.unwrap().to_bytes();
+
+    let res_blur = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/episode?{params}&blur=true"), &token
+    )).await.unwrap();
+    let body_blur = res_blur.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_noblur[0], 0xFF);
+    assert_eq!(body_blur[0], 0xFF);
+    assert_ne!(body_noblur, body_blur, "blur should produce a different image");
+}
+
+#[tokio::test]
+async fn preview_episode_cache_returns_identical_bytes() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let uri = "/api/admin/preview/episode?ratings_limit=2&ratings_order=imdb,tmdb";
+
+    let res1 = app.clone().oneshot(authed_get(uri, &token)).await.unwrap();
+    let body1 = res1.into_body().collect().await.unwrap().to_bytes();
+
+    let res2 = app.clone().oneshot(authed_get(uri, &token)).await.unwrap();
+    let body2 = res2.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body1, body2);
+}
+
+#[tokio::test]
+async fn preview_episode_position_produces_different_images() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let params = "ratings_limit=3&ratings_order=imdb,tmdb,rt";
+
+    let res_tr = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/episode?{params}&position=tr"), &token
+    )).await.unwrap();
+    let body_tr = res_tr.into_body().collect().await.unwrap().to_bytes();
+
+    let res_bc = app.clone().oneshot(authed_get(
+        &format!("/api/admin/preview/episode?{params}&position=bc"), &token
+    )).await.unwrap();
+    let body_bc = res_bc.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_tr[0], 0xFF);
+    assert_eq!(body_bc[0], 0xFF);
+    assert_ne!(body_tr, body_bc, "different positions should produce different images");
+}
+
+#[tokio::test]
+async fn preview_episode_self_serve() {
+    let (app, _state) = common::setup_test_app().await;
+    let api_key_token = common::setup_api_key_session(&app).await;
+
+    let req = Request::builder()
+        .uri("/api/key/me/preview/episode?badge_size=s&blur=true")
+        .header("authorization", format!("Bearer {api_key_token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(res.headers().get("content-type").unwrap(), "image/jpeg");
+}
+
+#[tokio::test]
+async fn preview_episode_accepts_all_badge_styles() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for style in ["h", "v", "d"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/episode?badge_style={style}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "episode badge_style={style} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_episode_rejects_invalid_badge_style() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/episode?badge_style=z", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preview_episode_accepts_all_badge_sizes() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for size in ["xs", "s", "m", "l", "xl"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/episode?badge_size={size}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "episode badge_size={size} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_episode_accepts_all_badge_directions() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    for dir in ["d", "h", "v"] {
+        let res = app.clone().oneshot(authed_get(
+            &format!("/api/admin/preview/episode?badge_direction={dir}"), &token
+        )).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "episode badge_direction={dir} should be accepted");
+    }
+}
+
+#[tokio::test]
+async fn preview_episode_badge_style_produces_different_images() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res_h = app.clone().oneshot(authed_get("/api/admin/preview/episode?ratings_limit=3&badge_style=h", &token)).await.unwrap();
+    let body_h = res_h.into_body().collect().await.unwrap().to_bytes();
+
+    let res_v = app.clone().oneshot(authed_get("/api/admin/preview/episode?ratings_limit=3&badge_style=v", &token)).await.unwrap();
+    let body_v = res_v.into_body().collect().await.unwrap().to_bytes();
+
+    assert_eq!(body_h[0], 0xFF);
+    assert_eq!(body_v[0], 0xFF);
+    assert_ne!(body_h, body_v, "horizontal and vertical episode badge styles should differ");
+}
+
+#[tokio::test]
+async fn preview_episode_rejects_invalid_position() {
+    let (app, _state) = common::setup_test_app().await;
+    let token = common::setup_admin(&app).await;
+
+    let res = app.clone().oneshot(authed_get("/api/admin/preview/episode?position=invalid", &token)).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn preview_episode_requires_auth() {
+    let (app, _state) = common::setup_test_app().await;
+
+    let req = Request::builder()
+        .uri("/api/admin/preview/episode")
+        .body(Body::empty())
+        .unwrap();
+
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}

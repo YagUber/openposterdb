@@ -35,6 +35,13 @@ const defaultSettings = {
   logo_label_style: 't',
   backdrop_label_style: 't',
   poster_badge_direction: 'd',
+  episode_ratings_limit: 1,
+  episode_badge_style: 'v',
+  episode_label_style: 'o',
+  episode_badge_size: 'l',
+  episode_position: 'tr',
+  episode_badge_direction: 'v',
+  episode_blur: false,
 }
 
 function mountView() {
@@ -302,5 +309,68 @@ describe('SettingsView', () => {
       }),
     )
     vi.useRealTimers()
+  })
+
+  it('auto-save payload includes episode settings', async () => {
+    vi.useFakeTimers()
+    mockAdminApi.getSettings.mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          ...defaultSettings,
+          episode_ratings_limit: 2,
+          episode_badge_style: 'h',
+          episode_label_style: 'i',
+          episode_badge_size: 's',
+          episode_position: 'tl',
+          episode_badge_direction: 'h',
+          episode_blur: true,
+        }),
+    })
+    mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    // Toggle fanart to trigger auto-save
+    await wrapper.find('[data-testid="fanart-checkbox"]').setValue(true)
+    vi.advanceTimersByTime(700)
+    await flushPromises()
+
+    expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episode_ratings_limit: 2,
+        episode_badge_style: 'h',
+        episode_label_style: 'i',
+        episode_badge_size: 's',
+        episode_position: 'tl',
+        episode_badge_direction: 'h',
+        episode_blur: true,
+      }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('toggleFreeApiKey payload includes episode fields', async () => {
+    mockAdminApi.updateSettings.mockResolvedValue({ ok: true })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const toggle = wrapper.find('button[role="switch"]')
+    await toggle.trigger('click')
+    await flushPromises()
+
+    expect(mockAdminApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        episode_ratings_limit: 1,
+        episode_badge_style: 'v',
+        episode_label_style: 'o',
+        episode_badge_size: 'l',
+        episode_position: 'tr',
+        episode_badge_direction: 'v',
+        episode_blur: false,
+      }),
+    )
   })
 })

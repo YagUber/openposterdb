@@ -37,6 +37,7 @@ pub enum ImageType {
     Poster,
     Logo,
     Backdrop,
+    Episode,
 }
 
 impl ImageType {
@@ -45,12 +46,13 @@ impl ImageType {
             ImageType::Poster => "posters",
             ImageType::Logo => "logos",
             ImageType::Backdrop => "backdrops",
+            ImageType::Episode => "episodes",
         }
     }
 
     pub fn ext(self) -> &'static str {
         match self {
-            ImageType::Poster | ImageType::Backdrop => "jpg",
+            ImageType::Poster | ImageType::Backdrop | ImageType::Episode => "jpg",
             ImageType::Logo => "png",
         }
     }
@@ -60,6 +62,7 @@ impl ImageType {
             ImageType::Poster => "p",
             ImageType::Logo => "l",
             ImageType::Backdrop => "b",
+            ImageType::Episode => "e",
         }
     }
 
@@ -69,13 +72,14 @@ impl ImageType {
             ImageType::Poster => "",
             ImageType::Logo => "_l",
             ImageType::Backdrop => "_b",
+            ImageType::Episode => "_e",
         }
     }
 
     /// Strip the file extension matching this image type from a string.
     pub fn strip_ext(self, s: &str) -> &str {
         match self {
-            ImageType::Poster | ImageType::Backdrop => s.strip_suffix(".jpg").unwrap_or(s),
+            ImageType::Poster | ImageType::Backdrop | ImageType::Episode => s.strip_suffix(".jpg").unwrap_or(s),
             ImageType::Logo => s.strip_suffix(".png").unwrap_or(s),
         }
     }
@@ -86,12 +90,13 @@ impl ImageType {
             ImageType::Poster => "poster",
             ImageType::Logo => "logo",
             ImageType::Backdrop => "backdrop",
+            ImageType::Episode => "episode",
         }
     }
 
     pub fn content_type(self) -> &'static str {
         match self {
-            ImageType::Poster | ImageType::Backdrop => "image/jpeg",
+            ImageType::Poster | ImageType::Backdrop | ImageType::Episode => "image/jpeg",
             ImageType::Logo => "image/png",
         }
     }
@@ -550,6 +555,7 @@ mod tests {
         assert_eq!(ImageType::Poster.subdir(), "posters");
         assert_eq!(ImageType::Logo.subdir(), "logos");
         assert_eq!(ImageType::Backdrop.subdir(), "backdrops");
+        assert_eq!(ImageType::Episode.subdir(), "episodes");
     }
 
     #[test]
@@ -557,6 +563,29 @@ mod tests {
         assert_eq!(ImageType::Poster.ext(), "jpg");
         assert_eq!(ImageType::Logo.ext(), "png");
         assert_eq!(ImageType::Backdrop.ext(), "jpg");
+        assert_eq!(ImageType::Episode.ext(), "jpg");
+    }
+
+    #[test]
+    fn image_type_episode_properties() {
+        assert_eq!(ImageType::Episode.db_value(), "e");
+        assert_eq!(ImageType::Episode.kind_prefix(), "_e");
+        assert_eq!(ImageType::Episode.label(), "episode");
+        assert_eq!(ImageType::Episode.content_type(), "image/jpeg");
+        assert_eq!(ImageType::Episode.strip_ext("still.jpg"), "still");
+        assert_eq!(ImageType::Episode.strip_ext("still.png"), "still.png");
+    }
+
+    #[test]
+    fn typed_cache_path_episode() {
+        let p = typed_cache_path("/tmp/cache", ImageType::Episode, "tmdb", "episode-1396-S1E1").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/episodes/tmdb/episode-1396-S1E1.jpg"));
+    }
+
+    #[test]
+    fn preview_path_episode() {
+        let p = preview_path("/tmp/cache", ImageType::Episode, "r_imdb", "jpg").unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/cache/preview/episodes/r_imdb.jpg"));
     }
 
     #[test]

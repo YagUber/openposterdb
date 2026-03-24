@@ -85,6 +85,7 @@ pub fn settings_cache_suffix(
         cache::ImageType::Poster => ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit),
         cache::ImageType::Logo => ratings::ratings_cache_suffix(&settings.ratings_order, settings.logo_ratings_limit),
         cache::ImageType::Backdrop => ratings::ratings_cache_suffix(&settings.ratings_order, settings.backdrop_ratings_limit),
+        cache::ImageType::Episode => ratings::ratings_cache_suffix(&settings.ratings_order, settings.episode_ratings_limit),
     };
     settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix)
 }
@@ -121,6 +122,13 @@ pub fn settings_cache_suffix_with_ratings(
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
+        episode_ratings_limit: _,
+        episode_badge_style: _,
+        episode_label_style: _,
+        episode_badge_size: _,
+        episode_position: _,
+        episode_badge_direction: _,
+        episode_blur: _,
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -147,6 +155,15 @@ pub fn settings_cache_suffix_with_ratings(
             let ls = label_style_cache_suffix(settings.backdrop_label_style.as_str());
             let bsz = settings.backdrop_badge_size.cache_suffix();
             format!("{rs}{bs}{ls}{bsz}{is_suffix}")
+        }
+        cache::ImageType::Episode => {
+            let ps = poster_position_cache_suffix(settings.episode_position.as_str());
+            let bs = badge_style_cache_suffix(settings.episode_badge_style.as_str());
+            let ls = label_style_cache_suffix(settings.episode_label_style.as_str());
+            let bd = badge_direction_cache_suffix(settings.episode_badge_direction.as_str());
+            let bsz = settings.episode_badge_size.cache_suffix();
+            let blur = if settings.episode_blur { ".blur" } else { "" };
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{blur}{is_suffix}")
         }
     }
 }
@@ -271,16 +288,30 @@ async fn upsert_available_ratings_cached(
         .await;
 }
 
-/// Resolve an ID and fetch its ratings in one step. Returns the resolved ID,
-/// raw ratings result, and cross-ID info. Callers apply their own rating
-/// preferences via `ratings::apply_rating_preferences`.
+/// Resolve an ID and fetch ratings.
+///
+/// When `uplift_episodes` is true and the ID resolves to an episode, the
+/// episode is transparently re-resolved to its parent series *before*
+/// fetching ratings. This avoids wasted episode-level TMDB calls when the
+/// caller only needs series-level data (poster, logo, backdrop endpoints).
 async fn resolve_with_ratings(
     state: &AppState,
     id_type: IdType,
     id_value: &str,
+    uplift_episodes: bool,
 ) -> Result<(id::ResolvedId, ratings::RatingsResult, CrossIdInfo), AppError> {
     let id_resolve_start = Instant::now();
-    let resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
+    let mut resolved = id::resolve(id_type, id_value, &state.tmdb, &state.id_cache).await?;
+
+    // When an episode ID hits a non-episode endpoint, re-resolve to the
+    // parent series so ratings and assets are series-level.
+    if uplift_episodes && resolved.media_type == MediaType::Episode {
+        if let Some(ref ep) = resolved.episode {
+            let series_id = id::format_tmdb_id_value(ep.show_tmdb_id, &MediaType::Tv, None);
+            resolved = id::resolve(IdType::Tmdb, &series_id, &state.tmdb, &state.id_cache).await?;
+        }
+    }
+
     let id_resolve_ms = id_resolve_start.elapsed().as_millis() as u64;
 
     let ratings_result = ratings::fetch_ratings(
@@ -290,7 +321,7 @@ async fn resolve_with_ratings(
         state.mdblist.as_ref(),
         &state.ratings_cache,
     )
-    .await;
+    .await?;
 
     if id_resolve_ms > SLOW_REQUEST_MS {
         tracing::warn!(
@@ -313,6 +344,7 @@ struct CrossIdInfo {
     tvdb_id: Option<u64>,
     media_type: MediaType,
     release_date: Option<String>,
+    episode: Option<id::EpisodeInfo>,
 }
 
 impl CrossIdInfo {
@@ -324,6 +356,7 @@ impl CrossIdInfo {
             tvdb_id: resolved.tvdb_id.or(ratings.tvdb_id),
             media_type: resolved.media_type,
             release_date: resolved.release_date.clone(),
+            episode: resolved.episode.clone(),
         }
     }
 }
@@ -360,7 +393,7 @@ fn spawn_cross_id_cache(
             }
         }
         {
-            let tmdb_val = format_tmdb_id_value(cross_ids.tmdb_id, &cross_ids.media_type);
+            let tmdb_val = format_tmdb_id_value(cross_ids.tmdb_id, &cross_ids.media_type, cross_ids.episode.as_ref());
             if id_type != IdType::Tmdb {
                 alternates.push(("tmdb", tmdb_val));
             }
@@ -404,6 +437,35 @@ fn spawn_cross_id_cache(
             }
         }
     });
+}
+
+/// Write a freshly rendered image to disk cache, update the meta DB, and
+/// distribute to cross-ID cache entries. Returns the final `Bytes`.
+///
+/// Cache write failures are logged but do not fail the request — the image is
+/// already rendered and should still be served to the caller.
+async fn post_render_cache(
+    state: &AppState,
+    rendered: Vec<u8>,
+    cache_path: &std::path::Path,
+    cache_key: &str,
+    release_date: Option<&str>,
+    image_type: cache::ImageType,
+    cross_ids: CrossIdInfo,
+    id_type: IdType,
+    cache_suffix: String,
+) -> Bytes {
+    if !state.config.external_cache_only {
+        if let Err(e) = cache::write(cache_path, &rendered).await {
+            tracing::warn!(cache_key, error = %e, "failed to write image to disk cache");
+        }
+    }
+    if let Err(e) = cache::upsert_meta_db(&state.db, cache_key, release_date, image_type).await {
+        tracing::warn!(cache_key, error = %e, "failed to upsert cache meta DB");
+    }
+    let bytes = Bytes::from(rendered);
+    spawn_cross_id_cache(state, cross_ids, id_type, cache_suffix, image_type, bytes.clone());
+    bytes
 }
 
 /// Check in-memory and filesystem caches for a cached image, triggering a
@@ -555,11 +617,12 @@ pub async fn handle_inner(
     }
 
     // Slow path: resolve ID and fetch ratings (moka-cached, so still fast on
-    // repeat requests within the 30-min TTL).
+    // repeat requests within the 30-min TTL). Episodes are uplifted to their
+    // parent series — the poster endpoint returns series-level assets.
     let slow_path_start = Instant::now();
     let resolve_start = Instant::now();
     let (resolved, ratings_result, cross_ids) =
-        resolve_with_ratings(state, id_type, id_value).await?;
+        resolve_with_ratings(state, id_type, id_value, true).await?;
     let resolve_ms = resolve_start.elapsed().as_millis() as u64;
 
     // Persist available sources for future fast-path lookups (always write,
@@ -628,14 +691,9 @@ pub async fn handle_inner(
     let bytes: Bytes = state
         .image_inflight
         .try_get_with(cache_key.clone(), async move {
-            let (bytes, rd, _used_fanart, gen_cross_ids) =
+            let (rendered, rd, _used_fanart, gen_cross_ids) =
                 generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings2, image_size, use_fanart).await?;
-            if !state2.config.external_cache_only {
-                cache::write(&cache_path2, &bytes).await?;
-            }
-            cache::upsert_meta_db(&state2.db, &cache_key2, rd.as_deref(), cache::ImageType::Poster).await?;
-            let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(&state2, gen_cross_ids, id_type, cache_suffix.to_string(), cache::ImageType::Poster, bytes.clone());
+            let bytes = post_render_cache(&state2, rendered, &cache_path2, &cache_key2, rd.as_deref(), cache::ImageType::Poster, gen_cross_ids, id_type, cache_suffix.to_string()).await;
             Ok::<_, AppError>(bytes)
         })
         .await
@@ -777,13 +835,8 @@ async fn try_fanart_path(
             };
             let (cache_key, cache_path) =
                 fanart_variant_paths(&state.config.cache_dir, id_type_str, id_value, &actual_variant, &suffix)?;
-            if !state.config.external_cache_only {
-                let _ = cache::write(&cache_path, &bytes).await;
-            }
-            let _ = cache::upsert_meta_db(&state.db, &cache_key, rd.as_deref(), cache::ImageType::Poster).await;
             let fanart_cache_suffix = format!("{actual_variant}{suffix}");
-            let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(state, cross_ids, id_type, fanart_cache_suffix, cache::ImageType::Poster, bytes.clone());
+            let bytes = post_render_cache(state, bytes, &cache_path, &cache_key, rd.as_deref(), cache::ImageType::Poster, cross_ids, id_type, fanart_cache_suffix).await;
             state
                 .image_mem_cache
                 .insert(
@@ -885,7 +938,7 @@ fn trigger_background_refresh(
     let cross_id = Some((id_type, cache_suffix.to_string()));
     spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
         let (resolved, ratings_result, cross_ids) =
-            resolve_with_ratings(&state2, id_type, &id_value).await?;
+            resolve_with_ratings(&state2, id_type, &id_value, true).await?;
         {
             let id_key = format!("{}/{id_value}", id_type.as_str());
             let sources = ratings::available_sources_string(&ratings_result.badges);
@@ -925,7 +978,7 @@ fn trigger_logo_backdrop_refresh(
         let textless = false;
 
         let (resolved, ratings_result, cross_ids) =
-            resolve_with_ratings(&state2, id_type, &id_value).await?;
+            resolve_with_ratings(&state2, id_type, &id_value, true).await?;
         {
             let id_key = format!("{}/{id_value}", id_type.as_str());
             let sources = ratings::available_sources_string(&ratings_result.badges);
@@ -1005,6 +1058,97 @@ fn trigger_logo_backdrop_refresh(
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
+    });
+}
+
+/// Fetch the base image for an episode and render rating badges on top.
+///
+/// Shared by `handle_episode_inner` (request path) and `trigger_episode_refresh`
+/// (background stale-cache refresh) so that sizing, badge-scale, TMDB-fetch, and
+/// render logic live in exactly one place.
+async fn generate_episode(
+    state: &AppState,
+    resolved: &id::ResolvedId,
+    badges: Vec<ratings::RatingBadge>,
+    settings: &RenderSettings,
+    image_size: Option<ImageSize>,
+) -> Result<Vec<u8>, AppError> {
+    let poster_path = resolved
+        .poster_path
+        .as_deref()
+        .ok_or_else(|| AppError::IdNotFound(format!("no image available for episode (tmdb:{})", resolved.tmdb_id)))?;
+
+    let resolved_size = resolve_image_size(image_size);
+    let is_episode_still = resolved.episode.as_ref().map_or(false, |ep| ep.still_path.is_some());
+    let target_width = if is_episode_still {
+        resolved_size.episode_target_width()
+    } else {
+        resolved_size.poster_target_width()
+    };
+    let scale_image_type = if is_episode_still { cache::ImageType::Episode } else { cache::ImageType::Poster };
+    let badge_scale = resolved_size.badge_scale(scale_image_type) * settings.episode_badge_size.scale_factor();
+    let tmdb_size: Arc<str> = resolved_size.tmdb_size().into();
+
+    let image_bytes = if state.config.external_cache_only {
+        state.tmdb.fetch_poster_bytes(poster_path, &tmdb_size).await?
+    } else {
+        let poster_cache = cache::base_poster_path(&state.config.cache_dir, poster_path, &tmdb_size)?;
+        if let Some(entry) = cache::read(&poster_cache, state.config.image_stale_secs).await {
+            entry.bytes
+        } else {
+            let bytes = state.tmdb.fetch_poster_bytes(poster_path, &tmdb_size).await?;
+            cache::write(&poster_cache, &bytes).await?;
+            bytes
+        }
+    };
+
+    let font = state.font.clone();
+    let quality = state.config.image_quality;
+    let position = settings.episode_position;
+    let badge_style = settings.episode_badge_style;
+    let label_style = settings.episode_label_style;
+    let badge_direction = settings.episode_badge_direction;
+    let episode_badge_size = settings.episode_badge_size;
+    let blur = settings.episode_blur;
+    let render_semaphore = state.render_semaphore.clone();
+
+    let _permit = render_semaphore.acquire().await
+        .map_err(|_| AppError::Other("render queue closed".into()))?;
+    let rendered = tokio::task::spawn_blocking(move || {
+        generate::render_episode_sync(&image_bytes, &badges, &font, quality, position, badge_style, label_style, badge_direction, target_width, badge_scale, episode_badge_size, blur)
+    })
+    .await
+    .map_err(|e| AppError::Other(e.to_string()))??;
+
+    Ok(rendered)
+}
+
+fn trigger_episode_refresh(
+    state: &AppState,
+    cache_key: &str,
+    cache_path: &std::path::Path,
+    id_type: IdType,
+    id_value: &str,
+    cache_suffix: &str,
+    settings: &RenderSettings,
+    image_size: Option<ImageSize>,
+) {
+    let state2 = state.clone();
+    let id_value = id_value.to_string();
+    let settings = settings.clone();
+    let cross_id = Some((id_type, cache_suffix.to_string()));
+    spawn_background_refresh(state, cache_key, cache_path, cross_id, async move {
+        let (resolved, ratings_result, cross_ids) =
+            resolve_with_ratings(&state2, id_type, &id_value, false).await?;
+        {
+            let id_key = format!("{}/{id_value}", id_type.as_str());
+            let sources = ratings::available_sources_string(&ratings_result.badges);
+            upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+        }
+        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.episode_ratings_limit);
+        let bytes = generate_episode(&state2, &resolved, badges, &settings, image_size).await?;
+
+        Ok((bytes, cross_ids.release_date.clone(), cache::ImageType::Episode, cross_ids))
     });
 }
 
@@ -1165,7 +1309,9 @@ async fn fetch_fanart_images(
                 .await;
             (key, images)
         }
-        MediaType::Tv => {
+        // Episode included for exhaustiveness — episodes use `handle_episode_inner`
+        // which does not call fanart functions.
+        MediaType::Tv | MediaType::Episode => {
             let tv_id = match resolved.tvdb_id {
                 Some(id) => id,
                 None => resolve_tvdb_id(tmdb, resolved.tmdb_id).await.unwrap_or(resolved.tmdb_id),
@@ -1193,7 +1339,8 @@ async fn fetch_fanart_images(
 
 fn select_images_for_kind(images: &FanartImages, kind: cache::ImageType) -> &[FanartPoster] {
     match kind {
-        cache::ImageType::Poster => &images.posters,
+        // Episode included for exhaustiveness — episodes don't use fanart.
+        cache::ImageType::Poster | cache::ImageType::Episode => &images.posters,
         cache::ImageType::Logo => &images.logos,
         cache::ImageType::Backdrop => &images.backdrops,
     }
@@ -1279,7 +1426,9 @@ async fn get_tmdb_images_cached(
 ) -> Option<std::sync::Arc<crate::services::tmdb::TmdbImagesResponse>> {
     let media_type_str = match resolved.media_type {
         MediaType::Movie => "movie",
-        MediaType::Tv => "tv",
+        // Episode included for exhaustiveness — episodes are served by
+        // `handle_episode_inner`, which does not use TMDB images API lookups.
+        MediaType::Tv | MediaType::Episode => "tv",
     };
     let cache_key = format!("{}:{}:{}", media_type_str, resolved.tmdb_id, lang);
     let tmdb = state.tmdb.clone();
@@ -1331,7 +1480,8 @@ async fn try_tmdb_logo_backdrop(
     let candidates = match kind {
         cache::ImageType::Logo => &tmdb_images.logos,
         cache::ImageType::Backdrop => &tmdb_images.backdrops,
-        cache::ImageType::Poster => &tmdb_images.posters,
+        // Episode included for exhaustiveness — episodes don't use TMDB images API.
+        cache::ImageType::Poster | cache::ImageType::Episode => &tmdb_images.posters,
     };
     let selected = crate::services::tmdb::TmdbClient::select_image(candidates, lang, textless)?;
     let size = resolve_image_size(image_size).tmdb_size();
@@ -1376,6 +1526,113 @@ async fn try_fanart_with_negative_cache(
             None
         }
     }
+}
+
+/// Serve an episode image with episode-specific settings (position, direction, blur).
+/// Uses the poster pipeline for ID resolution and ratings, but renders with episode
+/// settings and landscape-aware target width.
+pub async fn handle_episode_inner(
+    state: &AppState,
+    id_type_str: &str,
+    id_value_jpg: &str,
+    mut settings: RenderSettings,
+    image_size: Option<ImageSize>,
+) -> Result<(Bytes, Option<String>), AppError> {
+    let id_type = id::IdType::parse(id_type_str)?;
+    let id_value = id_value_jpg.strip_suffix(".jpg").unwrap_or(id_value_jpg);
+    cache::validate_id_value(id_value)?;
+
+    // Resolve episode-specific defaults
+    settings.episode_badge_direction = settings.episode_badge_direction.resolve(settings.episode_position);
+    settings.episode_badge_style = settings.episode_badge_style.resolve(settings.episode_badge_direction);
+
+    let id_key = format!("{id_type_str}/{id_value}");
+
+    // Fast path: try to reconstruct the cache key from SQLite-stored available
+    // sources, avoiding external API calls entirely on cache hits.
+    if let Some(available) = read_available_ratings_cached(state, &id_key).await {
+        let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.episode_ratings_limit);
+        let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Episode, image_size, &ratings_suffix);
+        let cache_value = format!("{id_value}{suffix}");
+        let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Episode, id_type_str, &cache_value)?;
+        let cache_key = format!("{id_type_str}/{cache_value}");
+
+        let cache_suffix: Arc<str> = suffix.into();
+        if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
+            trigger_episode_refresh(s, k, p, id_type, id_value, &cache_suffix, &settings, image_size);
+        }).await? {
+            let release_date = cache::read_meta_db(&state.db, &cache_key).await;
+            return Ok((bytes, release_date));
+        }
+    }
+
+    // Slow path: resolve ID and fetch ratings (no episode uplift — this IS the episode endpoint)
+    let (resolved, ratings_result, cross_ids) =
+        resolve_with_ratings(state, id_type, id_value, false).await?;
+
+    // The episode endpoint only serves episodes — reject movies and series.
+    if resolved.media_type != MediaType::Episode {
+        return Err(AppError::BadRequest(format!(
+            "{id_value} is a {}, not an episode — use the /{}-default/ endpoint instead",
+            match resolved.media_type {
+                MediaType::Movie => "movie",
+                MediaType::Tv => "series",
+                MediaType::Episode => unreachable!(),
+            },
+            match resolved.media_type {
+                MediaType::Movie => "poster",
+                MediaType::Tv => "poster",
+                MediaType::Episode => unreachable!(),
+            },
+        )));
+    }
+
+    // Persist available sources for fast-path lookups
+    {
+        let sources = ratings::available_sources_string(&ratings_result.badges);
+        upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
+    }
+
+    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.episode_ratings_limit);
+    let ratings_suffix = ratings::badges_cache_suffix(&badges);
+    let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Episode, image_size, &ratings_suffix);
+    let cache_value = format!("{id_value}{suffix}");
+    let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Episode, id_type_str, &cache_value)?;
+    let cache_key = format!("{id_type_str}/{cache_value}");
+
+    // Check caches (memory → filesystem) — may hit now if fast-path suffix
+    // differed from actual badges (e.g. a rating source appeared/disappeared).
+    let cache_suffix: Arc<str> = suffix.into();
+    let release_date = cross_ids.release_date.clone();
+    if let Some(bytes) = check_caches(state, &cache_key, &cache_path, |s, k, p| {
+        trigger_episode_refresh(s, k, p, id_type, id_value, &cache_suffix, &settings, image_size);
+    }).await? {
+        return Ok((bytes, release_date));
+    }
+
+    // Request coalescing — concurrent requests for the same episode share one generation
+    let rd = release_date.clone();
+    let state2 = state.clone();
+    let cache_path2 = cache_path.clone();
+    let cache_key2 = cache_key.clone();
+    let settings2 = settings.clone();
+    let bytes: Bytes = state
+        .image_inflight
+        .try_get_with(cache_key.clone(), async move {
+            let rendered = generate_episode(&state2, &resolved, badges, &settings2, image_size).await?;
+            let bytes = post_render_cache(&state2, rendered, &cache_path2, &cache_key2, rd.as_deref(), cache::ImageType::Episode, cross_ids, id_type, cache_suffix.to_string()).await;
+            Ok::<_, AppError>(bytes)
+        })
+        .await
+        .map_err(|e| match Arc::try_unwrap(e) {
+            Ok(app_err) => app_err,
+            Err(arc) => AppError::Other(arc.to_string()),
+        })?;
+    state
+        .image_mem_cache
+        .insert(cache_key, MemCacheEntry { bytes: bytes.clone(), last_checked: Instant::now() })
+        .await;
+    Ok((bytes, release_date))
 }
 
 /// Serve a logo or backdrop image. Tries TMDB primary with fanart fallback (default),
@@ -1438,7 +1695,7 @@ pub async fn handle_logo_backdrop_inner(
     let variant = match kind {
         cache::ImageType::Backdrop => format!("{kind_prefix}{source_prefix}"),
         cache::ImageType::Logo => format!("{kind_prefix}{source_prefix}_{fanart_lang}"),
-        cache::ImageType::Poster => unreachable!("handle_logo_backdrop_inner only handles logos and backdrops"),
+        cache::ImageType::Poster | cache::ImageType::Episode => return Err(AppError::Other("handle_logo_backdrop_inner only handles logos and backdrops".into())),
     };
     let image_type: cache::ImageType = lb_kind.into();
 
@@ -1467,9 +1724,10 @@ pub async fn handle_logo_backdrop_inner(
         }
     }
 
-    // Slow path: resolve ID and fetch ratings
+    // Slow path: resolve ID and fetch ratings. Episodes are uplifted to
+    // their parent series — logos/backdrops don't apply to episodes.
     let (resolved, ratings_result, cross_ids) =
-        resolve_with_ratings(state, id_type, id_value).await?;
+        resolve_with_ratings(state, id_type, id_value, true).await?;
 
     // Persist available sources for future fast-path lookups (always write,
     // even with external_cache_only — this is an optimization index, not a
@@ -1621,12 +1879,8 @@ pub async fn handle_logo_backdrop_inner(
                 LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
             };
 
-            if !ctx.state.config.external_cache_only {
-                let _ = cache::write(&ctx.cache_path, &bytes).await;
-            }
-            let _ = cache::upsert_meta_db(&ctx.state.db, &ctx.cache_key, ctx.cross_ids.release_date.as_deref(), image_type).await;
-            let bytes = Bytes::from(bytes);
-            spawn_cross_id_cache(&ctx.state, ctx.cross_ids, id_type, ctx.lb_cache_suffix.to_string(), image_type, bytes.clone());
+            let release_date = ctx.cross_ids.release_date.clone();
+            let bytes = post_render_cache(&ctx.state, bytes, &ctx.cache_path, &ctx.cache_key, release_date.as_deref(), image_type, ctx.cross_ids, id_type, ctx.lb_cache_suffix.to_string()).await;
             Ok::<_, AppError>(bytes)
         })
         .await
@@ -1721,6 +1975,7 @@ mod tests {
             media_type: MediaType::Movie,
             poster_path: None,
             release_date: Some("2020-01-01".into()),
+            episode: None,
         };
         let ratings = ratings::RatingsResult {
             badges: vec![],
@@ -1745,6 +2000,7 @@ mod tests {
             media_type: MediaType::Tv,
             poster_path: None,
             release_date: None,
+            episode: None,
         };
         let ratings = ratings::RatingsResult {
             badges: vec![],
@@ -1803,6 +2059,24 @@ mod tests {
     }
 
     #[test]
+    fn settings_hash_differs_by_episode_settings() {
+        let s1 = RenderSettings::default();
+        let mut s2 = RenderSettings::default();
+        s2.episode_blur = true;
+        assert_ne!(
+            settings_hash(&s1, cache::ImageType::Episode, None),
+            settings_hash(&s2, cache::ImageType::Episode, None)
+        );
+
+        let mut s3 = RenderSettings::default();
+        s3.episode_position = crate::services::db::BadgePosition::BottomCenter;
+        assert_ne!(
+            settings_hash(&s1, cache::ImageType::Episode, None),
+            settings_hash(&s3, cache::ImageType::Episode, None)
+        );
+    }
+
+    #[test]
     fn image_size_cache_suffix_values() {
         use crate::services::db::ImageSize;
         assert_eq!(image_size_cache_suffix(None), ".zm");
@@ -1821,6 +2095,7 @@ mod tests {
             media_type: MediaType::Movie,
             poster_path: None,
             release_date: None,
+            episode: None,
         };
         let ratings = ratings::RatingsResult {
             badges: vec![],

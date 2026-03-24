@@ -113,6 +113,13 @@ pub struct RenderSettingsResponse {
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
+    pub episode_ratings_limit: i32,
+    pub episode_badge_style: BadgeStyle,
+    pub episode_label_style: LabelStyle,
+    pub episode_badge_size: BadgeSize,
+    pub episode_position: BadgePosition,
+    pub episode_badge_direction: BadgeDirection,
+    pub episode_blur: bool,
 }
 
 pub async fn get_settings(
@@ -148,6 +155,13 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
+        episode_ratings_limit: settings.episode_ratings_limit,
+        episode_badge_style: settings.episode_badge_style,
+        episode_label_style: settings.episode_label_style,
+        episode_badge_size: settings.episode_badge_size,
+        episode_position: settings.episode_position,
+        episode_badge_direction: settings.episode_badge_direction,
+        episode_blur: settings.episode_blur,
     }
 }
 
@@ -189,6 +203,20 @@ pub struct UpdateSettingsRequest {
     pub logo_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
     pub backdrop_badge_size: BadgeSize,
+    #[serde(default = "db::default_episode_ratings_limit")]
+    pub episode_ratings_limit: i32,
+    #[serde(default = "db::default_episode_badge_style")]
+    pub episode_badge_style: BadgeStyle,
+    #[serde(default = "db::default_label_style")]
+    pub episode_label_style: LabelStyle,
+    #[serde(default = "db::default_episode_badge_size")]
+    pub episode_badge_size: BadgeSize,
+    #[serde(default = "db::default_episode_position")]
+    pub episode_position: BadgePosition,
+    #[serde(default = "db::default_episode_badge_direction")]
+    pub episode_badge_direction: BadgeDirection,
+    #[serde(default)]
+    pub episode_blur: bool,
 }
 
 fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySettings<'_> {
@@ -212,6 +240,13 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         poster_badge_size: req.poster_badge_size.as_str(),
         logo_badge_size: req.logo_badge_size.as_str(),
         backdrop_badge_size: req.backdrop_badge_size.as_str(),
+        episode_ratings_limit: req.episode_ratings_limit,
+        episode_badge_style: req.episode_badge_style.as_str(),
+        episode_label_style: req.episode_label_style.as_str(),
+        episode_badge_size: req.episode_badge_size.as_str(),
+        episode_position: req.episode_position.as_str(),
+        episode_badge_direction: req.episode_badge_direction.as_str(),
+        episode_blur: req.episode_blur,
     }
 }
 
@@ -223,7 +258,7 @@ pub async fn update_settings(
     db::find_api_key_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::IdNotFound(format!("API key {id} not found")))?;
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))
@@ -271,7 +306,7 @@ pub async fn update_own_settings(
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<Value>, AppError> {
     let id = api_key_user.key_id;
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     db::upsert_api_key_settings(&state.db, build_upsert(id, &req)).await?;
     state.settings_cache.invalidate(&id).await;
     Ok(Json(json!({ "ok": true })))

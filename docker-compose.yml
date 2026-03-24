@@ -10,6 +10,7 @@ services:
 
       # At least one ratings source is required — MDBList is preferred (covers all 7 rating sources)
       MDBLIST_API_KEY: ${MDBLIST_API_KEY:-}
+      # OMDb is also required for IMDB episode ratings (MDBList does not support episode-level ratings)
       OMDB_API_KEY: ${OMDB_API_KEY:-}
 
       # Optional — enables Fanart.tv as an alternative or preferred image source

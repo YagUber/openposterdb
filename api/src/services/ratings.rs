@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use crate::id::{MediaType, ResolvedId};
 use crate::services::mdblist::MdblistClient;
 use crate::services::omdb::OmdbClient;
@@ -128,12 +129,20 @@ pub async fn fetch_ratings(
     omdb: Option<&OmdbClient>,
     mdblist: Option<&MdblistClient>,
     cache: &moka::future::Cache<String, RatingsResult>,
-) -> RatingsResult {
-    let media_type_str = match resolved.media_type {
-        MediaType::Movie => "movie",
-        MediaType::Tv => "tv",
+) -> Result<RatingsResult, AppError> {
+    let key = match resolved.media_type {
+        MediaType::Movie => format!("{}/movie", resolved.tmdb_id),
+        MediaType::Tv => format!("{}/tv", resolved.tmdb_id),
+        MediaType::Episode => {
+            let ep = resolved.episode.as_ref().ok_or_else(|| {
+                AppError::Other(format!(
+                    "episode media type but no EpisodeInfo for tmdb_id={}",
+                    resolved.tmdb_id
+                ))
+            })?;
+            format!("{}/episode/S{}E{}", ep.show_tmdb_id, ep.season_number, ep.episode_number)
+        }
     };
-    let key = format!("{}/{media_type_str}", resolved.tmdb_id);
 
     let resolved = resolved.clone();
     let tmdb = tmdb.clone();
@@ -149,7 +158,7 @@ pub async fn fetch_ratings(
         .await
         .unwrap_or_default();
 
-    coalesced
+    Ok(coalesced)
 }
 
 async fn fetch_ratings_inner(
@@ -250,6 +259,10 @@ async fn fetch_tmdb_rating(resolved: &ResolvedId, tmdb: &TmdbClient) -> Option<R
     let path = match resolved.media_type {
         MediaType::Movie => format!("/movie/{}", resolved.tmdb_id),
         MediaType::Tv => format!("/tv/{}", resolved.tmdb_id),
+        MediaType::Episode => {
+            let ep = resolved.episode.as_ref()?;
+            format!("/tv/{}/season/{}/episode/{}", ep.show_tmdb_id, ep.season_number, ep.episode_number)
+        }
     };
 
     let details: Details = match tmdb.get(&path, &[]).await {
@@ -709,6 +722,10 @@ async fn fetch_mdblist_ratings(
     resolved: &ResolvedId,
     mdblist: Option<&MdblistClient>,
 ) -> Option<(Vec<RatingBadge>, Option<u64>, Option<u64>, Option<String>)> {
+    // mdblist only supports movie/show level ratings, not individual episodes
+    if resolved.media_type == MediaType::Episode {
+        return None;
+    }
     let client = mdblist?;
     let imdb_id = resolved.imdb_id.as_deref()?;
 

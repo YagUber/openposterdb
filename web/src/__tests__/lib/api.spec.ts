@@ -335,4 +335,97 @@ describe('api', () => {
     expect(url).toBe('/api/admin/backdrops/tmdb/550/fetch')
     expect(options.method).toBe('POST')
   })
+
+  it('adminApi.getEpisodes calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getEpisodes(1, 50)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/episodes?page=1&page_size=50')
+  })
+
+  it('adminApi.getEpisodeImage calls GET with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.getEpisodeImage('tmdb/episode-1396-S1E1')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/episodes/tmdb/episode-1396-S1E1/image')
+  })
+
+  it('adminApi.fetchEpisode calls POST with correct URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.fetchEpisode('tmdb', 'episode-1396-S1E1')
+
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/admin/episodes/tmdb/episode-1396-S1E1/fetch')
+    expect(options.method).toBe('POST')
+  })
+
+  it('adminApi.previewEpisode calls GET with correct URL and params', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt,tmdb')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('/api/admin/preview/episode')
+    expect(url).toContain('ratings_limit=3')
+    expect(url).toContain('ratings_order=imdb%2Crt%2Ctmdb')
+  })
+
+  it('adminApi.previewEpisode includes position when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, 'tr')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('position=tr')
+  })
+
+  it('adminApi.previewEpisode includes badge_direction when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, 'tr', 'h')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('badge_direction=h')
+  })
+
+  it('adminApi.previewEpisode includes blur=true when enabled', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, undefined, undefined, true)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('blur=true')
+  })
+
+  it('adminApi.previewEpisode omits blur when false', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt', undefined, undefined, undefined, undefined, undefined, false)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).not.toContain('blur')
+  })
+
+  it('adminApi.previewEpisode includes label_style when provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(makeFetchResponse(200))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await adminApi.previewEpisode(3, 'imdb,rt', 'v', 'i')
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('label_style=i')
+  })
 })

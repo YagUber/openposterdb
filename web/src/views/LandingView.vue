@@ -10,7 +10,7 @@ const features = [
   {
     icon: Image,
     title: "Posters & Backdrops",
-    desc: "Generate and serve posters, logos, and backdrops for movies, shows, and collections.",
+    desc: "Generate and serve posters, logos, and backdrops for movies, shows, episodes, and collections.",
   },
   {
     icon: KeyRound,
@@ -121,8 +121,6 @@ const officialIcons = [
 
 const logos = [
   { src: "/examples/logo-nosferatu.webp", label: "Nosferatu (1922)" },
-  { src: "/examples/logo-metropolis.webp", label: "Metropolis (1927)" },
-  { src: "/examples/logo-caligari.webp", alt: "The Cabinet of Dr. Caligari (1920)", label: "Dr. Caligari (1920)" },
   { src: "/examples/logo-phantom.webp", alt: "The Phantom of the Opera (1925)", label: "Phantom of the Opera (1925)" },
   { src: "/examples/logo-trip-to-moon.webp", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
   { src: "/examples/logo-safety-last.webp", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
@@ -132,7 +130,12 @@ const logos = [
 const backdrops = [
   { src: "/examples/backdrop-nosferatu.webp", label: "Nosferatu (1922)" },
   { src: "/examples/backdrop-metropolis.webp", label: "Metropolis (1927)" },
+  { src: "/examples/backdrop-caligari.webp", alt: "The Cabinet of Dr. Caligari (1920)", label: "Dr. Caligari (1920)" },
+  { src: "/examples/backdrop-phantom.webp", alt: "The Phantom of the Opera (1925)", label: "Phantom of the Opera (1925)" },
   { src: "/examples/backdrop-trip-to-moon.webp", alt: "A Trip to the Moon (1902)", label: "A Trip to the Moon (1902)" },
+  { src: "/examples/backdrop-safety-last.webp", alt: "Safety Last! (1923)", label: "Safety Last! (1923)" },
+  { src: "/examples/backdrop-the-general.webp", label: "The General (1926)" },
+  { src: "/examples/backdrop-namakura-gatana.webp", label: "Namakura Gatana (1917)" },
 ];
 
 const posterSizes = [
@@ -158,6 +161,14 @@ const backdropSizes = [
   { src: "/examples/size-backdrop-l.webp", label: "Large" },
   { src: "/examples/size-backdrop-xl.webp", label: "Extra Large" },
 ];
+
+const episodes = [
+  { src: "/examples/episode-bonanza.webp", label: "Standard" },
+  { src: "/examples/episode-bonanza-h.webp", label: "Horizontal" },
+  { src: "/examples/episode-bonanza-blur.webp", label: "Blurred (spoiler)" },
+];
+
+
 </script>
 
 <template>
@@ -299,6 +310,26 @@ const backdropSizes = [
           </div>
         </div>
 
+        <!-- Episodes -->
+        <div class="space-y-4 text-center">
+          <h2 class="text-2xl font-semibold">Episodes</h2>
+          <p class="text-sm text-muted-foreground max-w-lg mx-auto">
+            Episode stills with rating badges and optional spoiler blur.
+          </p>
+          <div class="flex flex-wrap justify-center gap-4">
+            <div v-for="e in episodes" :key="e.src" class="space-y-1">
+              <BlurImage
+                :src="e.src"
+                :alt="e.label"
+                :width="260"
+                :height="146"
+                class="rounded-lg shadow-md"
+              />
+              <p class="text-xs text-muted-foreground">{{ e.label }}</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Badge Position -->
         <div class="space-y-4 text-center">
           <h2 class="text-2xl font-semibold">Badge Position</h2>
@@ -421,6 +452,7 @@ const backdropSizes = [
               </div>
             </div>
           </div>
+
         </div>
 
         <!-- Acknowledgments -->

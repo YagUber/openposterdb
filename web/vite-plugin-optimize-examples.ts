@@ -10,6 +10,7 @@ const MAX_WIDTHS: Record<string, number> = {
   'size-poster-': 400,   // displayed at 200px
   'size-logo-': 400,     // displayed at 200px
   'backdrop-': 720,  // displayed at 360px
+  'episode-': 520,   // displayed at 260px
   'logo-': 400,      // displayed at 200px
   'style-': 400,     // displayed at 200px
   'label-': 400,     // displayed at 200px

@@ -28,6 +28,7 @@ function makeRouter() {
           { path: 'posters', name: 'posters', component: { template: '<div>Posters</div>' } },
           { path: 'logos', name: 'logos', component: { template: '<div>Logos</div>' } },
           { path: 'backdrops', name: 'backdrops', component: { template: '<div>Backdrops</div>' } },
+          { path: 'episodes', name: 'episodes', component: { template: '<div>Episodes</div>' } },
           { path: 'keys', name: 'keys', component: { template: '<div>Keys</div>' } },
         ],
       },
@@ -141,5 +142,16 @@ describe('router', () => {
     await router.isReady()
 
     expect(router.currentRoute.value.name).toBe('dashboard')
+  })
+
+  it('admin user can access /admin/episodes', async () => {
+    const router = makeRouter()
+    const auth = useAuthStore()
+    auth.token = 'valid-token'
+
+    await router.push('/admin/episodes')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('episodes')
   })
 })

@@ -131,6 +131,13 @@ pub struct GlobalSettingsResponse {
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
+    pub episode_ratings_limit: i32,
+    pub episode_badge_style: BadgeStyle,
+    pub episode_label_style: LabelStyle,
+    pub episode_badge_size: BadgeSize,
+    pub episode_position: BadgePosition,
+    pub episode_badge_direction: BadgeDirection,
+    pub episode_blur: bool,
 }
 
 pub async fn get_settings(
@@ -169,6 +176,13 @@ pub async fn get_settings(
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
+        episode_ratings_limit: settings.episode_ratings_limit,
+        episode_badge_style: settings.episode_badge_style,
+        episode_label_style: settings.episode_label_style,
+        episode_badge_size: settings.episode_badge_size,
+        episode_position: settings.episode_position,
+        episode_badge_direction: settings.episode_badge_direction,
+        episode_blur: settings.episode_blur,
     }))
 }
 
@@ -211,17 +225,33 @@ pub struct UpdateGlobalSettingsRequest {
     pub logo_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
     pub backdrop_badge_size: BadgeSize,
+    #[serde(default = "db::default_episode_ratings_limit")]
+    pub episode_ratings_limit: i32,
+    #[serde(default = "db::default_episode_badge_style")]
+    pub episode_badge_style: BadgeStyle,
+    #[serde(default = "db::default_label_style")]
+    pub episode_label_style: LabelStyle,
+    #[serde(default = "db::default_episode_badge_size")]
+    pub episode_badge_size: BadgeSize,
+    #[serde(default = "db::default_episode_position")]
+    pub episode_position: BadgePosition,
+    #[serde(default = "db::default_episode_badge_direction")]
+    pub episode_badge_direction: BadgeDirection,
+    #[serde(default)]
+    pub episode_blur: bool,
 }
 
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateGlobalSettingsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit)?;
+    db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     let textless_str = if req.textless { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
     let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
+    let episode_limit_str = req.episode_ratings_limit.to_string();
+    let episode_blur_str = if req.episode_blur { "true" } else { "false" };
     let mut batch: Vec<(&str, &str)> = vec![
         ("image_source", req.image_source.as_str()),
         ("lang", &req.lang),
@@ -241,6 +271,13 @@ pub async fn update_settings(
         ("poster_badge_size", req.poster_badge_size.as_str()),
         ("logo_badge_size", req.logo_badge_size.as_str()),
         ("backdrop_badge_size", req.backdrop_badge_size.as_str()),
+        ("episode_ratings_limit", &episode_limit_str),
+        ("episode_badge_style", req.episode_badge_style.as_str()),
+        ("episode_label_style", req.episode_label_style.as_str()),
+        ("episode_badge_size", req.episode_badge_size.as_str()),
+        ("episode_position", req.episode_position.as_str()),
+        ("episode_badge_direction", req.episode_badge_direction.as_str()),
+        ("episode_blur", episode_blur_str),
     ];
     let free_key_str;
     if state.config.free_key_enabled.is_none() {
@@ -325,6 +362,42 @@ pub async fn fetch_backdrop(
     Path((id_type, id_value)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
     fetch_logo_backdrop_image(&state, &id_type, &id_value, LogoBackdropKind::Backdrop, "image/jpeg").await
+}
+
+// --- Episodes ---
+
+pub async fn list_episodes(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ListImagesQuery>,
+) -> Result<Json<ListImagesResponse>, AppError> {
+    list_images(&state, &query, cache::ImageType::Episode).await
+}
+
+pub async fn episode_image(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    image_from_cache_key(&state, &id_type, &id_value, cache::ImageType::Episode, "image/jpeg").await
+}
+
+pub async fn fetch_episode(
+    State(state): State<Arc<AppState>>,
+    Path((id_type, id_value)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    crate::id::IdType::parse(&id_type)?;
+
+    let db_ref = state.db.clone();
+    let settings = state
+        .global_settings_cache
+        .try_get_with((), async move {
+            let globals = db::get_global_settings(&db_ref).await?;
+            Ok::<_, AppError>(Arc::new(db::parse_global_render_settings(&globals)))
+        })
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+
+    let (bytes, _) = serve::handle_episode_inner(&state, &id_type, &id_value, (*settings).clone(), None).await?;
+    Ok(serve::image_response(bytes, "image/jpeg"))
 }
 
 // --- Helpers ---

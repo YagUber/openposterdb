@@ -206,15 +206,6 @@ async fn fetch_ratings_inner(
         None => (None, None, None, None),
     };
 
-    // Collect which sources OMDb already provided
-    let omdb_has = |src: RatingSource| -> bool {
-        omdb_badges
-            .as_ref()
-            .is_some_and(|list| list.iter().any(|b| b.source == src))
-    };
-    let has_rt = omdb_has(RatingSource::Rt);
-    let has_mc = omdb_has(RatingSource::Metacritic);
-
     let find_omdb = |src: RatingSource| -> Option<RatingBadge> {
         omdb_badges
             .as_ref()?
@@ -230,13 +221,14 @@ async fn fetch_ratings_inner(
             .cloned()
     };
 
-    // Badge order: IMDb, TMDB, RT, RT Audience, MC, Trakt, Letterboxd
+    // Badge order: IMDb, TMDB, RT, RT Audience, MC, Trakt, Letterboxd, MAL
+    // MDBList preferred for overlapping sources; OMDb fills gaps
     let ordered: Vec<Option<RatingBadge>> = vec![
-        find_omdb(RatingSource::Imdb).or_else(|| find_mdb(RatingSource::Imdb)),
+        find_mdb(RatingSource::Imdb).or_else(|| find_omdb(RatingSource::Imdb)),
         tmdb_badges,
-        find_omdb(RatingSource::Rt).or_else(|| if !has_rt { find_mdb(RatingSource::Rt) } else { None }),
+        find_mdb(RatingSource::Rt).or_else(|| find_omdb(RatingSource::Rt)),
         find_mdb(RatingSource::RtAudience),
-        find_omdb(RatingSource::Metacritic).or_else(|| if !has_mc { find_mdb(RatingSource::Metacritic) } else { None }),
+        find_mdb(RatingSource::Metacritic).or_else(|| find_omdb(RatingSource::Metacritic)),
         find_mdb(RatingSource::Trakt),
         find_mdb(RatingSource::Letterboxd),
         find_mdb(RatingSource::Mal),
@@ -716,6 +708,7 @@ mod tests {
         assert_eq!(RatingSource::Imdb, RatingSource::Imdb);
         assert_ne!(RatingSource::Imdb, RatingSource::Tmdb);
     }
+
 }
 
 async fn fetch_mdblist_ratings(

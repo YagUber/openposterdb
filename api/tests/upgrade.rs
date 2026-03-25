@@ -232,3 +232,153 @@ async fn v001_skips_filesystem_when_external_cache_only() {
         "renamed file should not exist in external_cache_only mode"
     );
 }
+
+// --- v002 backdrop position/direction cache key migration: DB ---
+
+#[tokio::test]
+async fn v002_inserts_position_and_direction_in_db() {
+    let db = setup_db().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    // Insert rows with old-style backdrop cache keys (no position/direction suffix)
+    db.execute_unprepared(
+        "INSERT INTO image_meta (cache_key, image_type, created_at, updated_at) VALUES
+         ('imdb/tt1234567_b_f@mil.sv.lt.bm.zm', 'b', 1000, 1000),
+         ('imdb/tt7654321_b_t@ir.sh.li.bl.zl', 'b', 1000, 1000),
+         ('imdb/tt0000001_p@mil.sv.lt.bm.zm', 'poster', 1000, 1000)"
+    )
+    .await
+    .unwrap();
+
+    openposterdb_api::upgrade::run(&db, dir.path().to_str().unwrap(), false)
+        .await
+        .expect("upgrade should succeed");
+
+    // Backdrop keys should have position and direction inserted
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT cache_key FROM image_meta WHERE cache_key = 'imdb/tt1234567_b_f@mil.ptr.sv.lt.dv.bm.zm'".to_string(),
+        ))
+        .await
+        .unwrap();
+    assert!(row.is_some(), "first backdrop key should have .ptr and .dv inserted");
+
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT cache_key FROM image_meta WHERE cache_key = 'imdb/tt7654321_b_t@ir.ptr.sh.li.dv.bl.zl'".to_string(),
+        ))
+        .await
+        .unwrap();
+    assert!(row.is_some(), "second backdrop key should have .ptr and .dv inserted");
+
+    // Poster key should be untouched
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT cache_key FROM image_meta WHERE cache_key = 'imdb/tt0000001_p@mil.sv.lt.bm.zm'".to_string(),
+        ))
+        .await
+        .unwrap();
+    assert!(row.is_some(), "poster key should be untouched");
+}
+
+#[tokio::test]
+async fn v002_db_is_idempotent() {
+    let db = setup_db().await;
+    let dir = tempfile::tempdir().unwrap();
+
+    db.execute_unprepared(
+        "INSERT INTO image_meta (cache_key, image_type, created_at, updated_at) VALUES
+         ('imdb/tt1234567_b_f@mil.sv.lt.bm.zm', 'b', 1000, 1000)"
+    )
+    .await
+    .unwrap();
+
+    let cache_dir = dir.path().to_str().unwrap();
+    openposterdb_api::upgrade::run(&db, cache_dir, false)
+        .await
+        .expect("first run should succeed");
+    openposterdb_api::upgrade::run(&db, cache_dir, false)
+        .await
+        .expect("second run should succeed (idempotent)");
+
+    let row = db
+        .query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Sqlite,
+            "SELECT cache_key FROM image_meta WHERE cache_key = 'imdb/tt1234567_b_f@mil.ptr.sv.lt.dv.bm.zm'".to_string(),
+        ))
+        .await
+        .unwrap();
+    assert!(row.is_some(), "key should be migrated exactly once");
+}
+
+// --- v002 backdrop position/direction cache key migration: filesystem ---
+
+#[tokio::test]
+async fn v002_renames_backdrop_files() {
+    let db = setup_db().await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache_dir = dir.path();
+
+    let backdrop_dir = cache_dir.join("backdrops").join("imdb");
+    std::fs::create_dir_all(&backdrop_dir).unwrap();
+
+    // Old-style filenames
+    std::fs::write(backdrop_dir.join("tt1234567_b_f@mil.sv.lt.bm.zm.jpg"), b"data1").unwrap();
+    std::fs::write(backdrop_dir.join("tt7654321_b_t@ir.sh.li.bl.zl.jpg"), b"data2").unwrap();
+    // Already migrated — should not be touched
+    std::fs::write(backdrop_dir.join("tt0000001_b_f@mil.ptr.sv.lt.dv.bm.zm.jpg"), b"data3").unwrap();
+
+    openposterdb_api::upgrade::run(&db, cache_dir.to_str().unwrap(), false)
+        .await
+        .expect("upgrade should succeed");
+
+    assert!(
+        backdrop_dir.join("tt1234567_b_f@mil.ptr.sv.lt.dv.bm.zm.jpg").exists(),
+        "first file should be renamed with .ptr and .dv"
+    );
+    assert!(
+        backdrop_dir.join("tt7654321_b_t@ir.ptr.sh.li.dv.bl.zl.jpg").exists(),
+        "second file should be renamed with .ptr and .dv"
+    );
+    assert!(
+        !backdrop_dir.join("tt1234567_b_f@mil.sv.lt.bm.zm.jpg").exists(),
+        "old first file should no longer exist"
+    );
+    assert!(
+        backdrop_dir.join("tt0000001_b_f@mil.ptr.sv.lt.dv.bm.zm.jpg").exists(),
+        "already-migrated file should be untouched"
+    );
+}
+
+#[tokio::test]
+async fn v002_skips_filesystem_when_external_cache_only() {
+    let db = setup_db().await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache_dir = dir.path();
+
+    let backdrop_dir = cache_dir.join("backdrops").join("imdb");
+    std::fs::create_dir_all(&backdrop_dir).unwrap();
+    std::fs::write(backdrop_dir.join("tt1234567_b_f@mil.sv.lt.bm.zm.jpg"), b"data").unwrap();
+
+    openposterdb_api::upgrade::run(&db, cache_dir.to_str().unwrap(), true)
+        .await
+        .expect("upgrade should succeed");
+
+    assert!(
+        backdrop_dir.join("tt1234567_b_f@mil.sv.lt.bm.zm.jpg").exists(),
+        "file should be untouched in external_cache_only mode"
+    );
+}
+
+#[tokio::test]
+async fn v002_handles_missing_backdrop_directory() {
+    let db = setup_db().await;
+    let dir = tempfile::tempdir().unwrap();
+    // Don't create the backdrops subdirectory — should not error
+    openposterdb_api::upgrade::run(&db, dir.path().to_str().unwrap(), false)
+        .await
+        .expect("upgrade should succeed even without backdrops dir");
+}

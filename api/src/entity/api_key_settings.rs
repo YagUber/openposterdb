@@ -23,6 +23,8 @@ pub struct Model {
     pub poster_badge_size: String,
     pub logo_badge_size: String,
     pub backdrop_badge_size: String,
+    pub backdrop_position: String,
+    pub backdrop_badge_direction: String,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: String,
     pub episode_label_style: String,

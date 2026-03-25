@@ -332,4 +332,12 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN episode_blur INTEGER NOT NULL DEFAULT 0",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_position TEXT NOT NULL DEFAULT 'tr'",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_direction TEXT NOT NULL DEFAULT 'v'",
+        "duplicate column",
+    ),
 ];

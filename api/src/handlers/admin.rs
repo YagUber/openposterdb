@@ -131,6 +131,8 @@ pub struct GlobalSettingsResponse {
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
+    pub backdrop_position: BadgePosition,
+    pub backdrop_badge_direction: BadgeDirection,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -176,6 +178,8 @@ pub async fn get_settings(
         poster_badge_size: settings.poster_badge_size,
         logo_badge_size: settings.logo_badge_size,
         backdrop_badge_size: settings.backdrop_badge_size,
+        backdrop_position: settings.backdrop_position,
+        backdrop_badge_direction: settings.backdrop_badge_direction,
         episode_ratings_limit: settings.episode_ratings_limit,
         episode_badge_style: settings.episode_badge_style,
         episode_label_style: settings.episode_label_style,
@@ -225,6 +229,10 @@ pub struct UpdateGlobalSettingsRequest {
     pub logo_badge_size: BadgeSize,
     #[serde(default = "db::default_badge_size")]
     pub backdrop_badge_size: BadgeSize,
+    #[serde(default = "db::default_backdrop_position")]
+    pub backdrop_position: BadgePosition,
+    #[serde(default = "db::default_backdrop_badge_direction")]
+    pub backdrop_badge_direction: BadgeDirection,
     #[serde(default = "db::default_episode_ratings_limit")]
     pub episode_ratings_limit: i32,
     #[serde(default = "db::default_episode_badge_style")]
@@ -271,6 +279,8 @@ pub async fn update_settings(
         ("poster_badge_size", req.poster_badge_size.as_str()),
         ("logo_badge_size", req.logo_badge_size.as_str()),
         ("backdrop_badge_size", req.backdrop_badge_size.as_str()),
+        ("backdrop_position", req.backdrop_position.as_str()),
+        ("backdrop_badge_direction", req.backdrop_badge_direction.as_str()),
         ("episode_ratings_limit", &episode_limit_str),
         ("episode_badge_style", req.episode_badge_style.as_str()),
         ("episode_label_style", req.episode_label_style.as_str()),

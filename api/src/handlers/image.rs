@@ -278,13 +278,21 @@ fn apply_query_overrides(
         }
     }
 
-    // -- poster/episode position and direction overrides --
+    // -- position and direction overrides (poster, backdrop, episode) --
     if kind == cache::ImageType::Poster {
         if let Some(dir) = query.badge_direction {
             s.poster_badge_direction = dir;
         }
         if let Some(pos) = query.position {
             s.poster_position = pos;
+        }
+    }
+    if kind == cache::ImageType::Backdrop {
+        if let Some(dir) = query.badge_direction {
+            s.backdrop_badge_direction = dir;
+        }
+        if let Some(pos) = query.position {
+            s.backdrop_position = pos;
         }
     }
     if kind == cache::ImageType::Episode {
@@ -782,15 +790,26 @@ mod tests {
     #[test]
     fn apply_query_overrides_backdrop_maps_correctly() {
         let settings = Arc::new(db::RenderSettings::default());
+        let original_poster_position = settings.poster_position;
+        let original_poster_direction = settings.poster_badge_direction;
+
         let query = ImageQuery {
             ratings_limit: Some(5),
             badge_style: Some(BadgeStyle::Default),
+            position: Some(BadgePosition::BottomCenter),
+            badge_direction: Some(BadgeDirection::Horizontal),
             ..empty_query()
         };
         let result =
             apply_query_overrides(settings, &query, cache::ImageType::Backdrop).unwrap();
         assert_eq!(result.backdrop_ratings_limit, 5);
         assert_eq!(result.backdrop_badge_style, BadgeStyle::Default);
+        assert_eq!(result.backdrop_position, BadgePosition::BottomCenter);
+        assert_eq!(result.backdrop_badge_direction, BadgeDirection::Horizontal);
+
+        // Poster fields unchanged
+        assert_eq!(result.poster_position, original_poster_position);
+        assert_eq!(result.poster_badge_direction, original_poster_direction);
     }
 
     #[test]

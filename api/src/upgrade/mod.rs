@@ -1,4 +1,5 @@
 mod v001_backdrop_cache_keys;
+mod v002_backdrop_position_direction_cache;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 
@@ -19,8 +20,10 @@ pub async fn run(
     })
     .await?;
 
-    // Future upgrades:
-    // run_once(db, "v002_...", || v002_...::run(db, cache_dir, external_cache_only)).await?;
+    run_once(db, "v002_backdrop_position_direction_cache", || {
+        v002_backdrop_position_direction_cache::run(db, cache_dir, external_cache_only)
+    })
+    .await?;
 
     Ok(())
 }

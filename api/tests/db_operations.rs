@@ -25,6 +25,8 @@ fn test_upsert(key_id: i32) -> UpsertApiKeySettings<'static> {
         poster_badge_size: "m",
         logo_badge_size: "m",
         backdrop_badge_size: "m",
+        backdrop_position: "tr",
+        backdrop_badge_direction: "v",
         episode_ratings_limit: 2,
         episode_badge_style: "v",
         episode_label_style: "o",

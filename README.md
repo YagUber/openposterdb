@@ -68,7 +68,7 @@ GET /{api_key}/{id_type}/logo-default/{id_value}.png
 GET /{api_key}/{id_type}/backdrop-default/{id_value}.jpg
 ```
 
-- Returns JPEG with rating badges stacked vertically in the top-right corner
+- Returns JPEG with rating badges overlaid on the backdrop (configurable position and direction)
 - Uses TMDB (default) or Fanart.tv as the image source
 
 ### Episode
@@ -106,13 +106,13 @@ GET /{api_key}/isValid
 - `?label_style={t|i|o}`: label rendering — `t` (text), `i` (icon), `o` (official provider logos)
 - `?badge_size={xs|s|m|l|xl}`: badge scale — extra-small, small, medium, large, extra-large
 - `?image_source={t|f}`: image source — `t` (TMDB, default), `f` (Fanart.tv). Applies to all image types. The non-selected source is used as fallback
-- `?badge_direction={d|h|v}`: badge stacking direction (poster only) — `d` (default), `h` (horizontal), `v` (vertical)
-- `?position={bc|tc|l|r|tl|tr|bl|br}`: badge anchor position (poster only)
+- `?badge_direction={d|h|v}`: badge stacking direction — `d` (default), `h` (horizontal), `v` (vertical). Applies to poster, backdrop, and episode endpoints
+- `?position={bc|tc|l|r|tl|tr|bl|br}`: badge anchor position. Applies to poster, backdrop, and episode endpoints
 - `?textless={true|false}`: prefer textless images when available (poster only). Works with both TMDB and Fanart.tv sources
 - `?blur={true|false}`: apply Gaussian blur for spoiler protection (episode only). Badges remain sharp over the blurred still image
 - RPDB-compatible — use `http://localhost:3000` as the base URL (drop-in replacement for `https://api.ratingposterdb.com`). Old parameter names `?poster_source=` and `?fanart_textless=` are accepted as aliases
 
-Poster/episode parameters (`badge_direction`, `position`) are silently ignored on logo and backdrop endpoints. `textless` is poster-only. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
+`textless` is poster-only. `blur` is episode-only. `badge_direction` and `position` are silently ignored on logo endpoints. For shared parameters (`ratings_limit`, `badge_style`, `label_style`, `badge_size`, `image_source`), the override is applied to the correct image-type-specific setting (e.g. `?badge_style=h` on the poster endpoint sets `poster_badge_style`, on the logo endpoint sets `logo_badge_style`).
 
 Management endpoints (auth, keys, settings) are under `/api/` and return JSON.
 
@@ -278,9 +278,14 @@ Cache keys uniquely identify a rendered image. They are used as keys in the in-m
 {id_type}/{id_value}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{size_suffix}
 ```
 
-**Logo / Backdrop:**
+**Logo:**
 ```
 {id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{style_suffix}{label_suffix}{badge_size_suffix}{size_suffix}
+```
+
+**Backdrop:**
+```
+{id_type}/{id_value}{kind_prefix}{variant}{ratings_suffix}{pos_suffix}{style_suffix}{label_suffix}{direction_suffix}{badge_size_suffix}{size_suffix}
 ```
 
 ### Suffix Reference
@@ -364,8 +369,8 @@ imdb/tt0111161_l_t_en@mil.sh.lt.bm.zm
 # Logo from Fanart.tv with English language
 imdb/tt0111161_l_f_en@mil.sh.lt.bm.zm
 
-# Backdrop from TMDB with vertical badges, official labels, extra-large badge size, large image
-imdb/tt0111161_b_t@mil.sv.lo.bxl.zl
+# Backdrop from TMDB with top-right position, vertical direction, vertical badges, official labels, extra-large badge size, large image
+imdb/tt0111161_b_t@mil.ptr.sv.lo.dv.bxl.zl
 
 # Episode with 1 rating, top-right position, vertical direction, vertical badges, official labels, medium badge size, blur enabled
 imdb/tt0959621_e@i.ptr.sv.lo.dv.bm.blur.zm

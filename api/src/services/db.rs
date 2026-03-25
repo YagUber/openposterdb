@@ -481,6 +481,14 @@ pub fn default_episode_ratings_limit() -> i32 {
     1
 }
 
+pub fn default_backdrop_position() -> BadgePosition {
+    BadgePosition::TopRight
+}
+
+pub fn default_backdrop_badge_direction() -> BadgeDirection {
+    BadgeDirection::Vertical
+}
+
 // --- Badge size ---
 
 pub fn default_badge_size() -> BadgeSize {
@@ -1627,6 +1635,8 @@ pub struct UpsertApiKeySettings<'a> {
     pub poster_badge_size: &'a str,
     pub logo_badge_size: &'a str,
     pub backdrop_badge_size: &'a str,
+    pub backdrop_position: &'a str,
+    pub backdrop_badge_direction: &'a str,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: &'a str,
     pub episode_label_style: &'a str,
@@ -1660,6 +1670,8 @@ pub async fn upsert_api_key_settings(
         poster_badge_size: Set(params.poster_badge_size.to_string()),
         logo_badge_size: Set(params.logo_badge_size.to_string()),
         backdrop_badge_size: Set(params.backdrop_badge_size.to_string()),
+        backdrop_position: Set(params.backdrop_position.to_string()),
+        backdrop_badge_direction: Set(params.backdrop_badge_direction.to_string()),
         episode_ratings_limit: Set(params.episode_ratings_limit),
         episode_badge_style: Set(params.episode_badge_style.to_string()),
         episode_label_style: Set(params.episode_label_style.to_string()),
@@ -1690,6 +1702,8 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::PosterBadgeSize,
                     api_key_settings::Column::LogoBadgeSize,
                     api_key_settings::Column::BackdropBadgeSize,
+                    api_key_settings::Column::BackdropPosition,
+                    api_key_settings::Column::BackdropBadgeDirection,
                     api_key_settings::Column::EpisodeRatingsLimit,
                     api_key_settings::Column::EpisodeBadgeStyle,
                     api_key_settings::Column::EpisodeLabelStyle,
@@ -1740,6 +1754,8 @@ pub struct RenderSettings {
     pub poster_badge_size: BadgeSize,
     pub logo_badge_size: BadgeSize,
     pub backdrop_badge_size: BadgeSize,
+    pub backdrop_position: BadgePosition,
+    pub backdrop_badge_direction: BadgeDirection,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -1771,6 +1787,8 @@ impl Default for RenderSettings {
             poster_badge_size: BadgeSize::Medium,
             logo_badge_size: BadgeSize::Medium,
             backdrop_badge_size: BadgeSize::Medium,
+            backdrop_position: default_backdrop_position(),
+            backdrop_badge_direction: default_backdrop_badge_direction(),
             episode_ratings_limit: default_episode_ratings_limit(),
             episode_badge_style: default_episode_badge_style(),
             episode_label_style: default_label_style(),
@@ -1827,6 +1845,8 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         poster_badge_size: global_or(globals, "poster_badge_size", BadgeSize::parse, defaults.poster_badge_size),
         logo_badge_size: global_or(globals, "logo_badge_size", BadgeSize::parse, defaults.logo_badge_size),
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
+        backdrop_position: global_or(globals, "backdrop_position", BadgePosition::parse, defaults.backdrop_position),
+        backdrop_badge_direction: global_or(globals, "backdrop_badge_direction", BadgeDirection::parse, defaults.backdrop_badge_direction),
         episode_ratings_limit: globals
             .get("episode_ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -1871,6 +1891,8 @@ pub async fn get_effective_render_settings(
                 poster_badge_size: parse_setting_or_default(&s.poster_badge_size, "poster_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 logo_badge_size: parse_setting_or_default(&s.logo_badge_size, "logo_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),
+                backdrop_position: parse_setting_or_default(&s.backdrop_position, "backdrop_position", BadgePosition::parse, default_backdrop_position()),
+                backdrop_badge_direction: parse_setting_or_default(&s.backdrop_badge_direction, "backdrop_badge_direction", BadgeDirection::parse, default_backdrop_badge_direction()),
                 episode_ratings_limit: s.episode_ratings_limit,
                 episode_badge_style: parse_setting_or_default(&s.episode_badge_style, "episode_badge_style", BadgeStyle::parse, default_episode_badge_style()),
                 episode_label_style: parse_setting_or_default(&s.episode_label_style, "episode_label_style", LabelStyle::parse, LabelStyle::Official),

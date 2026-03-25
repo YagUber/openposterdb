@@ -262,6 +262,20 @@ for val in xs s m l xl; do
 done
 end_section
 
+add_section "Backdrop - badge_direction"
+for val in h v d; do
+    path=$(fetch_image "backdrop_badge_direction=$val" "backdrop-default" "badge_direction=$val" "jpg")
+    add_image "badge_direction=$val" "$path"
+done
+end_section
+
+add_section "Backdrop - position"
+for val in bc tc l r tl tr bl br; do
+    path=$(fetch_image "backdrop_position=$val" "backdrop-default" "position=$val" "jpg")
+    add_image "position=$val" "$path"
+done
+end_section
+
 add_section "Backdrop - image_source"
 for val in t f; do
     path=$(fetch_image "backdrop_image_source=$val" "backdrop-default" "image_source=$val" "jpg")
@@ -280,6 +294,16 @@ add_section "Backdrop - imageSize"
 for val in small medium large; do
     path=$(fetch_image "backdrop_imageSize=$val" "backdrop-default" "imageSize=$val" "jpg")
     add_image "imageSize=$val" "$path"
+done
+end_section
+
+# Combined backdrop: position × badge_direction (needs multiple ratings to see direction)
+add_section "Backdrop - position × badge_direction"
+for pos in bc tc l r tl tr bl br; do
+    for dir in h v; do
+        path=$(fetch_image "backdrop_pos=${pos}_dir=${dir}" "backdrop-default" "position=${pos}&badge_direction=${dir}" "jpg")
+        add_image "position=$pos badge_direction=$dir" "$path"
+    done
 done
 end_section
 

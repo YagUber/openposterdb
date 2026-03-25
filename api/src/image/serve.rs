@@ -10,7 +10,7 @@ use crate::cache::{self, MemCacheEntry};
 use crate::error::AppError;
 use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
-use crate::services::db::{BadgeDirection, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
+use crate::services::db::{BadgeDirection, BadgePosition, BadgeSize, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
 use crate::services::ratings;
 use crate::AppState;
@@ -37,9 +37,49 @@ impl From<LogoBackdropKind> for cache::ImageType {
     }
 }
 
+/// Resolved per-type render parameters for logo/backdrop generation.
+///
+/// For logos, `position` and `badge_direction` are hardcoded (TopRight / Vertical)
+/// and not passed to `generate_logo` — only `badge_style`, `label_style`, and
+/// `badge_size` are used. They exist here so backdrop callers can read them
+/// without a separate code path.
+struct LbRenderParams {
+    position: BadgePosition,
+    badge_direction: BadgeDirection,
+    badge_style: BadgeStyle,
+    label_style: LabelStyle,
+    badge_size: BadgeSize,
+}
 
-/// Returns a cache key suffix for poster position.
-pub fn poster_position_cache_suffix(position: &str) -> String {
+impl LbRenderParams {
+    fn from_settings(lb_kind: LogoBackdropKind, settings: &RenderSettings) -> Self {
+        let position = match lb_kind {
+            LogoBackdropKind::Logo => BadgePosition::TopRight,
+            LogoBackdropKind::Backdrop => settings.backdrop_position,
+        };
+        let badge_direction = match lb_kind {
+            LogoBackdropKind::Logo => BadgeDirection::Vertical,
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_direction.resolve(position),
+        };
+        let badge_style = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_badge_style,
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_style,
+        }
+        .resolve(badge_direction);
+        let label_style = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_label_style,
+            LogoBackdropKind::Backdrop => settings.backdrop_label_style,
+        };
+        let badge_size = match lb_kind {
+            LogoBackdropKind::Logo => settings.logo_badge_size,
+            LogoBackdropKind::Backdrop => settings.backdrop_badge_size,
+        };
+        Self { position, badge_direction, badge_style, label_style, badge_size }
+    }
+}
+
+/// Returns a cache key suffix for badge position.
+pub fn position_cache_suffix(position: &str) -> String {
     format!(".p{position}")
 }
 
@@ -122,6 +162,8 @@ pub fn settings_cache_suffix_with_ratings(
         poster_badge_size: _,
         logo_badge_size: _,
         backdrop_badge_size: _,
+        backdrop_position: _,
+        backdrop_badge_direction: _,
         episode_ratings_limit: _,
         episode_badge_style: _,
         episode_label_style: _,
@@ -137,7 +179,7 @@ pub fn settings_cache_suffix_with_ratings(
 
     match kind {
         cache::ImageType::Poster => {
-            let ps = poster_position_cache_suffix(settings.poster_position.as_str());
+            let ps = position_cache_suffix(settings.poster_position.as_str());
             let bs = badge_style_cache_suffix(settings.poster_badge_style.as_str());
             let ls = label_style_cache_suffix(settings.poster_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.poster_badge_direction.as_str());
@@ -151,13 +193,15 @@ pub fn settings_cache_suffix_with_ratings(
             format!("{rs}{bs}{ls}{bsz}{is_suffix}")
         }
         cache::ImageType::Backdrop => {
+            let ps = position_cache_suffix(settings.backdrop_position.as_str());
             let bs = badge_style_cache_suffix(settings.backdrop_badge_style.as_str());
             let ls = label_style_cache_suffix(settings.backdrop_label_style.as_str());
+            let bd = badge_direction_cache_suffix(settings.backdrop_badge_direction.as_str());
             let bsz = settings.backdrop_badge_size.cache_suffix();
-            format!("{rs}{bs}{ls}{bsz}{is_suffix}")
+            format!("{rs}{ps}{bs}{ls}{bd}{bsz}{is_suffix}")
         }
         cache::ImageType::Episode => {
-            let ps = poster_position_cache_suffix(settings.episode_position.as_str());
+            let ps = position_cache_suffix(settings.episode_position.as_str());
             let bs = badge_style_cache_suffix(settings.episode_badge_style.as_str());
             let ls = label_style_cache_suffix(settings.episode_label_style.as_str());
             let bd = badge_direction_cache_suffix(settings.episode_badge_direction.as_str());
@@ -1028,20 +1072,9 @@ fn trigger_logo_backdrop_refresh(
 
         let image_type: cache::ImageType = lb_kind.into();
 
-        let type_badge_style = match lb_kind {
-            LogoBackdropKind::Logo => settings.logo_badge_style,
-            LogoBackdropKind::Backdrop => settings.backdrop_badge_style,
-        };
-        let type_label_style = match lb_kind {
-            LogoBackdropKind::Logo => settings.logo_label_style,
-            LogoBackdropKind::Backdrop => settings.backdrop_label_style,
-        };
-
+        let params = LbRenderParams::from_settings(lb_kind, &settings);
         let resolved_size = resolve_image_size(image_size);
-        let badge_size_factor = match lb_kind {
-            LogoBackdropKind::Logo => settings.logo_badge_size.scale_factor(),
-            LogoBackdropKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
-        };
+        let badge_size_factor = params.badge_size.scale_factor();
         let (target_width, badge_scale) = match lb_kind {
             LogoBackdropKind::Logo => (
                 resolved_size.logo_target_width(),
@@ -1053,8 +1086,8 @@ fn trigger_logo_backdrop_refresh(
             ),
         };
         let bytes = match lb_kind {
-            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
-            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, type_badge_style, type_label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+            LogoBackdropKind::Logo => generate::generate_logo(image_bytes, badges, state2.font.clone(), params.badge_style, params.label_style, state2.render_semaphore.clone(), target_width, badge_scale).await?,
+            LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, badges, state2.font.clone(), state2.config.image_quality, params.position, params.badge_style, params.label_style, params.badge_direction, state2.render_semaphore.clone(), target_width, badge_scale, params.badge_size).await?,
         };
 
         Ok((bytes, cross_ids.release_date.clone(), image_type, cross_ids))
@@ -1660,15 +1693,9 @@ pub async fn handle_logo_backdrop_inner(
         LogoBackdropKind::Logo => settings.logo_ratings_limit,
         LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
     };
-    let type_badge_style = match lb_kind {
-        LogoBackdropKind::Logo => settings.logo_badge_style,
-        LogoBackdropKind::Backdrop => settings.backdrop_badge_style,
-    }
-    .resolve(BadgeDirection::Vertical);
-    let type_label_style = match lb_kind {
-        LogoBackdropKind::Logo => settings.logo_label_style,
-        LogoBackdropKind::Backdrop => settings.backdrop_label_style,
-    };
+    let params = LbRenderParams::from_settings(lb_kind, settings);
+    let type_badge_style = params.badge_style;
+    let type_label_style = params.label_style;
 
     // Backdrops are language-agnostic (no text) — skip lang/textless entirely.
     // Logos ARE the text — textless makes no sense, only lang matters.
@@ -1772,6 +1799,9 @@ pub async fn handle_logo_backdrop_inner(
         neg_lang_key: String,
         type_badge_style: BadgeStyle,
         type_label_style: LabelStyle,
+        type_position: BadgePosition,
+        type_badge_direction: BadgeDirection,
+        type_badge_size: BadgeSize,
         badge_size_factor: f32,
         label: &'static str,
         resolved: id::ResolvedId,
@@ -1790,10 +1820,10 @@ pub async fn handle_logo_backdrop_inner(
         neg_lang_key,
         type_badge_style,
         type_label_style,
-        badge_size_factor: match lb_kind {
-            LogoBackdropKind::Logo => settings.logo_badge_size.scale_factor(),
-            LogoBackdropKind::Backdrop => settings.backdrop_badge_size.scale_factor(),
-        },
+        type_position: params.position,
+        type_badge_direction: params.badge_direction,
+        type_badge_size: params.badge_size,
+        badge_size_factor: params.badge_size.scale_factor(),
         label,
         resolved: resolved.clone(),
         badges,
@@ -1876,7 +1906,7 @@ pub async fn handle_logo_backdrop_inner(
             };
             let bytes = match lb_kind {
                 LogoBackdropKind::Logo => generate::generate_logo(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
-                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_badge_style, ctx.type_label_style, ctx.state.render_semaphore.clone(), target_width, badge_scale).await?,
+                LogoBackdropKind::Backdrop => generate::generate_backdrop(image_bytes, ctx.badges, ctx.state.font.clone(), ctx.state.config.image_quality, ctx.type_position, ctx.type_badge_style, ctx.type_label_style, ctx.type_badge_direction, ctx.state.render_semaphore.clone(), target_width, badge_scale, ctx.type_badge_size).await?,
             };
 
             let release_date = ctx.cross_ids.release_date.clone();
@@ -1899,7 +1929,7 @@ pub async fn handle_logo_backdrop_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::db::{BadgeStyle, ImageSource};
+    use crate::services::db::{BadgeDirection, BadgePosition, BadgeSize, BadgeStyle, ImageSource, LabelStyle, RenderSettings};
 
     #[test]
     fn image_kind_prefix() {
@@ -1936,15 +1966,15 @@ mod tests {
     }
 
     #[test]
-    fn poster_position_cache_suffix_all_positions() {
-        assert_eq!(poster_position_cache_suffix("bc"), ".pbc");
-        assert_eq!(poster_position_cache_suffix("tc"), ".ptc");
-        assert_eq!(poster_position_cache_suffix("l"), ".pl");
-        assert_eq!(poster_position_cache_suffix("r"), ".pr");
-        assert_eq!(poster_position_cache_suffix("tl"), ".ptl");
-        assert_eq!(poster_position_cache_suffix("tr"), ".ptr");
-        assert_eq!(poster_position_cache_suffix("bl"), ".pbl");
-        assert_eq!(poster_position_cache_suffix("br"), ".pbr");
+    fn position_cache_suffix_all_positions() {
+        assert_eq!(position_cache_suffix("bc"), ".pbc");
+        assert_eq!(position_cache_suffix("tc"), ".ptc");
+        assert_eq!(position_cache_suffix("l"), ".pl");
+        assert_eq!(position_cache_suffix("r"), ".pr");
+        assert_eq!(position_cache_suffix("tl"), ".ptl");
+        assert_eq!(position_cache_suffix("tr"), ".ptr");
+        assert_eq!(position_cache_suffix("bl"), ".pbl");
+        assert_eq!(position_cache_suffix("br"), ".pbr");
     }
 
     #[test]
@@ -2135,11 +2165,11 @@ mod tests {
     }
 
     #[test]
-    fn settings_cache_suffix_backdrop_no_position_or_direction() {
+    fn settings_cache_suffix_backdrop_includes_position_and_direction() {
         let s = RenderSettings::default();
         let suffix = settings_cache_suffix(&s, cache::ImageType::Backdrop, None);
-        assert!(!suffix.contains(".p"), "backdrop should not have position suffix");
-        assert!(!suffix.contains(".d"), "backdrop should not have direction suffix");
+        assert!(suffix.contains(".p"), "backdrop should have position suffix");
+        assert!(suffix.contains(".d"), "backdrop should have direction suffix");
         assert!(suffix.contains(".s"), "missing badge style suffix");
         assert!(suffix.contains(".l"), "missing label style suffix");
         assert!(suffix.contains(".z"), "missing image size suffix");
@@ -2215,6 +2245,76 @@ mod tests {
         // Same badges should produce the same suffix
         let suffix_imdb_rt_2 = settings_cache_suffix_with_ratings(&s, cache::ImageType::Poster, None, "@ir");
         assert_eq!(suffix_imdb_rt, suffix_imdb_rt_2);
+    }
+
+    // --- LbRenderParams tests ---
+
+    #[test]
+    fn lb_render_params_logo_uses_hardcoded_defaults() {
+        let settings = RenderSettings {
+            logo_badge_style: BadgeStyle::Horizontal,
+            logo_label_style: LabelStyle::Icon,
+            logo_badge_size: BadgeSize::Large,
+            // Backdrop fields should be ignored for logo
+            backdrop_position: BadgePosition::BottomLeft,
+            backdrop_badge_direction: BadgeDirection::Horizontal,
+            backdrop_badge_style: BadgeStyle::Vertical,
+            ..RenderSettings::default()
+        };
+        let p = LbRenderParams::from_settings(LogoBackdropKind::Logo, &settings);
+        assert_eq!(p.position, BadgePosition::TopRight);
+        assert_eq!(p.badge_direction, BadgeDirection::Vertical);
+        assert_eq!(p.badge_style, BadgeStyle::Horizontal);
+        assert_eq!(p.label_style, LabelStyle::Icon);
+        assert_eq!(p.badge_size, BadgeSize::Large);
+    }
+
+    #[test]
+    fn lb_render_params_backdrop_reads_settings() {
+        let settings = RenderSettings {
+            backdrop_position: BadgePosition::BottomCenter,
+            backdrop_badge_direction: BadgeDirection::Horizontal,
+            backdrop_badge_style: BadgeStyle::Vertical,
+            backdrop_label_style: LabelStyle::Official,
+            backdrop_badge_size: BadgeSize::ExtraSmall,
+            ..RenderSettings::default()
+        };
+        let p = LbRenderParams::from_settings(LogoBackdropKind::Backdrop, &settings);
+        assert_eq!(p.position, BadgePosition::BottomCenter);
+        assert_eq!(p.badge_direction, BadgeDirection::Horizontal);
+        // badge_style Vertical stays Vertical (not Default), unaffected by direction
+        assert_eq!(p.badge_style, BadgeStyle::Vertical);
+        assert_eq!(p.label_style, LabelStyle::Official);
+        assert_eq!(p.badge_size, BadgeSize::ExtraSmall);
+    }
+
+    #[test]
+    fn lb_render_params_backdrop_resolves_default_direction() {
+        // BottomCenter is center-horizontal → Default direction resolves to Horizontal
+        let settings = RenderSettings {
+            backdrop_position: BadgePosition::BottomCenter,
+            backdrop_badge_direction: BadgeDirection::Default,
+            backdrop_badge_style: BadgeStyle::Default,
+            ..RenderSettings::default()
+        };
+        let p = LbRenderParams::from_settings(LogoBackdropKind::Backdrop, &settings);
+        assert_eq!(p.badge_direction, BadgeDirection::Horizontal);
+        // Default style resolves to match direction (Horizontal)
+        assert_eq!(p.badge_style, BadgeStyle::Horizontal);
+    }
+
+    #[test]
+    fn lb_render_params_backdrop_resolves_default_direction_vertical() {
+        // TopRight is not center-horizontal → Default direction resolves to Vertical
+        let settings = RenderSettings {
+            backdrop_position: BadgePosition::TopRight,
+            backdrop_badge_direction: BadgeDirection::Default,
+            backdrop_badge_style: BadgeStyle::Default,
+            ..RenderSettings::default()
+        };
+        let p = LbRenderParams::from_settings(LogoBackdropKind::Backdrop, &settings);
+        assert_eq!(p.badge_direction, BadgeDirection::Vertical);
+        assert_eq!(p.badge_style, BadgeStyle::Vertical);
     }
 
     #[test]

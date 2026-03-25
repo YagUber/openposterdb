@@ -27,6 +27,8 @@ const defaultSettings: RenderSettings = {
   poster_badge_size: 'm',
   logo_badge_size: 'm',
   backdrop_badge_size: 'm',
+  backdrop_position: 'tr',
+  backdrop_badge_direction: 'v',
   episode_ratings_limit: 1,
   episode_badge_style: 'v',
   episode_label_style: 'o',

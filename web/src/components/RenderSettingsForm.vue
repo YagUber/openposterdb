@@ -37,6 +37,8 @@ export interface RenderSettings {
   poster_badge_size: string
   logo_badge_size: string
   backdrop_badge_size: string
+  backdrop_position: string
+  backdrop_badge_direction: string
   episode_ratings_limit: number
   episode_badge_style: string
   episode_label_style: string
@@ -54,7 +56,7 @@ const props = defineProps<{
   resetSettings?: () => Promise<boolean>
   fetchPreview: (ratingsLimit: number, ratingsOrder: string, posterPosition?: string, badgeStyle?: string, labelStyle?: string, badgeDirection?: string, badgeSize?: string) => Promise<Response>
   fetchLogoPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
-  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string) => Promise<Response>
+  fetchBackdropPreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string) => Promise<Response>
   fetchEpisodePreview?: (ratingsLimit: number, ratingsOrder: string, badgeStyle?: string, labelStyle?: string, badgeSize?: string, position?: string, badgeDirection?: string, blur?: boolean) => Promise<Response>
 }>()
 
@@ -77,6 +79,8 @@ const editPosterBadgeDirection = ref(props.settings.poster_badge_direction || 'd
 const editPosterBadgeSize = ref(props.settings.poster_badge_size || 'm')
 const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
+const editBackdropPosition = ref(props.settings.backdrop_position || 'tr')
+const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'v')
 const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit ?? 1)
 const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
 const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
@@ -104,6 +108,8 @@ function applySettings(s: RenderSettings) {
   editPosterBadgeSize.value = s.poster_badge_size || 'm'
   editLogoBadgeSize.value = s.logo_badge_size || 'm'
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
+  editBackdropPosition.value = s.backdrop_position || 'tr'
+  editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'v'
   editEpisodeRatingsLimit.value = s.episode_ratings_limit ?? 1
   editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
   editEpisodeLabelStyle.value = s.episode_label_style || 'o'
@@ -165,6 +171,8 @@ async function autoSave() {
       poster_badge_size: editPosterBadgeSize.value,
       logo_badge_size: editLogoBadgeSize.value,
       backdrop_badge_size: editBackdropBadgeSize.value,
+      backdrop_position: editBackdropPosition.value,
+      backdrop_badge_direction: editBackdropBadgeDirection.value,
       episode_ratings_limit: editEpisodeRatingsLimit.value,
       episode_badge_style: editEpisodeBadgeStyle.value,
       episode_label_style: editEpisodeLabelStyle.value,
@@ -198,7 +206,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
+  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
   () => {
     if (syncing) return
     autoSave()
@@ -301,7 +309,7 @@ function updateLogoPreview() {
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value))
   }
 }
 
@@ -346,7 +354,7 @@ watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBad
 })
 
 // Backdrop-only settings
-watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize], () => {
+watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection], () => {
   if (syncing) return
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
@@ -713,6 +721,43 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
                 <SelectItem value="m">Medium</SelectItem>
                 <SelectItem value="l">Large</SelectItem>
                 <SelectItem value="xl">Extra Large</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-position')">Position</Label>
+            <Select
+              :model-value="editBackdropPosition"
+              @update:model-value="editBackdropPosition = $event as string"
+            >
+              <SelectTrigger :id="inputId('backdrop-position')" class="max-w-xs" data-testid="backdrop-position-select">
+                <SelectValue placeholder="Select position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tl">Top Left</SelectItem>
+                <SelectItem value="tc">Top Center</SelectItem>
+                <SelectItem value="tr">Top Right</SelectItem>
+                <SelectItem value="bl">Bottom Left</SelectItem>
+                <SelectItem value="bc">Bottom Center</SelectItem>
+                <SelectItem value="br">Bottom Right</SelectItem>
+                <SelectItem value="l">Left</SelectItem>
+                <SelectItem value="r">Right</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-badge-direction')">Badge direction</Label>
+            <Select
+              :model-value="editBackdropBadgeDirection"
+              @update:model-value="editBackdropBadgeDirection = $event as string"
+            >
+              <SelectTrigger :id="inputId('backdrop-badge-direction')" class="max-w-xs" data-testid="backdrop-badge-direction-select">
+                <SelectValue placeholder="Select direction" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="d">Default</SelectItem>
+                <SelectItem value="h">Horizontal</SelectItem>
+                <SelectItem value="v">Vertical</SelectItem>
               </SelectContent>
             </Select>
           </div>

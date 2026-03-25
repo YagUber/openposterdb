@@ -12,6 +12,7 @@ use crate::id::{self, IdType, MediaType, format_tmdb_id_value};
 use crate::image::generate;
 use crate::services::db::{BadgeDirection, BadgePosition, BadgeSize, BadgeStyle, ImageSize, LabelStyle, RenderSettings};
 use crate::services::fanart::{FanartClient, FanartImages, FanartPoster, PosterMatch};
+use crate::services::lang::lang_base;
 use crate::services::ratings;
 use crate::AppState;
 
@@ -1463,7 +1464,7 @@ async fn get_tmdb_images_cached(
         // `handle_episode_inner`, which does not use TMDB images API lookups.
         MediaType::Tv | MediaType::Episode => "tv",
     };
-    let cache_key = format!("{}:{}:{}", media_type_str, resolved.tmdb_id, lang);
+    let cache_key = format!("{}:{}:{}", media_type_str, resolved.tmdb_id, lang_base(lang));
     let tmdb = state.tmdb.clone();
     let tmdb_id = resolved.tmdb_id;
     let lang_owned = lang.to_string();

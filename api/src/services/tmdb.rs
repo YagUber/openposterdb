@@ -5,6 +5,8 @@ use crate::services::retry::{self, TMDB_API_RETRY, TMDB_CDN_RETRY};
 use serde::de::DeserializeOwned;
 use zeroize::Zeroizing;
 
+use super::lang::{lang_base, lang_region};
+
 #[derive(Clone)]
 pub struct TmdbClient {
     api_key: Arc<Zeroizing<String>>,
@@ -67,7 +69,12 @@ impl TmdbClient {
 
     pub async fn get_images(&self, media_type: &str, tmdb_id: u64, lang: &str) -> Result<TmdbImagesResponse, AppError> {
         let path = format!("/{media_type}/{tmdb_id}/images");
-        let include_lang = if lang.is_empty() { "null".to_string() } else { format!("{lang},null") };
+        let base = lang_base(lang);
+        let include_lang = if base.is_empty() {
+            "null".to_string()
+        } else {
+            format!("{base},null")
+        };
         self.get(&path, &[("include_image_language", &include_lang)]).await
     }
 
@@ -99,11 +106,26 @@ impl TmdbClient {
         if lang.is_empty() {
             return find_best(None);
         }
-        // Try requested language, then English fallback
-        if let Some(img) = find_best(Some(lang)) {
+
+        let base = lang_base(lang);
+        let region = lang_region(lang);
+
+        // 1. Exact regional match (e.g. iso_639_1="pt" AND iso_3166_1="BR" for lang="pt-BR")
+        if let Some(region) = region {
+            let regional = images
+                .iter()
+                .filter(|img| img.iso_639_1.as_deref() == Some(base) && img.iso_3166_1.as_deref() == Some(region))
+                .max_by(|a, b| a.vote_average.partial_cmp(&b.vote_average).unwrap_or(std::cmp::Ordering::Equal));
+            if let Some(img) = regional {
+                return Some(img);
+            }
+        }
+        // 2. Base language match (any region)
+        if let Some(img) = find_best(Some(base)) {
             return Some(img);
         }
-        if lang != "en" {
+        // 3. English fallback
+        if base != "en" {
             if let Some(img) = find_best(Some("en")) {
                 return Some(img);
             }
@@ -126,6 +148,8 @@ impl TmdbClient {
 pub struct TmdbImage {
     pub file_path: String,
     pub iso_639_1: Option<String>,
+    #[serde(default)]
+    pub iso_3166_1: Option<String>,
     pub vote_average: f64,
 }
 
@@ -147,6 +171,16 @@ mod tests {
         TmdbImage {
             file_path: path.to_string(),
             iso_639_1: lang.map(|s| s.to_string()),
+            iso_3166_1: None,
+            vote_average: vote,
+        }
+    }
+
+    fn img_regional(path: &str, lang: &str, region: &str, vote: f64) -> TmdbImage {
+        TmdbImage {
+            file_path: path.to_string(),
+            iso_639_1: Some(lang.to_string()),
+            iso_3166_1: Some(region.to_string()),
             vote_average: vote,
         }
     }
@@ -242,5 +276,68 @@ mod tests {
             img("/en.jpg", Some("en"), 9.0),
         ];
         assert!(TmdbClient::select_image(&images, "", false).is_none());
+    }
+
+    #[test]
+    fn select_image_regional_exact_match() {
+        let images = vec![
+            img_regional("/pt_br.jpg", "pt", "BR", 5.0),
+            img_regional("/pt_pt.jpg", "pt", "PT", 7.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "pt-BR", false).unwrap();
+        assert_eq!(selected.file_path, "/pt_br.jpg");
+    }
+
+    #[test]
+    fn select_image_regional_falls_back_to_base_lang() {
+        // No BR-specific image, but a PT one exists — should match via base "pt"
+        let images = vec![
+            img_regional("/pt_pt.jpg", "pt", "PT", 7.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "pt-BR", false).unwrap();
+        assert_eq!(selected.file_path, "/pt_pt.jpg");
+    }
+
+    #[test]
+    fn select_image_regional_falls_back_to_english() {
+        // No Portuguese images at all — should fall back to English
+        let images = vec![
+            img("/en.jpg", Some("en"), 6.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "pt-BR", false).unwrap();
+        assert_eq!(selected.file_path, "/en.jpg");
+    }
+
+    #[test]
+    fn select_image_base_lang_gets_both_regions() {
+        // Requesting "pt" (no region) — should pick highest-voted regardless of region
+        let images = vec![
+            img_regional("/pt_br.jpg", "pt", "BR", 5.0),
+            img_regional("/pt_pt.jpg", "pt", "PT", 7.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "pt", false).unwrap();
+        assert_eq!(selected.file_path, "/pt_pt.jpg");
+    }
+
+    #[test]
+    fn select_image_english_regional_skips_redundant_fallback() {
+        // Requesting "en-US" — should match iso_639_1="en" directly, not attempt English fallback
+        let images = vec![
+            img("/en.jpg", Some("en"), 7.0),
+            img("/de.jpg", Some("de"), 9.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "en-US", false).unwrap();
+        assert_eq!(selected.file_path, "/en.jpg");
+    }
+
+    #[test]
+    fn select_image_english_regional_exact_match() {
+        // Requesting "en-GB" — should prefer iso_3166_1="GB" over generic English
+        let images = vec![
+            img("/en.jpg", Some("en"), 9.0),
+            img_regional("/en_gb.jpg", "en", "GB", 5.0),
+        ];
+        let selected = TmdbClient::select_image(&images, "en-GB", false).unwrap();
+        assert_eq!(selected.file_path, "/en_gb.jpg");
     }
 }

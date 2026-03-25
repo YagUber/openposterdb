@@ -98,7 +98,7 @@ GET /{api_key}/isValid
 - `id_type`: `imdb`, `tmdb`, `tvdb`
 - `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`, `episode-1396-S1E1`. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
-- `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German). Applies to posters and logos — selects language-specific images from TMDB or Fanart.tv. Falls back to English if the requested language is unavailable. Backdrops are language-agnostic and ignore this parameter
+- `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German, `?lang=pt-BR` for Brazilian Portuguese). Supports regional variants — when a region-specific image exists (e.g. `pt-BR`), it is preferred; otherwise falls back to the base language (`pt`), then English. Applies to posters and logos. Backdrops are language-agnostic and ignore this parameter
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))
 - `?ratings_limit={0-8}`: maximum number of rating badges to display (0 = no ratings)
 - `?ratings_order={keys}`: comma-separated rating source keys controlling display order. Valid keys: `imdb`, `tmdb`, `rt` (RT Critics), `rta` (RT Audience), `mc` (Metacritic), `trakt`, `lb` (Letterboxd), `mal` (MyAnimeList). Example: `?ratings_order=imdb,tmdb,rt`

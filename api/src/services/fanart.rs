@@ -116,8 +116,15 @@ impl FanartClient {
         if let Some(p) = find_best(lang) {
             return Some((p, PosterMatch::Language));
         }
+        // Fallback: try base language for regional variants (e.g. pt-BR → pt)
+        let base = super::lang::lang_base(lang);
+        if base != lang {
+            if let Some(p) = find_best(base) {
+                return Some((p, PosterMatch::Language));
+            }
+        }
         // Fallback: if no match for requested language, try English
-        if lang != "en" {
+        if lang != "en" && base != "en" {
             if let Some(p) = find_best("en") {
                 return Some((p, PosterMatch::Language));
             }
@@ -237,6 +244,43 @@ mod tests {
             FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "0".into() },
         ];
         let result = FanartClient::select_image(&posters, "en", false);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0.id, "1");
+    }
+
+    #[test]
+    fn select_image_regional_falls_back_to_base() {
+        // Requesting "pt-BR" — no "pt-BR" poster, should fall back to "pt"
+        let posters = vec![
+            FanartPoster { id: "1".into(), url: "http://a".into(), lang: "pt".into(), likes: "15".into() },
+            FanartPoster { id: "2".into(), url: "http://b".into(), lang: "en".into(), likes: "10".into() },
+        ];
+        let result = FanartClient::select_image(&posters, "pt-BR", false);
+        assert!(result.is_some());
+        let (poster, tier) = result.unwrap();
+        assert_eq!(poster.id, "1");
+        assert_eq!(tier, PosterMatch::Language);
+    }
+
+    #[test]
+    fn select_image_regional_falls_back_to_english() {
+        // Requesting "zh-CN" — no "zh-CN" or "zh" poster, should fall back to "en"
+        let posters = vec![
+            FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
+        ];
+        let result = FanartClient::select_image(&posters, "zh-CN", false);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0.id, "1");
+    }
+
+    #[test]
+    fn select_image_english_regional_skips_redundant_fallback() {
+        // Requesting "en-US" — should match "en" directly, not loop into English fallback
+        let posters = vec![
+            FanartPoster { id: "1".into(), url: "http://a".into(), lang: "en".into(), likes: "10".into() },
+            FanartPoster { id: "2".into(), url: "http://b".into(), lang: "de".into(), likes: "20".into() },
+        ];
+        let result = FanartClient::select_image(&posters, "en-US", false);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0.id, "1");
     }

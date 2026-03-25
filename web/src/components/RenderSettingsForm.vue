@@ -64,11 +64,14 @@ const editFanart = ref(props.settings.image_source === 'f')
 const editLang = ref(props.settings.lang || 'en')
 const editTextless = ref(props.settings.textless)
 const editSource = computed(() => editFanart.value ? 'f' : 't')
-const editRatingsLimit = ref(props.settings.ratings_limit)
+const editRatingsEnabled = ref(props.settings.ratings_limit !== 0)
+const editRatingsLimit = ref(props.settings.ratings_limit || 3)
 const editRatingsOrder = ref<string[]>(parseRatingsOrder(props.settings.ratings_order))
 const editPosterPosition = ref(props.settings.poster_position || 'bc')
-const editLogoRatingsLimit = ref(props.settings.logo_ratings_limit ?? 3)
-const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit ?? 3)
+const editLogoRatingsEnabled = ref((props.settings.logo_ratings_limit ?? 3) !== 0)
+const editLogoRatingsLimit = ref(props.settings.logo_ratings_limit || 3)
+const editBackdropRatingsEnabled = ref((props.settings.backdrop_ratings_limit ?? 3) !== 0)
+const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit || 3)
 const editPosterBadgeStyle = ref(props.settings.poster_badge_style || 'd')
 const editLogoBadgeStyle = ref(props.settings.logo_badge_style || 'v')
 const editBackdropBadgeStyle = ref(props.settings.backdrop_badge_style || 'v')
@@ -81,7 +84,8 @@ const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 const editBackdropPosition = ref(props.settings.backdrop_position || 'tr')
 const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'v')
-const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit ?? 1)
+const editEpisodeRatingsEnabled = ref((props.settings.episode_ratings_limit ?? 1) !== 0)
+const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit || 1)
 const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
 const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
 const editEpisodeBadgeSize = ref(props.settings.episode_badge_size || 'l')
@@ -93,11 +97,14 @@ function applySettings(s: RenderSettings) {
   editFanart.value = s.image_source === 'f'
   editLang.value = s.lang || 'en'
   editTextless.value = s.textless
-  editRatingsLimit.value = s.ratings_limit
+  editRatingsEnabled.value = s.ratings_limit !== 0
+  if (s.ratings_limit !== 0) editRatingsLimit.value = s.ratings_limit
   editRatingsOrder.value = parseRatingsOrder(s.ratings_order)
   editPosterPosition.value = s.poster_position || 'bc'
-  editLogoRatingsLimit.value = s.logo_ratings_limit ?? 3
-  editBackdropRatingsLimit.value = s.backdrop_ratings_limit ?? 3
+  editLogoRatingsEnabled.value = (s.logo_ratings_limit ?? 3) !== 0
+  if (s.logo_ratings_limit) editLogoRatingsLimit.value = s.logo_ratings_limit
+  editBackdropRatingsEnabled.value = (s.backdrop_ratings_limit ?? 3) !== 0
+  if (s.backdrop_ratings_limit) editBackdropRatingsLimit.value = s.backdrop_ratings_limit
   editPosterBadgeStyle.value = s.poster_badge_style || 'd'
   editLogoBadgeStyle.value = s.logo_badge_style || 'v'
   editBackdropBadgeStyle.value = s.backdrop_badge_style || 'v'
@@ -110,7 +117,8 @@ function applySettings(s: RenderSettings) {
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
   editBackdropPosition.value = s.backdrop_position || 'tr'
   editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'v'
-  editEpisodeRatingsLimit.value = s.episode_ratings_limit ?? 1
+  editEpisodeRatingsEnabled.value = (s.episode_ratings_limit ?? 1) !== 0
+  if (s.episode_ratings_limit) editEpisodeRatingsLimit.value = s.episode_ratings_limit
   editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
   editEpisodeLabelStyle.value = s.episode_label_style || 'o'
   editEpisodeBadgeSize.value = s.episode_badge_size || 'l'
@@ -156,11 +164,11 @@ async function autoSave() {
       image_source: editSource.value,
       lang: editLang.value,
       textless: editTextless.value,
-      ratings_limit: editRatingsLimit.value,
+      ratings_limit: editRatingsEnabled.value ? editRatingsLimit.value : 0,
       ratings_order: editRatingsOrder.value.join(','),
       poster_position: editPosterPosition.value,
-      logo_ratings_limit: editLogoRatingsLimit.value,
-      backdrop_ratings_limit: editBackdropRatingsLimit.value,
+      logo_ratings_limit: editLogoRatingsEnabled.value ? editLogoRatingsLimit.value : 0,
+      backdrop_ratings_limit: editBackdropRatingsEnabled.value ? editBackdropRatingsLimit.value : 0,
       poster_badge_style: editPosterBadgeStyle.value,
       logo_badge_style: editLogoBadgeStyle.value,
       backdrop_badge_style: editBackdropBadgeStyle.value,
@@ -173,7 +181,7 @@ async function autoSave() {
       backdrop_badge_size: editBackdropBadgeSize.value,
       backdrop_position: editBackdropPosition.value,
       backdrop_badge_direction: editBackdropBadgeDirection.value,
-      episode_ratings_limit: editEpisodeRatingsLimit.value,
+      episode_ratings_limit: editEpisodeRatingsEnabled.value ? editEpisodeRatingsLimit.value : 0,
       episode_badge_style: editEpisodeBadgeStyle.value,
       episode_label_style: editEpisodeLabelStyle.value,
       episode_badge_size: editEpisodeBadgeSize.value,
@@ -206,7 +214,7 @@ async function autoSave() {
 
 // Auto-save on any setting change
 watch(
-  [editSource, editLang, editTextless, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsLimit, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
+  [editSource, editLang, editTextless, editRatingsEnabled, editRatingsLimit, editRatingsOrder, editPosterPosition, editLogoRatingsEnabled, editLogoRatingsLimit, editBackdropRatingsEnabled, editBackdropRatingsLimit, editPosterBadgeStyle, editLogoBadgeStyle, editBackdropBadgeStyle, editPosterLabelStyle, editLogoLabelStyle, editBackdropLabelStyle, editPosterBadgeDirection, editPosterBadgeSize, editLogoBadgeSize, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection, editEpisodeRatingsEnabled, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur],
   () => {
     if (syncing) return
     autoSave()
@@ -273,7 +281,7 @@ async function fetchPreviewImage(
   const generation = ++state.generation
 
   try {
-    const res = await fetcher(editRatingsLimit.value, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize)
+    const res = await fetcher(editRatingsEnabled.value ? editRatingsLimit.value : 0, editRatingsOrder.value.join(','), extraArgs?.posterPosition, extraArgs?.badgeStyle, extraArgs?.labelStyle, extraArgs?.badgeDirection, extraArgs?.badgeSize)
     if (generation !== state.generation) return
     if (!res.ok) {
       state.error = true
@@ -303,19 +311,19 @@ function updatePosterPreview() {
 
 function updateLogoPreview() {
   if (props.fetchLogoPreview) {
-    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsLimit.value, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value))
+    fetchPreviewImage(logoPreview.value, (_limit, order) => props.fetchLogoPreview!(editLogoRatingsEnabled.value ? editLogoRatingsLimit.value : 0, order, editLogoBadgeStyle.value, editLogoLabelStyle.value, editLogoBadgeSize.value))
   }
 }
 
 function updateBackdropPreview() {
   if (props.fetchBackdropPreview) {
-    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsLimit.value, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value))
+    fetchPreviewImage(backdropPreview.value, (_limit, order) => props.fetchBackdropPreview!(editBackdropRatingsEnabled.value ? editBackdropRatingsLimit.value : 0, order, editBackdropBadgeStyle.value, editBackdropLabelStyle.value, editBackdropBadgeSize.value, editBackdropPosition.value, editBackdropBadgeDirection.value))
   }
 }
 
 function updateEpisodePreview() {
   if (props.fetchEpisodePreview) {
-    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsLimit.value, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value))
+    fetchPreviewImage(episodePreview.value, (_limit, order) => props.fetchEpisodePreview!(editEpisodeRatingsEnabled.value ? editEpisodeRatingsLimit.value : 0, order, editEpisodeBadgeStyle.value, editEpisodeLabelStyle.value, editEpisodeBadgeSize.value, editEpisodePosition.value, editEpisodeBadgeDirection.value, editEpisodeBlur.value))
   }
 }
 
@@ -340,28 +348,28 @@ watch([editRatingsOrder], () => {
 }, { deep: true })
 
 // Poster-only settings
-watch([editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSize], () => {
+watch([editRatingsEnabled, editRatingsLimit, editPosterPosition, editPosterBadgeStyle, editPosterLabelStyle, editPosterBadgeDirection, editPosterBadgeSize], () => {
   if (syncing) return
   if (posterPreviewTimer) clearTimeout(posterPreviewTimer)
   posterPreviewTimer = setTimeout(updatePosterPreview, 500)
 })
 
 // Logo-only settings
-watch([editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBadgeSize], () => {
+watch([editLogoRatingsEnabled, editLogoRatingsLimit, editLogoBadgeStyle, editLogoLabelStyle, editLogoBadgeSize], () => {
   if (syncing) return
   if (logoPreviewTimer) clearTimeout(logoPreviewTimer)
   logoPreviewTimer = setTimeout(updateLogoPreview, 500)
 })
 
 // Backdrop-only settings
-watch([editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection], () => {
+watch([editBackdropRatingsEnabled, editBackdropRatingsLimit, editBackdropBadgeStyle, editBackdropLabelStyle, editBackdropBadgeSize, editBackdropPosition, editBackdropBadgeDirection], () => {
   if (syncing) return
   if (backdropPreviewTimer) clearTimeout(backdropPreviewTimer)
   backdropPreviewTimer = setTimeout(updateBackdropPreview, 500)
 })
 
 // Episode-only settings
-watch([editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur], () => {
+watch([editEpisodeRatingsEnabled, editEpisodeRatingsLimit, editEpisodeBadgeStyle, editEpisodeLabelStyle, editEpisodeBadgeSize, editEpisodePosition, editEpisodeBadgeDirection, editEpisodeBlur], () => {
   if (syncing) return
   if (episodePreviewTimer) clearTimeout(episodePreviewTimer)
   episodePreviewTimer = setTimeout(updateEpisodePreview, 500)
@@ -545,30 +553,41 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-1">
-            <div class="flex items-center gap-3">
-              <Label :for="inputId('ratings-limit')">Max ratings</Label>
-              <Input
-                :id="inputId('ratings-limit')"
-                v-model.number="editRatingsLimit"
-                type="number"
-                :min="0"
-                :max="8"
-                class="w-[80px]"
-                title="0 = show all"
-              />
-            </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+          <div class="space-y-2">
+            <Label :for="inputId('ratings-limit')">Max ratings</Label>
+            <Input
+              :id="inputId('ratings-limit')"
+              v-model.number="editRatingsLimit"
+              type="number"
+              :min="1"
+              :max="8"
+              class="w-[80px]"
+              :disabled="!editRatingsEnabled"
+            />
           </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <Checkbox
-          :id="inputId('textless')"
-          :model-value="editTextless"
-          data-testid="textless-checkbox"
-          @update:model-value="(v) => editTextless = !!v"
-        />
-        <Label :for="inputId('textless')">Prefer textless posters</Label>
+          <div class="col-span-full border-t"></div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('textless')"
+                :model-value="editTextless"
+                data-testid="textless-checkbox"
+                @update:model-value="(v) => editTextless = !!v"
+              />
+              <Label :for="inputId('textless')">Prefer textless posters</Label>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('ratings-enabled')"
+                :model-value="editRatingsEnabled"
+                data-testid="ratings-enabled-checkbox"
+                @update:model-value="(v) => editRatingsEnabled = !!v"
+              />
+              <Label :for="inputId('ratings-enabled')">Show ratings</Label>
+            </div>
+          </div>
       </div>
     </div>
 
@@ -639,20 +658,29 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-1">
-            <div class="flex items-center gap-3">
-              <Label :for="inputId('logo-ratings-limit')">Max ratings</Label>
-              <Input
-                :id="inputId('logo-ratings-limit')"
-                v-model.number="editLogoRatingsLimit"
-                type="number"
-                :min="0"
-                :max="8"
-                class="w-[80px]"
-                title="0 = show all"
+          <div class="space-y-2">
+            <Label :for="inputId('logo-ratings-limit')">Max ratings</Label>
+            <Input
+              :id="inputId('logo-ratings-limit')"
+              v-model.number="editLogoRatingsLimit"
+              type="number"
+              :min="1"
+              :max="8"
+              class="w-[80px]"
+              :disabled="!editLogoRatingsEnabled"
+            />
+          </div>
+          <div class="col-span-full border-t"></div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('logo-ratings-enabled')"
+                :model-value="editLogoRatingsEnabled"
+                data-testid="logo-ratings-enabled-checkbox"
+                @update:model-value="(v) => editLogoRatingsEnabled = !!v"
               />
+              <Label :for="inputId('logo-ratings-enabled')">Show ratings</Label>
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
           </div>
       </div>
     </div>
@@ -761,20 +789,29 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-1">
-            <div class="flex items-center gap-3">
-              <Label :for="inputId('backdrop-ratings-limit')">Max ratings</Label>
-              <Input
-                :id="inputId('backdrop-ratings-limit')"
-                v-model.number="editBackdropRatingsLimit"
-                type="number"
-                :min="0"
-                :max="8"
-                class="w-[80px]"
-                title="0 = show all"
+          <div class="space-y-2">
+            <Label :for="inputId('backdrop-ratings-limit')">Max ratings</Label>
+            <Input
+              :id="inputId('backdrop-ratings-limit')"
+              v-model.number="editBackdropRatingsLimit"
+              type="number"
+              :min="1"
+              :max="8"
+              class="w-[80px]"
+              :disabled="!editBackdropRatingsEnabled"
+            />
+          </div>
+          <div class="col-span-full border-t"></div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('backdrop-ratings-enabled')"
+                :model-value="editBackdropRatingsEnabled"
+                data-testid="backdrop-ratings-enabled-checkbox"
+                @update:model-value="(v) => editBackdropRatingsEnabled = !!v"
               />
+              <Label :for="inputId('backdrop-ratings-enabled')">Show ratings</Label>
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
           </div>
       </div>
     </div>
@@ -883,29 +920,40 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-1">
-            <div class="flex items-center gap-3">
-              <Label :for="inputId('episode-ratings-limit')">Max ratings</Label>
-              <Input
-                :id="inputId('episode-ratings-limit')"
-                v-model.number="editEpisodeRatingsLimit"
-                type="number"
-                :min="0"
-                :max="8"
-                class="w-[80px]"
-                title="0 = show all"
-              />
-            </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
-          </div>
-          <div class="flex items-center gap-2 col-span-full">
-            <Checkbox
-              :id="inputId('episode-blur')"
-              :model-value="editEpisodeBlur"
-              data-testid="episode-blur-checkbox"
-              @update:model-value="(v) => editEpisodeBlur = !!v"
+          <div class="space-y-2">
+            <Label :for="inputId('episode-ratings-limit')">Max ratings</Label>
+            <Input
+              :id="inputId('episode-ratings-limit')"
+              v-model.number="editEpisodeRatingsLimit"
+              type="number"
+              :min="1"
+              :max="8"
+              class="w-[80px]"
+              :disabled="!editEpisodeRatingsEnabled"
             />
-            <Label :for="inputId('episode-blur')">Blur (spoiler protection)</Label>
+          </div>
+          <div class="col-span-full border-t"></div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('episode-blur')"
+                :model-value="editEpisodeBlur"
+                data-testid="episode-blur-checkbox"
+                @update:model-value="(v) => editEpisodeBlur = !!v"
+              />
+              <Label :for="inputId('episode-blur')">Blur (spoiler protection)</Label>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2">
+              <Checkbox
+                :id="inputId('episode-ratings-enabled')"
+                :model-value="editEpisodeRatingsEnabled"
+                data-testid="episode-ratings-enabled-checkbox"
+                @update:model-value="(v) => editEpisodeRatingsEnabled = !!v"
+              />
+              <Label :for="inputId('episode-ratings-enabled')">Show ratings</Label>
+            </div>
           </div>
       </div>
     </div>

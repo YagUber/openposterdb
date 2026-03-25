@@ -425,6 +425,10 @@ pub fn default_lang() -> String {
     "en".to_string()
 }
 
+pub fn default_ratings_enabled() -> bool {
+    true
+}
+
 pub fn default_ratings_limit() -> i32 {
     3
 }
@@ -1644,6 +1648,10 @@ pub struct UpsertApiKeySettings<'a> {
     pub episode_position: &'a str,
     pub episode_badge_direction: &'a str,
     pub episode_blur: bool,
+    pub ratings_enabled: bool,
+    pub logo_ratings_enabled: bool,
+    pub backdrop_ratings_enabled: bool,
+    pub episode_ratings_enabled: bool,
 }
 
 pub async fn upsert_api_key_settings(
@@ -1679,6 +1687,10 @@ pub async fn upsert_api_key_settings(
         episode_position: Set(params.episode_position.to_string()),
         episode_badge_direction: Set(params.episode_badge_direction.to_string()),
         episode_blur: Set(params.episode_blur),
+        ratings_enabled: Set(params.ratings_enabled),
+        logo_ratings_enabled: Set(params.logo_ratings_enabled),
+        backdrop_ratings_enabled: Set(params.backdrop_ratings_enabled),
+        episode_ratings_enabled: Set(params.episode_ratings_enabled),
     };
     api_key_settings::Entity::insert(model)
         .on_conflict(
@@ -1711,6 +1723,10 @@ pub async fn upsert_api_key_settings(
                     api_key_settings::Column::EpisodePosition,
                     api_key_settings::Column::EpisodeBadgeDirection,
                     api_key_settings::Column::EpisodeBlur,
+                    api_key_settings::Column::RatingsEnabled,
+                    api_key_settings::Column::LogoRatingsEnabled,
+                    api_key_settings::Column::BackdropRatingsEnabled,
+                    api_key_settings::Column::EpisodeRatingsEnabled,
                 ])
                 .to_owned(),
         )
@@ -1738,11 +1754,14 @@ pub struct RenderSettings {
     pub image_source: ImageSource,
     pub lang: Arc<str>,
     pub textless: bool,
+    pub ratings_enabled: bool,
     pub ratings_limit: i32,
     pub ratings_order: Arc<str>,
     pub is_default: bool,
     pub poster_position: BadgePosition,
+    pub logo_ratings_enabled: bool,
     pub logo_ratings_limit: i32,
+    pub backdrop_ratings_enabled: bool,
     pub backdrop_ratings_limit: i32,
     pub poster_badge_style: BadgeStyle,
     pub logo_badge_style: BadgeStyle,
@@ -1756,6 +1775,7 @@ pub struct RenderSettings {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    pub episode_ratings_enabled: bool,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -1765,17 +1785,35 @@ pub struct RenderSettings {
     pub episode_blur: bool,
 }
 
+impl RenderSettings {
+    pub fn effective_ratings_limit(&self) -> i32 {
+        if self.ratings_enabled { self.ratings_limit } else { 0 }
+    }
+    pub fn effective_logo_ratings_limit(&self) -> i32 {
+        if self.logo_ratings_enabled { self.logo_ratings_limit } else { 0 }
+    }
+    pub fn effective_backdrop_ratings_limit(&self) -> i32 {
+        if self.backdrop_ratings_enabled { self.backdrop_ratings_limit } else { 0 }
+    }
+    pub fn effective_episode_ratings_limit(&self) -> i32 {
+        if self.episode_ratings_enabled { self.episode_ratings_limit } else { 0 }
+    }
+}
+
 impl Default for RenderSettings {
     fn default() -> Self {
         Self {
             image_source: ImageSource::Tmdb,
             lang: Arc::from("en"),
             textless: false,
+            ratings_enabled: true,
             ratings_limit: default_ratings_limit(),
             ratings_order: Arc::from("mal,imdb,lb,rt,mc,rta,tmdb,trakt"),
             is_default: true,
             poster_position: BadgePosition::BottomCenter,
+            logo_ratings_enabled: true,
             logo_ratings_limit: default_logo_backdrop_ratings_limit(),
+            backdrop_ratings_enabled: true,
             backdrop_ratings_limit: default_logo_backdrop_ratings_limit(),
             poster_badge_style: BadgeStyle::Default,
             logo_badge_style: BadgeStyle::Vertical,
@@ -1789,6 +1827,7 @@ impl Default for RenderSettings {
             backdrop_badge_size: BadgeSize::Medium,
             backdrop_position: default_backdrop_position(),
             backdrop_badge_direction: default_backdrop_badge_direction(),
+            episode_ratings_enabled: true,
             episode_ratings_limit: default_episode_ratings_limit(),
             episode_badge_style: default_episode_badge_style(),
             episode_label_style: default_label_style(),
@@ -1820,6 +1859,10 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
             .get("textless")
             .map(|v| v == "true")
             .unwrap_or(defaults.textless),
+        ratings_enabled: globals
+            .get("ratings_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(defaults.ratings_enabled),
         ratings_limit: globals
             .get("ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -1827,10 +1870,18 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         ratings_order: arc_or("ratings_order", defaults.ratings_order),
         is_default: true,
         poster_position: global_or(globals, "poster_position", BadgePosition::parse, defaults.poster_position),
+        logo_ratings_enabled: globals
+            .get("logo_ratings_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(defaults.logo_ratings_enabled),
         logo_ratings_limit: globals
             .get("logo_ratings_limit")
             .and_then(|v| v.parse().ok())
             .unwrap_or(defaults.logo_ratings_limit),
+        backdrop_ratings_enabled: globals
+            .get("backdrop_ratings_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(defaults.backdrop_ratings_enabled),
         backdrop_ratings_limit: globals
             .get("backdrop_ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -1847,6 +1898,10 @@ pub fn parse_global_render_settings(globals: &HashMap<String, String>) -> Render
         backdrop_badge_size: global_or(globals, "backdrop_badge_size", BadgeSize::parse, defaults.backdrop_badge_size),
         backdrop_position: global_or(globals, "backdrop_position", BadgePosition::parse, defaults.backdrop_position),
         backdrop_badge_direction: global_or(globals, "backdrop_badge_direction", BadgeDirection::parse, defaults.backdrop_badge_direction),
+        episode_ratings_enabled: globals
+            .get("episode_ratings_enabled")
+            .map(|v| v != "false")
+            .unwrap_or(defaults.episode_ratings_enabled),
         episode_ratings_limit: globals
             .get("episode_ratings_limit")
             .and_then(|v| v.parse().ok())
@@ -1875,11 +1930,14 @@ pub async fn get_effective_render_settings(
                 image_source: parse_setting_or_default(&s.image_source, "image_source", ImageSource::parse, ImageSource::Tmdb),
                 lang: Arc::from(s.lang.as_str()),
                 textless: s.textless,
+                ratings_enabled: s.ratings_enabled,
                 ratings_limit: s.ratings_limit,
                 ratings_order: Arc::from(s.ratings_order.as_str()),
                 is_default: false,
                 poster_position: parse_setting_or_default(&s.poster_position, "poster_position", BadgePosition::parse, BadgePosition::BottomCenter),
+                logo_ratings_enabled: s.logo_ratings_enabled,
                 logo_ratings_limit: s.logo_ratings_limit,
+                backdrop_ratings_enabled: s.backdrop_ratings_enabled,
                 backdrop_ratings_limit: s.backdrop_ratings_limit,
                 poster_badge_style: parse_setting_or_default(&s.poster_badge_style, "poster_badge_style", BadgeStyle::parse, BadgeStyle::Default),
                 logo_badge_style: parse_setting_or_default(&s.logo_badge_style, "logo_badge_style", BadgeStyle::parse, BadgeStyle::Vertical),
@@ -1893,6 +1951,7 @@ pub async fn get_effective_render_settings(
                 backdrop_badge_size: parse_setting_or_default(&s.backdrop_badge_size, "backdrop_badge_size", BadgeSize::parse, BadgeSize::Medium),
                 backdrop_position: parse_setting_or_default(&s.backdrop_position, "backdrop_position", BadgePosition::parse, default_backdrop_position()),
                 backdrop_badge_direction: parse_setting_or_default(&s.backdrop_badge_direction, "backdrop_badge_direction", BadgeDirection::parse, default_backdrop_badge_direction()),
+                episode_ratings_enabled: s.episode_ratings_enabled,
                 episode_ratings_limit: s.episode_ratings_limit,
                 episode_badge_style: parse_setting_or_default(&s.episode_badge_style, "episode_badge_style", BadgeStyle::parse, default_episode_badge_style()),
                 episode_label_style: parse_setting_or_default(&s.episode_label_style, "episode_label_style", LabelStyle::parse, LabelStyle::Official),

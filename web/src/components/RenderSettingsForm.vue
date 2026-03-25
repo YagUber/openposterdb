@@ -21,11 +21,14 @@ export interface RenderSettings {
   lang: string
   textless: boolean
   fanart_available: boolean
+  ratings_enabled: boolean
   ratings_limit: number
   ratings_order: string
   is_default?: boolean
   poster_position: string
+  logo_ratings_enabled: boolean
   logo_ratings_limit: number
+  backdrop_ratings_enabled: boolean
   backdrop_ratings_limit: number
   poster_badge_style: string
   logo_badge_style: string
@@ -39,6 +42,7 @@ export interface RenderSettings {
   backdrop_badge_size: string
   backdrop_position: string
   backdrop_badge_direction: string
+  episode_ratings_enabled: boolean
   episode_ratings_limit: number
   episode_badge_style: string
   episode_label_style: string
@@ -64,13 +68,13 @@ const editFanart = ref(props.settings.image_source === 'f')
 const editLang = ref(props.settings.lang || 'en')
 const editTextless = ref(props.settings.textless)
 const editSource = computed(() => editFanart.value ? 'f' : 't')
-const editRatingsEnabled = ref(props.settings.ratings_limit !== 0)
+const editRatingsEnabled = ref(props.settings.ratings_enabled ?? true)
 const editRatingsLimit = ref(props.settings.ratings_limit || 3)
 const editRatingsOrder = ref<string[]>(parseRatingsOrder(props.settings.ratings_order))
 const editPosterPosition = ref(props.settings.poster_position || 'bc')
-const editLogoRatingsEnabled = ref((props.settings.logo_ratings_limit ?? 3) !== 0)
+const editLogoRatingsEnabled = ref(props.settings.logo_ratings_enabled ?? true)
 const editLogoRatingsLimit = ref(props.settings.logo_ratings_limit || 3)
-const editBackdropRatingsEnabled = ref((props.settings.backdrop_ratings_limit ?? 3) !== 0)
+const editBackdropRatingsEnabled = ref(props.settings.backdrop_ratings_enabled ?? true)
 const editBackdropRatingsLimit = ref(props.settings.backdrop_ratings_limit || 3)
 const editPosterBadgeStyle = ref(props.settings.poster_badge_style || 'd')
 const editLogoBadgeStyle = ref(props.settings.logo_badge_style || 'v')
@@ -84,7 +88,7 @@ const editLogoBadgeSize = ref(props.settings.logo_badge_size || 'm')
 const editBackdropBadgeSize = ref(props.settings.backdrop_badge_size || 'm')
 const editBackdropPosition = ref(props.settings.backdrop_position || 'tr')
 const editBackdropBadgeDirection = ref(props.settings.backdrop_badge_direction || 'v')
-const editEpisodeRatingsEnabled = ref((props.settings.episode_ratings_limit ?? 1) !== 0)
+const editEpisodeRatingsEnabled = ref(props.settings.episode_ratings_enabled ?? true)
 const editEpisodeRatingsLimit = ref(props.settings.episode_ratings_limit || 1)
 const editEpisodeBadgeStyle = ref(props.settings.episode_badge_style || 'v')
 const editEpisodeLabelStyle = ref(props.settings.episode_label_style || 'o')
@@ -97,13 +101,13 @@ function applySettings(s: RenderSettings) {
   editFanart.value = s.image_source === 'f'
   editLang.value = s.lang || 'en'
   editTextless.value = s.textless
-  editRatingsEnabled.value = s.ratings_limit !== 0
-  if (s.ratings_limit !== 0) editRatingsLimit.value = s.ratings_limit
+  editRatingsEnabled.value = s.ratings_enabled ?? true
+  if (s.ratings_limit) editRatingsLimit.value = s.ratings_limit
   editRatingsOrder.value = parseRatingsOrder(s.ratings_order)
   editPosterPosition.value = s.poster_position || 'bc'
-  editLogoRatingsEnabled.value = (s.logo_ratings_limit ?? 3) !== 0
+  editLogoRatingsEnabled.value = s.logo_ratings_enabled ?? true
   if (s.logo_ratings_limit) editLogoRatingsLimit.value = s.logo_ratings_limit
-  editBackdropRatingsEnabled.value = (s.backdrop_ratings_limit ?? 3) !== 0
+  editBackdropRatingsEnabled.value = s.backdrop_ratings_enabled ?? true
   if (s.backdrop_ratings_limit) editBackdropRatingsLimit.value = s.backdrop_ratings_limit
   editPosterBadgeStyle.value = s.poster_badge_style || 'd'
   editLogoBadgeStyle.value = s.logo_badge_style || 'v'
@@ -117,7 +121,7 @@ function applySettings(s: RenderSettings) {
   editBackdropBadgeSize.value = s.backdrop_badge_size || 'm'
   editBackdropPosition.value = s.backdrop_position || 'tr'
   editBackdropBadgeDirection.value = s.backdrop_badge_direction || 'v'
-  editEpisodeRatingsEnabled.value = (s.episode_ratings_limit ?? 1) !== 0
+  editEpisodeRatingsEnabled.value = s.episode_ratings_enabled ?? true
   if (s.episode_ratings_limit) editEpisodeRatingsLimit.value = s.episode_ratings_limit
   editEpisodeBadgeStyle.value = s.episode_badge_style || 'v'
   editEpisodeLabelStyle.value = s.episode_label_style || 'o'
@@ -164,11 +168,14 @@ async function autoSave() {
       image_source: editSource.value,
       lang: editLang.value,
       textless: editTextless.value,
-      ratings_limit: editRatingsEnabled.value ? editRatingsLimit.value : 0,
+      ratings_enabled: editRatingsEnabled.value,
+      ratings_limit: editRatingsLimit.value,
       ratings_order: editRatingsOrder.value.join(','),
       poster_position: editPosterPosition.value,
-      logo_ratings_limit: editLogoRatingsEnabled.value ? editLogoRatingsLimit.value : 0,
-      backdrop_ratings_limit: editBackdropRatingsEnabled.value ? editBackdropRatingsLimit.value : 0,
+      logo_ratings_enabled: editLogoRatingsEnabled.value,
+      logo_ratings_limit: editLogoRatingsLimit.value,
+      backdrop_ratings_enabled: editBackdropRatingsEnabled.value,
+      backdrop_ratings_limit: editBackdropRatingsLimit.value,
       poster_badge_style: editPosterBadgeStyle.value,
       logo_badge_style: editLogoBadgeStyle.value,
       backdrop_badge_style: editBackdropBadgeStyle.value,
@@ -181,7 +188,8 @@ async function autoSave() {
       backdrop_badge_size: editBackdropBadgeSize.value,
       backdrop_position: editBackdropPosition.value,
       backdrop_badge_direction: editBackdropBadgeDirection.value,
-      episode_ratings_limit: editEpisodeRatingsEnabled.value ? editEpisodeRatingsLimit.value : 0,
+      episode_ratings_enabled: editEpisodeRatingsEnabled.value,
+      episode_ratings_limit: editEpisodeRatingsLimit.value,
       episode_badge_style: editEpisodeBadgeStyle.value,
       episode_label_style: editEpisodeLabelStyle.value,
       episode_badge_size: editEpisodeBadgeSize.value,

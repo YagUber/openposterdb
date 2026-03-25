@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache;
 use crate::error::AppError;
 use crate::image::serve::{self, LogoBackdropKind};
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
+use crate::services::db::{self, default_ratings_enabled, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -114,12 +114,15 @@ pub struct GlobalSettingsResponse {
     pub lang: String,
     pub textless: bool,
     pub fanart_available: bool,
+    pub ratings_enabled: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
     pub free_api_key_enabled: bool,
     pub free_api_key_locked: bool,
     pub poster_position: BadgePosition,
+    pub logo_ratings_enabled: bool,
     pub logo_ratings_limit: i32,
+    pub backdrop_ratings_enabled: bool,
     pub backdrop_ratings_limit: i32,
     pub poster_badge_style: BadgeStyle,
     pub logo_badge_style: BadgeStyle,
@@ -133,6 +136,7 @@ pub struct GlobalSettingsResponse {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    pub episode_ratings_enabled: bool,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -161,12 +165,15 @@ pub async fn get_settings(
         lang: settings.lang.to_string(),
         textless: settings.textless,
         fanart_available: state.fanart.is_some(),
+        ratings_enabled: settings.ratings_enabled,
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.to_string(),
         free_api_key_enabled,
         free_api_key_locked,
         poster_position: settings.poster_position,
+        logo_ratings_enabled: settings.logo_ratings_enabled,
         logo_ratings_limit: settings.logo_ratings_limit,
+        backdrop_ratings_enabled: settings.backdrop_ratings_enabled,
         backdrop_ratings_limit: settings.backdrop_ratings_limit,
         poster_badge_style: settings.poster_badge_style,
         logo_badge_style: settings.logo_badge_style,
@@ -180,6 +187,7 @@ pub async fn get_settings(
         backdrop_badge_size: settings.backdrop_badge_size,
         backdrop_position: settings.backdrop_position,
         backdrop_badge_direction: settings.backdrop_badge_direction,
+        episode_ratings_enabled: settings.episode_ratings_enabled,
         episode_ratings_limit: settings.episode_ratings_limit,
         episode_badge_style: settings.episode_badge_style,
         episode_label_style: settings.episode_label_style,
@@ -198,6 +206,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub lang: String,
     #[serde(default, alias = "fanart_textless")]
     pub textless: bool,
+    #[serde(default = "default_ratings_enabled")]
+    pub ratings_enabled: bool,
     #[serde(default = "default_ratings_limit")]
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
@@ -205,8 +215,12 @@ pub struct UpdateGlobalSettingsRequest {
     pub free_api_key_enabled: Option<bool>,
     #[serde(default = "db::default_poster_position")]
     pub poster_position: BadgePosition,
+    #[serde(default = "default_ratings_enabled")]
+    pub logo_ratings_enabled: bool,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub logo_ratings_limit: i32,
+    #[serde(default = "default_ratings_enabled")]
+    pub backdrop_ratings_enabled: bool,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub backdrop_ratings_limit: i32,
     #[serde(default = "db::default_poster_badge_style")]
@@ -233,6 +247,8 @@ pub struct UpdateGlobalSettingsRequest {
     pub backdrop_position: BadgePosition,
     #[serde(default = "db::default_backdrop_badge_direction")]
     pub backdrop_badge_direction: BadgeDirection,
+    #[serde(default = "default_ratings_enabled")]
+    pub episode_ratings_enabled: bool,
     #[serde(default = "db::default_episode_ratings_limit")]
     pub episode_ratings_limit: i32,
     #[serde(default = "db::default_episode_badge_style")]
@@ -255,6 +271,10 @@ pub async fn update_settings(
 ) -> Result<Json<serde_json::Value>, AppError> {
     db::validate_render_settings(&req.lang, req.ratings_limit, &req.ratings_order, req.logo_ratings_limit, req.backdrop_ratings_limit, req.episode_ratings_limit)?;
     let textless_str = if req.textless { "true" } else { "false" };
+    let ratings_enabled_str = if req.ratings_enabled { "true" } else { "false" };
+    let logo_ratings_enabled_str = if req.logo_ratings_enabled { "true" } else { "false" };
+    let backdrop_ratings_enabled_str = if req.backdrop_ratings_enabled { "true" } else { "false" };
+    let episode_ratings_enabled_str = if req.episode_ratings_enabled { "true" } else { "false" };
     let limit_str = req.ratings_limit.to_string();
     let logo_limit_str = req.logo_ratings_limit.to_string();
     let backdrop_limit_str = req.backdrop_ratings_limit.to_string();
@@ -264,8 +284,12 @@ pub async fn update_settings(
         ("image_source", req.image_source.as_str()),
         ("lang", &req.lang),
         ("textless", textless_str),
+        ("ratings_enabled", ratings_enabled_str),
         ("ratings_limit", &limit_str),
         ("ratings_order", &req.ratings_order),
+        ("logo_ratings_enabled", logo_ratings_enabled_str),
+        ("backdrop_ratings_enabled", backdrop_ratings_enabled_str),
+        ("episode_ratings_enabled", episode_ratings_enabled_str),
         ("poster_position", req.poster_position.as_str()),
         ("logo_ratings_limit", &logo_limit_str),
         ("backdrop_ratings_limit", &backdrop_limit_str),

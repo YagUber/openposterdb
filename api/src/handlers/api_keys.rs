@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 use super::auth::AuthUser;
 use super::middleware::ApiKeyUser;
 use crate::error::AppError;
-use crate::services::db::{self, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
+use crate::services::db::{self, default_ratings_enabled, default_ratings_limit, default_logo_backdrop_ratings_limit, default_ratings_order, BadgeDirection, BadgeSize, BadgeStyle, LabelStyle, BadgePosition, ImageSource};
 use crate::services::validation;
 use crate::AppState;
 
@@ -98,10 +98,13 @@ pub struct RenderSettingsResponse {
     pub textless: bool,
     pub fanart_available: bool,
     pub is_default: bool,
+    pub ratings_enabled: bool,
     pub ratings_limit: i32,
     pub ratings_order: String,
     pub poster_position: BadgePosition,
+    pub logo_ratings_enabled: bool,
     pub logo_ratings_limit: i32,
+    pub backdrop_ratings_enabled: bool,
     pub backdrop_ratings_limit: i32,
     pub poster_badge_style: BadgeStyle,
     pub logo_badge_style: BadgeStyle,
@@ -115,6 +118,7 @@ pub struct RenderSettingsResponse {
     pub backdrop_badge_size: BadgeSize,
     pub backdrop_position: BadgePosition,
     pub backdrop_badge_direction: BadgeDirection,
+    pub episode_ratings_enabled: bool,
     pub episode_ratings_limit: i32,
     pub episode_badge_style: BadgeStyle,
     pub episode_label_style: LabelStyle,
@@ -142,10 +146,13 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         textless: settings.textless,
         fanart_available,
         is_default: settings.is_default,
+        ratings_enabled: settings.ratings_enabled,
         ratings_limit: settings.ratings_limit,
         ratings_order: settings.ratings_order.to_string(),
         poster_position: settings.poster_position,
+        logo_ratings_enabled: settings.logo_ratings_enabled,
         logo_ratings_limit: settings.logo_ratings_limit,
+        backdrop_ratings_enabled: settings.backdrop_ratings_enabled,
         backdrop_ratings_limit: settings.backdrop_ratings_limit,
         poster_badge_style: settings.poster_badge_style,
         logo_badge_style: settings.logo_badge_style,
@@ -159,6 +166,7 @@ fn settings_to_response(settings: &db::RenderSettings, fanart_available: bool) -
         backdrop_badge_size: settings.backdrop_badge_size,
         backdrop_position: settings.backdrop_position,
         backdrop_badge_direction: settings.backdrop_badge_direction,
+        episode_ratings_enabled: settings.episode_ratings_enabled,
         episode_ratings_limit: settings.episode_ratings_limit,
         episode_badge_style: settings.episode_badge_style,
         episode_label_style: settings.episode_label_style,
@@ -177,14 +185,20 @@ pub struct UpdateSettingsRequest {
     pub lang: String,
     #[serde(default, alias = "fanart_textless")]
     pub textless: bool,
+    #[serde(default = "default_ratings_enabled")]
+    pub ratings_enabled: bool,
     #[serde(default = "default_ratings_limit")]
     pub ratings_limit: i32,
     #[serde(default = "default_ratings_order")]
     pub ratings_order: String,
     #[serde(default = "db::default_poster_position")]
     pub poster_position: BadgePosition,
+    #[serde(default = "default_ratings_enabled")]
+    pub logo_ratings_enabled: bool,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub logo_ratings_limit: i32,
+    #[serde(default = "default_ratings_enabled")]
+    pub backdrop_ratings_enabled: bool,
     #[serde(default = "default_logo_backdrop_ratings_limit")]
     pub backdrop_ratings_limit: i32,
     #[serde(default = "db::default_poster_badge_style")]
@@ -211,6 +225,8 @@ pub struct UpdateSettingsRequest {
     pub backdrop_position: BadgePosition,
     #[serde(default = "db::default_backdrop_badge_direction")]
     pub backdrop_badge_direction: BadgeDirection,
+    #[serde(default = "default_ratings_enabled")]
+    pub episode_ratings_enabled: bool,
     #[serde(default = "db::default_episode_ratings_limit")]
     pub episode_ratings_limit: i32,
     #[serde(default = "db::default_episode_badge_style")]
@@ -233,10 +249,13 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         image_source: req.image_source.as_str(),
         lang: &req.lang,
         textless: req.textless,
+        ratings_enabled: req.ratings_enabled,
         ratings_limit: req.ratings_limit,
         ratings_order: &req.ratings_order,
         poster_position: req.poster_position.as_str(),
+        logo_ratings_enabled: req.logo_ratings_enabled,
         logo_ratings_limit: req.logo_ratings_limit,
+        backdrop_ratings_enabled: req.backdrop_ratings_enabled,
         backdrop_ratings_limit: req.backdrop_ratings_limit,
         poster_badge_style: req.poster_badge_style.as_str(),
         logo_badge_style: req.logo_badge_style.as_str(),
@@ -250,6 +269,7 @@ fn build_upsert(id: i32, req: &UpdateSettingsRequest) -> db::UpsertApiKeySetting
         backdrop_badge_size: req.backdrop_badge_size.as_str(),
         backdrop_position: req.backdrop_position.as_str(),
         backdrop_badge_direction: req.backdrop_badge_direction.as_str(),
+        episode_ratings_enabled: req.episode_ratings_enabled,
         episode_ratings_limit: req.episode_ratings_limit,
         episode_badge_style: req.episode_badge_style.as_str(),
         episode_label_style: req.episode_label_style.as_str(),

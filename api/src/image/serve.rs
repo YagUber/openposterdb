@@ -123,10 +123,10 @@ pub fn settings_cache_suffix(
     image_size: Option<ImageSize>,
 ) -> String {
     let ratings_suffix = match kind {
-        cache::ImageType::Poster => ratings::ratings_cache_suffix(&settings.ratings_order, settings.ratings_limit),
-        cache::ImageType::Logo => ratings::ratings_cache_suffix(&settings.ratings_order, settings.logo_ratings_limit),
-        cache::ImageType::Backdrop => ratings::ratings_cache_suffix(&settings.ratings_order, settings.backdrop_ratings_limit),
-        cache::ImageType::Episode => ratings::ratings_cache_suffix(&settings.ratings_order, settings.episode_ratings_limit),
+        cache::ImageType::Poster => ratings::ratings_cache_suffix(&settings.ratings_order, settings.effective_ratings_limit()),
+        cache::ImageType::Logo => ratings::ratings_cache_suffix(&settings.ratings_order, settings.effective_logo_ratings_limit()),
+        cache::ImageType::Backdrop => ratings::ratings_cache_suffix(&settings.ratings_order, settings.effective_backdrop_ratings_limit()),
+        cache::ImageType::Episode => ratings::ratings_cache_suffix(&settings.ratings_order, settings.effective_episode_ratings_limit()),
     };
     settings_cache_suffix_with_ratings(settings, kind, image_size, &ratings_suffix)
 }
@@ -172,6 +172,10 @@ pub fn settings_cache_suffix_with_ratings(
         episode_position: _,
         episode_badge_direction: _,
         episode_blur: _,
+        ratings_enabled: _,
+        logo_ratings_enabled: _,
+        backdrop_ratings_enabled: _,
+        episode_ratings_enabled: _,
     } = settings;
 
     let resolved_size = resolve_image_size(image_size);
@@ -616,7 +620,7 @@ pub async fn handle_inner(
         let fast_path_start = Instant::now();
         if let Some(available) = read_available_ratings_cached(state, &id_key).await {
             let available_ratings_ms = fast_path_start.elapsed().as_millis() as u64;
-            let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.ratings_limit);
+            let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.effective_ratings_limit());
             let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Poster, image_size, &ratings_suffix);
             let cache_value = format!("{id_value}{variant}{suffix}");
             let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Poster, id_type_str, &cache_value)?;
@@ -693,7 +697,7 @@ pub async fn handle_inner(
     // TMDB path (default, or fanart fallback)
     let settings = &settings;
 
-    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
+    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.effective_ratings_limit());
     let ratings_suffix = ratings::badges_cache_suffix(&badges);
 
     let suffix = settings_cache_suffix_with_ratings(settings, cache::ImageType::Poster, image_size, &ratings_suffix);
@@ -838,7 +842,7 @@ async fn try_fanart_path(
         return Ok(None);
     }
 
-    let badges = ratings::apply_rating_preferences(ratings_result.badges.clone(), &settings.ratings_order, settings.ratings_limit);
+    let badges = ratings::apply_rating_preferences(ratings_result.badges.clone(), &settings.ratings_order, settings.effective_ratings_limit());
     let ratings_suffix = ratings::badges_cache_suffix(&badges);
 
     // Compute settings suffix once for all fanart variants
@@ -989,7 +993,7 @@ fn trigger_background_refresh(
             let sources = ratings::available_sources_string(&ratings_result.badges);
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
         }
-        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.ratings_limit);
+        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.effective_ratings_limit());
         let (bytes, rd, _tier, cross_ids) =
             generate_poster_with_source(&state2, &resolved, badges, &cross_ids, &settings, image_size, false).await?;
         Ok((bytes, rd, cache::ImageType::Poster, cross_ids))
@@ -1030,8 +1034,8 @@ fn trigger_logo_backdrop_refresh(
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
         }
         let type_ratings_limit = match lb_kind {
-            LogoBackdropKind::Logo => settings.logo_ratings_limit,
-            LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
+            LogoBackdropKind::Logo => settings.effective_logo_ratings_limit(),
+            LogoBackdropKind::Backdrop => settings.effective_backdrop_ratings_limit(),
         };
         let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, type_ratings_limit);
 
@@ -1179,7 +1183,7 @@ fn trigger_episode_refresh(
             let sources = ratings::available_sources_string(&ratings_result.badges);
             upsert_available_ratings_cached(&state2, &id_key, &sources, cross_ids.release_date.as_deref()).await;
         }
-        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.episode_ratings_limit);
+        let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.effective_episode_ratings_limit());
         let bytes = generate_episode(&state2, &resolved, badges, &settings, image_size).await?;
 
         Ok((bytes, cross_ids.release_date.clone(), cache::ImageType::Episode, cross_ids))
@@ -1585,7 +1589,7 @@ pub async fn handle_episode_inner(
     // Fast path: try to reconstruct the cache key from SQLite-stored available
     // sources, avoiding external API calls entirely on cache hits.
     if let Some(available) = read_available_ratings_cached(state, &id_key).await {
-        let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.episode_ratings_limit);
+        let ratings_suffix = ratings::badges_suffix_from_available(&available, &settings.ratings_order, settings.effective_episode_ratings_limit());
         let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Episode, image_size, &ratings_suffix);
         let cache_value = format!("{id_value}{suffix}");
         let cache_path = cache::typed_cache_path(&state.config.cache_dir, cache::ImageType::Episode, id_type_str, &cache_value)?;
@@ -1627,7 +1631,7 @@ pub async fn handle_episode_inner(
         upsert_available_ratings_cached(state, &id_key, &sources, cross_ids.release_date.as_deref()).await;
     }
 
-    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.episode_ratings_limit);
+    let badges = ratings::apply_rating_preferences(ratings_result.badges, &settings.ratings_order, settings.effective_episode_ratings_limit());
     let ratings_suffix = ratings::badges_cache_suffix(&badges);
     let suffix = settings_cache_suffix_with_ratings(&settings, cache::ImageType::Episode, image_size, &ratings_suffix);
     let cache_value = format!("{id_value}{suffix}");
@@ -1691,8 +1695,8 @@ pub async fn handle_logo_backdrop_inner(
 
     // Use per-type rating limit for logos/backdrops
     let type_ratings_limit = match lb_kind {
-        LogoBackdropKind::Logo => settings.logo_ratings_limit,
-        LogoBackdropKind::Backdrop => settings.backdrop_ratings_limit,
+        LogoBackdropKind::Logo => settings.effective_logo_ratings_limit(),
+        LogoBackdropKind::Backdrop => settings.effective_backdrop_ratings_limit(),
     };
     let params = LbRenderParams::from_settings(lb_kind, settings);
     let type_badge_style = params.badge_style;

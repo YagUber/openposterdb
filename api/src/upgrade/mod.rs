@@ -1,5 +1,6 @@
 mod v001_backdrop_cache_keys;
 mod v002_backdrop_position_direction_cache;
+mod v003_ratings_enabled_flags;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection};
 
@@ -22,6 +23,11 @@ pub async fn run(
 
     run_once(db, "v002_backdrop_position_direction_cache", || {
         v002_backdrop_position_direction_cache::run(db, cache_dir, external_cache_only)
+    })
+    .await?;
+
+    run_once(db, "v003_ratings_enabled_flags", || {
+        v003_ratings_enabled_flags::run(db, cache_dir, external_cache_only)
     })
     .await?;
 

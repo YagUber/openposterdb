@@ -340,4 +340,20 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
         "ALTER TABLE api_key_settings ADD COLUMN backdrop_badge_direction TEXT NOT NULL DEFAULT 'v'",
         "duplicate column",
     ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN ratings_enabled INTEGER NOT NULL DEFAULT 1",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN logo_ratings_enabled INTEGER NOT NULL DEFAULT 1",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN backdrop_ratings_enabled INTEGER NOT NULL DEFAULT 1",
+        "duplicate column",
+    ),
+    (
+        "ALTER TABLE api_key_settings ADD COLUMN episode_ratings_enabled INTEGER NOT NULL DEFAULT 1",
+        "duplicate column",
+    ),
 ];

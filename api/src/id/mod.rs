@@ -127,6 +127,11 @@ pub async fn resolve(
 }
 
 async fn resolve_imdb(imdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
+    // Handle episode format: episode-{series_imdb_id}-S{season}E{episode}
+    if let Some(rest) = imdb_id.strip_prefix("episode-") {
+        return resolve_imdb_episode(rest, imdb_id, tmdb).await;
+    }
+
     let result: FindResult = tmdb
         .get(&format!("/find/{imdb_id}"), &[("external_source", "imdb_id")])
         .await?;
@@ -240,28 +245,10 @@ async fn resolve_tmdb(id_value: &str, tmdb: &TmdbClient) -> Result<ResolvedId, A
 /// Parse the `{show_id}-S{season}E{episode}` portion of an episode ID.
 /// Returns `(show_id, season, episode)` on success.
 fn parse_episode_id(rest: &str, id_value: &str) -> Result<(u64, u32, u32), AppError> {
-    // Accept both uppercase and lowercase S/E (e.g. episode-1396-S1E1 or episode-1396-s1e1)
-    let upper = rest.to_ascii_uppercase();
-    let parts: Vec<&str> = upper.splitn(2, "-S").collect();
-    if parts.len() != 2 {
-        return Err(AppError::InvalidIdType(format!(
-            "episode id must be episode-{{show_id}}-S{{season}}E{{episode}}: {id_value}"
-        )));
-    }
-    let show_id = parts[0].parse::<u64>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
-    let se_parts: Vec<&str> = parts[1].splitn(2, 'E').collect();
-    if se_parts.len() != 2 {
-        return Err(AppError::InvalidIdType(format!(
-            "episode id must be episode-{{show_id}}-S{{season}}E{{episode}}: {id_value}"
-        )));
-    }
-    let season = se_parts[0].parse::<u32>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
-    let episode = se_parts[1].parse::<u32>().map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
-    if season > 10_000 || episode > 100_000 {
-        return Err(AppError::BadRequest(
-            "season must be ≤ 10 000 and episode must be ≤ 100 000".into(),
-        ));
-    }
+    let (id_str, season, episode) = parse_episode_external(rest, id_value)?;
+    let show_id = id_str
+        .parse::<u64>()
+        .map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
     Ok((show_id, season, episode))
 }
 
@@ -335,6 +322,102 @@ async fn resolve_episode_details(
             still_path,
         }),
     })
+}
+
+/// Parse `{external_id}-S{season}E{episode}` for IMDb/TVDB episode lookups.
+/// Unlike `parse_episode_id`, the ID portion is returned as a string slice
+/// because IMDb IDs like `tt1234567` aren't purely numeric.
+fn parse_episode_external<'a>(rest: &'a str, id_value: &str) -> Result<(&'a str, u32, u32), AppError> {
+    let upper = rest.to_ascii_uppercase();
+    let split_pos = upper.find("-S").ok_or_else(|| {
+        AppError::InvalidIdType(format!(
+            "episode id must be episode-{{id}}-S{{season}}E{{episode}}: {id_value}"
+        ))
+    })?;
+    let external_id = &rest[..split_pos];
+    if external_id.is_empty() {
+        return Err(AppError::InvalidIdType(format!(
+            "episode id must be episode-{{id}}-S{{season}}E{{episode}}: {id_value}"
+        )));
+    }
+    let se_str = &upper[split_pos + 2..]; // skip "-S"
+    let se_parts: Vec<&str> = se_str.splitn(2, 'E').collect();
+    if se_parts.len() != 2 {
+        return Err(AppError::InvalidIdType(format!(
+            "episode id must be episode-{{id}}-S{{season}}E{{episode}}: {id_value}"
+        )));
+    }
+    let season = se_parts[0]
+        .parse::<u32>()
+        .map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
+    let episode = se_parts[1]
+        .parse::<u32>()
+        .map_err(|_| AppError::InvalidIdType(id_value.to_string()))?;
+    if season > 10_000 || episode > 100_000 {
+        return Err(AppError::BadRequest(
+            "season must be ≤ 10 000 and episode must be ≤ 100 000".into(),
+        ));
+    }
+    Ok((external_id, season, episode))
+}
+
+/// Resolve `episode-{series_imdb_id}-S{season}E{episode}` by first looking up
+/// the series via TMDB's Find API, then fetching episode details.
+async fn resolve_imdb_episode(
+    rest: &str,
+    id_value: &str,
+    tmdb: &TmdbClient,
+) -> Result<ResolvedId, AppError> {
+    let (series_imdb_id, season, episode): (&str, u32, u32) =
+        parse_episode_external(rest, id_value)?;
+
+    let result: FindResult = tmdb
+        .get(
+            &format!("/find/{series_imdb_id}"),
+            &[("external_source", "imdb_id")],
+        )
+        .await?;
+
+    let show_tmdb_id = result
+        .tv_results
+        .first()
+        .map(|tv| tv.id)
+        .ok_or_else(|| {
+            AppError::IdNotFound(format!(
+                "{series_imdb_id} (not found as a TV series on TMDB)"
+            ))
+        })?;
+
+    resolve_episode_details(tmdb, show_tmdb_id, season, episode, None, None).await
+}
+
+/// Resolve `episode-{series_tvdb_id}-S{season}E{episode}` by first looking up
+/// the series via TMDB's Find API, then fetching episode details.
+async fn resolve_tvdb_episode(
+    rest: &str,
+    id_value: &str,
+    tmdb: &TmdbClient,
+) -> Result<ResolvedId, AppError> {
+    let (series_tvdb_id, season, episode) = parse_episode_external(rest, id_value)?;
+
+    let result: FindResult = tmdb
+        .get(
+            &format!("/find/{series_tvdb_id}"),
+            &[("external_source", "tvdb_id")],
+        )
+        .await?;
+
+    let show_tmdb_id = result
+        .tv_results
+        .first()
+        .map(|tv| tv.id)
+        .ok_or_else(|| {
+            AppError::IdNotFound(format!(
+                "{series_tvdb_id} (not found as a TV series on TMDB via TVDB lookup)"
+            ))
+        })?;
+
+    resolve_episode_details(tmdb, show_tmdb_id, season, episode, None, None).await
 }
 
 #[cfg(test)]
@@ -478,9 +561,87 @@ mod tests {
         assert_eq!(season, 12);
         assert_eq!(ep, 24);
     }
+
+    // --- parse_episode_external ---
+
+    #[test]
+    fn parse_episode_external_imdb() {
+        let (id, season, ep) =
+            parse_episode_external("tt14786934-S1E1", "episode-tt14786934-S1E1").unwrap();
+        assert_eq!(id, "tt14786934");
+        assert_eq!(season, 1);
+        assert_eq!(ep, 1);
+    }
+
+    #[test]
+    fn parse_episode_external_tvdb_numeric() {
+        let (id, season, ep) =
+            parse_episode_external("81189-S3E5", "episode-81189-S3E5").unwrap();
+        assert_eq!(id, "81189");
+        assert_eq!(season, 3);
+        assert_eq!(ep, 5);
+    }
+
+    #[test]
+    fn parse_episode_external_lowercase() {
+        let (id, season, ep) =
+            parse_episode_external("tt14786934-s2e10", "episode-tt14786934-s2e10").unwrap();
+        assert_eq!(id, "tt14786934");
+        assert_eq!(season, 2);
+        assert_eq!(ep, 10);
+    }
+
+    #[test]
+    fn parse_episode_external_missing_season() {
+        assert!(parse_episode_external("tt14786934", "episode-tt14786934").is_err());
+    }
+
+    #[test]
+    fn parse_episode_external_missing_episode() {
+        assert!(parse_episode_external("tt14786934-S1", "episode-tt14786934-S1").is_err());
+    }
+
+    #[test]
+    fn parse_episode_external_zero_values() {
+        let (id, season, ep) =
+            parse_episode_external("tt14786934-S0E0", "episode-tt14786934-S0E0").unwrap();
+        assert_eq!(id, "tt14786934");
+        assert_eq!(season, 0);
+        assert_eq!(ep, 0);
+    }
+
+    #[test]
+    fn parse_episode_external_at_boundary() {
+        let (id, season, ep) =
+            parse_episode_external("81189-S10000E100000", "episode-81189-S10000E100000").unwrap();
+        assert_eq!(id, "81189");
+        assert_eq!(season, 10_000);
+        assert_eq!(ep, 100_000);
+    }
+
+    #[test]
+    fn parse_episode_external_over_boundary() {
+        assert!(parse_episode_external("81189-S10001E1", "episode-81189-S10001E1").is_err());
+        assert!(parse_episode_external("81189-S1E100001", "episode-81189-S1E100001").is_err());
+    }
+
+    #[test]
+    fn parse_episode_external_empty_id() {
+        assert!(parse_episode_external("-S1E1", "episode--S1E1").is_err());
+    }
+
+    #[test]
+    fn parse_episode_id_rejects_imdb_style_id() {
+        assert!(parse_episode_id("tt1234-S1E1", "episode-tt1234-S1E1").is_err());
+    }
 }
 
 async fn resolve_tvdb(tvdb_id: &str, tmdb: &TmdbClient) -> Result<ResolvedId, AppError> {
+    // Handle episode format: episode-{series_tvdb_id}-S{season}E{episode}
+    if let Some(rest) = tvdb_id.strip_prefix("episode-") {
+        return resolve_tvdb_episode(rest, tvdb_id, tmdb).await;
+    }
+
     let tvdb_id_num = tvdb_id.parse::<u64>().ok();
     let result: FindResult = tmdb
         .get(&format!("/find/{tvdb_id}"), &[("external_source", "tvdb_id")])

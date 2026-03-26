@@ -42,6 +42,28 @@ docker run -d \
 
 See [Configuration](#configuration) for additional environment variables.
 
+### aiometadata
+
+To use OpenPosterDB with [aiometadata](https://github.com/cedya77/aiometadata), set the following URL templates in your aiometadata configuration (replace `{api_key}` with your OpenPosterDB API key and `{base_url}` with your instance URL or `https://openposterdb.com`):
+
+| Image type | URL template |
+|---|---|
+| Poster | `{base_url}/{api_key}/imdb/poster-default/{imdb_id}.jpg` |
+| Background | `{base_url}/{api_key}/tmdb/backdrop-default/{type}-{tmdb_id}.jpg?imageSize=large` |
+| Logo | `{base_url}/{api_key}/tmdb/logo-default/{type}-{tmdb_id}.png` |
+
+`{type}` is `movie` or `series` depending on the media type.
+| Episode | `{base_url}/{api_key}/imdb/episode-default/episode-{imdb_id}-S{season}E{episode}.jpg` |
+
+TMDB and TVDB IDs also work for episodes:
+
+| ID type | Episode URL template |
+|---|---|
+| TMDB | `{base_url}/{api_key}/tmdb/episode-default/episode-{tmdb_id}-S{season}E{episode}.jpg` |
+| TVDB | `{base_url}/{api_key}/tvdb/episode-default/episode-{tvdb_id}-S{season}E{episode}.jpg` |
+
+The episode endpoint accepts a series-level ID combined with season/episode numbers — no episode-specific ID is needed.
+
 ## API Endpoints
 
 ### Poster
@@ -79,7 +101,7 @@ GET /{api_key}/{id_type}/episode-default/{id_value}.jpg
 
 - Returns JPEG with per-episode ratings on an episode still image (landscape)
 - Falls back to the series poster when no episode still is available
-- Supports episode IMDb IDs (e.g. `tt0959621`), TMDB episode format (`episode-1396-S1E1`), and TVDB episode IDs
+- Supports episode IMDb IDs (e.g. `tt0959621`), TMDB episode format (`episode-1396-S1E1`), TVDB episode IDs, and series-level ID + season/episode for all ID types (e.g. `episode-tt14786934-S1E1` for IMDb, `episode-81189-S3E5` for TVDB)
 - Dedicated episode settings: position, direction, badge style/size, label style, ratings limit
 - `?blur=true` applies Gaussian blur for spoiler protection (badges remain sharp)
 - IMDB episode ratings require an OMDb API key (MDBList does not support episode-level ratings)
@@ -96,7 +118,7 @@ GET /{api_key}/isValid
 **Common parameters:**
 
 - `id_type`: `imdb`, `tmdb`, `tvdb`
-- `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`, `episode-1396-S1E1`. Episode IMDb IDs (e.g. `tt0959621`) and TVDB episode IDs are also supported
+- `id_value`: e.g. `tt1234567`, `movie-123`, `series-456`, `episode-1396-S1E1`. Episode IMDb IDs (e.g. `tt0959621`), TVDB episode IDs, and series-level IDs with season/episode (e.g. `episode-tt14786934-S1E1`, `episode-81189-S3E5`) are also supported
 - `?fallback=true`: accepted for RPDB plugin compatibility but ignored as OPDB falls back to TMDB by default
 - `?lang={code}`: override the image language for this request (e.g. `?lang=de` for German, `?lang=pt-BR` for Brazilian Portuguese). Supports regional variants — when a region-specific image exists (e.g. `pt-BR`), it is preferred; otherwise falls back to the base language (`pt`), then English. Applies to posters and logos. Backdrops are language-agnostic and ignore this parameter
 - `?imageSize={size}`: control output image dimensions. Available sizes vary by image type (see [Image Sizes](#image-sizes))

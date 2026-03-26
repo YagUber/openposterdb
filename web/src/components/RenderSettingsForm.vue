@@ -555,10 +555,10 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
                 :min="0"
                 :max="8"
                 class="w-[80px]"
-                title="0 = show all"
+                title="0 = no ratings"
               />
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+            <p class="text-xs text-muted-foreground">0 = no ratings</p>
           </div>
       </div>
       <div class="flex items-center gap-2">
@@ -649,10 +649,10 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
                 :min="0"
                 :max="8"
                 class="w-[80px]"
-                title="0 = show all"
+                title="0 = no ratings"
               />
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+            <p class="text-xs text-muted-foreground">0 = no ratings</p>
           </div>
       </div>
     </div>
@@ -771,10 +771,10 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
                 :min="0"
                 :max="8"
                 class="w-[80px]"
-                title="0 = show all"
+                title="0 = no ratings"
               />
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+            <p class="text-xs text-muted-foreground">0 = no ratings</p>
           </div>
       </div>
     </div>
@@ -893,10 +893,10 @@ const inputId = (name: string) => props.uid ? `${name}-${props.uid}` : name
                 :min="0"
                 :max="8"
                 class="w-[80px]"
-                title="0 = show all"
+                title="0 = no ratings"
               />
             </div>
-            <p class="text-xs text-muted-foreground">0 = show all available ratings</p>
+            <p class="text-xs text-muted-foreground">0 = no ratings</p>
           </div>
           <div class="flex items-center gap-2 col-span-full">
             <Checkbox

@@ -337,14 +337,28 @@ async fn main() {
     let shutdown_pending = pending_last_used;
     let shutdown_db = state.db.clone();
     let shutdown_signal = async move {
-        let ctrl_c = tokio::signal::ctrl_c();
-        let mut sigterm =
+        let ctrl_c = async {
+            tokio::signal::ctrl_c()
+                .await
+                .expect("failed to install Ctrl+C handler");
+        };
+        
+        #[cfg(unix)]
+        let terminate = async {
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-                .expect("failed to register SIGTERM handler");
+                .expect("failed to install SIGTERM handler")
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
         tokio::select! {
             _ = ctrl_c => {},
-            _ = sigterm.recv() => {},
+            _ = terminate => {},
         }
+
         tracing::info!("shutdown signal received, flushing pending last_used updates");
         let ids: Vec<i32> = shutdown_pending.iter().map(|r| *r.key()).collect();
         shutdown_pending.clear();

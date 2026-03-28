@@ -46,6 +46,7 @@ jobs:
         with:
           context: .
           file: Containerfile
+          provenance: false
           platforms: ${{ matrix.platform }}
           outputs: type=image,"name=ghcr.io/${{ steps.meta.outputs.image_name }},${{ secrets.DOCKERHUB_USERNAME }}/openposterdb",push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.platform }}
@@ -69,6 +70,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -103,23 +107,55 @@ jobs:
           echo "image_name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Create and push GHCR manifest
+        id: ghcr_manifest
         working-directory: ${{ runner.temp }}/digests
         run: |
           GHCR_IMAGE="ghcr.io/${{ steps.meta.outputs.image_name }}"
-          docker buildx imagetools create \
+          if ! OUTPUT=$(docker buildx imagetools create \
             -t "$GHCR_IMAGE:${{ steps.meta.outputs.tag }}" \
             -t "$GHCR_IMAGE:${{ steps.meta.outputs.version }}" \
             -t "$GHCR_IMAGE:${{ steps.meta.outputs.major }}" \
             -t "$GHCR_IMAGE:latest" \
-            $(for f in *; do echo "$GHCR_IMAGE@$(cat "$f")"; done)
+            $(for f in *; do echo "$GHCR_IMAGE@$(cat "$f")"; done) 2>&1); then
+            echo "Manifest creation failed"
+            echo "${OUTPUT}"
+            exit 1
+          fi
+          echo "${OUTPUT}"
+          DIGEST_SHA="$(echo "${OUTPUT}" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1)"
+          echo "digest=${DIGEST_SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Create and push Docker Hub manifest
+        id: dh_manifest
         working-directory: ${{ runner.temp }}/digests
         run: |
           DH_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/openposterdb"
-          docker buildx imagetools create \
+          if ! OUTPUT=$(docker buildx imagetools create \
             -t "$DH_IMAGE:${{ steps.meta.outputs.tag }}" \
             -t "$DH_IMAGE:${{ steps.meta.outputs.version }}" \
             -t "$DH_IMAGE:${{ steps.meta.outputs.major }}" \
             -t "$DH_IMAGE:latest" \
-            $(for f in *; do echo "$DH_IMAGE@$(cat "$f")"; done)
+            $(for f in *; do echo "$DH_IMAGE@$(cat "$f")"; done) 2>&1); then
+            echo "Manifest creation failed"
+            echo "${OUTPUT}"
+            exit 1
+          fi
+          echo "${OUTPUT}"
+          DIGEST_SHA="$(echo "${OUTPUT}" | grep -oE 'sha256:[a-f0-9]{64}' | tail -1)"
+          echo "digest=${DIGEST_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest GHCR image
+        if: steps.ghcr_manifest.outputs.digest != ''
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/${{ steps.meta.outputs.image_name }}
+          subject-digest: ${{ steps.ghcr_manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest Docker Hub image
+        if: steps.dh_manifest.outputs.digest != ''
+        uses: actions/attest@v4
+        with:
+          subject-name: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/openposterdb
+          subject-digest: ${{ steps.dh_manifest.outputs.digest }}
+          push-to-registry: true

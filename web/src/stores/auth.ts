@@ -6,6 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(localStorage.getItem('token'))
   const setupRequired = ref<boolean | null>(null)
   const freeApiKeyEnabled = ref(false)
+  const disablePublicPages = ref(false)
 
   // API key session state (sessionStorage so it clears on tab close)
   const apiKeyToken = ref<string | null>(sessionStorage.getItem('apiKeyToken'))
@@ -32,6 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
     const data = await res.json()
     setupRequired.value = data.setup_required
     freeApiKeyEnabled.value = !!data.free_api_key_enabled
+    disablePublicPages.value = !!data.disable_public_pages
     return data.setup_required
   }
 
@@ -91,6 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     isApiKeySession,
     setupRequired,
     freeApiKeyEnabled,
+    disablePublicPages,
     checkSetupRequired,
     setup,
     login,

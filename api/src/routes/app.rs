@@ -106,22 +106,33 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         ),
     );
 
+    let openapi_route = Router::new().route(
+        "/api/openapi.json",
+        axum::routing::get(|| async {
+            (
+                [
+                    (header::CONTENT_TYPE, "application/json"),
+                    (header::CACHE_CONTROL, "public, max-age=86400"),
+                ],
+                OPENAPI_JSON.as_str(),
+            )
+        }),
+    );
+
+    let openapi_route = if state.config.disable_public_pages {
+        openapi_route.layer(middleware::from_fn_with_state(
+            state.clone(),
+            handlers::middleware::require_any_auth,
+        ))
+    } else {
+        openapi_route
+    };
+
     let compressed_routes = Router::new()
         .merge(super::auth::auth_routes())
         .merge(admin_routes)
         .merge(key_self_routes)
-        .route(
-            "/api/openapi.json",
-            axum::routing::get(|| async {
-                (
-                    [
-                        (header::CONTENT_TYPE, "application/json"),
-                        (header::CACHE_CONTROL, "public, max-age=86400"),
-                    ],
-                    OPENAPI_JSON.as_str(),
-                )
-            }),
-        )
+        .merge(openapi_route)
         .layer(CompressionLayer::new());
 
     let mut app = Router::new()

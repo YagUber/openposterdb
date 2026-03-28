@@ -73,3 +73,30 @@ pub async fn require_api_key_auth(
 
     Ok(next.run(req).await)
 }
+
+/// Accepts either a valid admin JWT or a valid API key JWT.
+/// Used to gate endpoints that any authenticated session can access.
+pub async fn require_any_auth(
+    State(state): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let token = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let key = DecodingKey::from_secret(&state.jwt_secret);
+    let validation = Validation::new(jsonwebtoken::Algorithm::HS256);
+
+    let is_valid = decode::<Claims>(token, &key, &validation).is_ok()
+        || decode::<ApiKeyClaims>(token, &key, &validation).is_ok();
+
+    if is_valid {
+        Ok(next.run(req).await)
+    } else {
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}

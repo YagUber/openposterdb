@@ -335,4 +335,29 @@ describe('auth store', () => {
 
     expect(auth.freeApiKeyEnabled).toBe(false)
   })
+
+  it('disablePublicPages defaults to false', () => {
+    const auth = useAuthStore()
+    expect(auth.disablePublicPages).toBe(false)
+  })
+
+  it('checkSetupRequired populates disablePublicPages from response', async () => {
+    const fetchMock = mockFetchSuccess({ setup_required: false, disable_public_pages: true })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.checkSetupRequired()
+
+    expect(auth.disablePublicPages).toBe(true)
+  })
+
+  it('checkSetupRequired sets disablePublicPages false when not in response', async () => {
+    const fetchMock = mockFetchSuccess({ setup_required: false })
+    vi.stubGlobal('fetch', fetchMock)
+    const auth = useAuthStore()
+
+    await auth.checkSetupRequired()
+
+    expect(auth.disablePublicPages).toBe(false)
+  })
 })

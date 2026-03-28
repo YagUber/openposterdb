@@ -19,6 +19,7 @@ pub struct Config {
     pub enable_cdn_redirects: bool,
     pub external_cache_only: bool,
     pub free_key_enabled: Option<bool>,
+    pub disable_public_pages: bool,
 }
 
 impl std::fmt::Debug for Config {
@@ -41,6 +42,7 @@ impl std::fmt::Debug for Config {
             .field("enable_cdn_redirects", &self.enable_cdn_redirects)
             .field("external_cache_only", &self.external_cache_only)
             .field("free_key_enabled", &self.free_key_enabled)
+            .field("disable_public_pages", &self.disable_public_pages)
             .finish()
     }
 }
@@ -86,6 +88,9 @@ impl Config {
             free_key_enabled: env::var("FREE_KEY_ENABLED")
                 .ok()
                 .map(|v| v == "true" || v == "1"),
+            disable_public_pages: env::var("DISABLE_PUBLIC_PAGES")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
         };
 
         if config.omdb_api_key.is_none() && config.mdblist_api_key.is_none() {
@@ -125,6 +130,7 @@ mod tests {
             "ENABLE_CDN_REDIRECTS",
             "EXTERNAL_CACHE_ONLY",
             "FREE_KEY_ENABLED",
+            "DISABLE_PUBLIC_PAGES",
         ] {
             unsafe { env::remove_var(key) };
         }
@@ -225,10 +231,12 @@ mod tests {
         unsafe { env::set_var("OMDB_API_KEY", "omdb_test") };
         unsafe { env::set_var("ENABLE_CDN_REDIRECTS", "true") };
         unsafe { env::set_var("EXTERNAL_CACHE_ONLY", "1") };
+        unsafe { env::set_var("DISABLE_PUBLIC_PAGES", "true") };
 
         let cfg = Config::from_env();
         assert!(cfg.enable_cdn_redirects);
         assert!(cfg.external_cache_only);
+        assert!(cfg.disable_public_pages);
     }
 
     #[test]
@@ -241,6 +249,7 @@ mod tests {
         let cfg = Config::from_env();
         assert!(!cfg.enable_cdn_redirects);
         assert!(!cfg.external_cache_only);
+        assert!(!cfg.disable_public_pages);
     }
 
     #[test]

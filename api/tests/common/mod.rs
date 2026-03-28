@@ -123,6 +123,7 @@ async fn _setup_test_app(cors_origin: Option<String>, secure_cookies: bool, enab
             enable_cdn_redirects,
             external_cache_only,
             free_key_enabled,
+            disable_public_pages: false,
         },
         tmdb: TmdbClient::new("test".into(), http.clone()),
         omdb: None,

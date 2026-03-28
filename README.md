@@ -267,6 +267,7 @@ See [docker-compose.yml](docker-compose.yml) for the full compose configuration.
 | `ENABLE_CDN_REDIRECTS` | `false` | Enable content-addressed CDN redirects (see [CDN Caching](#cdn-caching)) |
 | `EXTERNAL_CACHE_ONLY` | `false` | Skip image file writes to disk; rely on a CDN for caching. SQLite metadata is still written (see [External Cache Only](#external-cache-only)) |
 | `FREE_KEY_ENABLED` | — | Force-enable (`true`) or force-disable (`false`) the free API key, overriding the admin UI toggle. When set, the UI toggle is locked. Omit to let admins control it from the settings page |
+| `DISABLE_PUBLIC_PAGES` | `false` | Hide the landing page, docs, legal, and all unauthenticated routes, redirecting visitors to the login page instead. All pages remain accessible to authenticated users. Useful for private self-hosted instances that aren't intended to be publicly accessible |
 
 ## Cache Architecture
 

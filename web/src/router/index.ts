@@ -7,7 +7,7 @@ export async function routeGuard(to: RouteLocationNormalized) {
   // Only check setup status when navigating to setup or login (avoids an API
   // call on every navigation). The result is cached in the auth store after the
   // first successful call.
-  if (to.name === 'setup' || to.name === 'login' || to.name === 'landing' || to.name === 'dashboard' || to.name === 'not-found') {
+  if (to.name === 'setup' || to.name === 'login' || to.name === 'landing' || to.name === 'dashboard' || to.name === 'not-found' || to.name === 'docs' || to.name === 'legal') {
     try {
       const setupRequired = await auth.checkSetupRequired()
       if (setupRequired && to.name !== 'setup') {
@@ -19,6 +19,14 @@ export async function routeGuard(to: RouteLocationNormalized) {
       }
     } catch {
       // If we can't check, continue
+    }
+  }
+
+  // Gate all public pages when DISABLE_PUBLIC_PAGES is set
+  if (auth.disablePublicPages && !auth.isAuthenticated) {
+    const publicPages = ['landing', 'legal', 'docs', 'not-found']
+    if (publicPages.includes(to.name as string)) {
+      return { name: 'login' }
     }
   }
 

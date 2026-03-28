@@ -3,13 +3,27 @@ import { ref, onMounted } from "vue";
 import { ApiReference } from "@scalar/api-reference";
 import "@scalar/api-reference/style.css";
 import { ArrowLeft } from "lucide-vue-next";
+import { useAuthStore } from "@/stores/auth";
 
+const auth = useAuthStore();
 const topbar = ref<HTMLElement>();
 const headerHeight = ref("0px");
+const spec = ref<unknown>(null);
 
-onMounted(() => {
+onMounted(async () => {
   if (topbar.value) {
     headerHeight.value = `${topbar.value.offsetHeight}px`;
+  }
+
+  const headers: Record<string, string> = {};
+  const token = auth.token ?? auth.apiKeyToken;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch("/api/openapi.json", { headers });
+  if (res.ok) {
+    spec.value = await res.json();
   }
 });
 </script>
@@ -23,8 +37,8 @@ onMounted(() => {
       </router-link>
       <span class="docs-subtitle">API Reference</span>
     </header>
-    <ApiReference :configuration="{
-      url: '/api/openapi.json',
+    <ApiReference v-if="spec" :configuration="{
+      content: spec,
       hideClientButton: true,
       showDeveloperTools: 'never',
       mcp: { disabled: true },

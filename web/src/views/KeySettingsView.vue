@@ -6,6 +6,7 @@ import { selfApi, type SaveSettingsPayload } from '@/lib/api'
 import RenderSettingsForm from '@/components/RenderSettingsForm.vue'
 import type { RenderSettings } from '@/components/RenderSettingsForm.vue'
 import { Button } from '@/components/ui/button'
+import { BookOpen } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -85,6 +86,12 @@ function handleLogout() {
             <span class="font-mono">({{ keyPrefix }}...)</span>
           </p>
         </div>
+        <Button v-if="auth.disablePublicPages" as-child variant="outline" size="sm">
+          <router-link to="/docs">
+            <BookOpen class="h-4 w-4" />
+            API Docs
+          </router-link>
+        </Button>
         <Button variant="outline" size="sm" @click="handleLogout">Logout</Button>
       </div>
 

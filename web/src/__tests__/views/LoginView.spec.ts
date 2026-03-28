@@ -14,6 +14,7 @@ const mockAuthStore = {
   loginWithApiKey: vi.fn(),
   isAuthenticated: false,
   freeApiKeyEnabled: false,
+  disablePublicPages: false,
 }
 
 vi.mock('vue-router', () => ({
@@ -50,6 +51,7 @@ describe('LoginView', () => {
     mockAuthStore.login.mockReset()
     mockAuthStore.loginWithApiKey.mockReset()
     mockAuthStore.freeApiKeyEnabled = false
+    mockAuthStore.disablePublicPages = false
   })
 
   it('renders admin login form by default', async () => {
@@ -151,6 +153,22 @@ describe('LoginView', () => {
 
     expect(wrapper.text()).not.toContain('Free API Key Available')
     expect(wrapper.text()).not.toContain('t0-free-rpdb')
+  })
+
+  it('shows back to home link when disablePublicPages is false', async () => {
+    mockAuthStore.disablePublicPages = false
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Back to home')
+  })
+
+  it('hides back to home link when disablePublicPages is true', async () => {
+    mockAuthStore.disablePublicPages = true
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Back to home')
   })
 
   it('toggles back to admin mode from apikey mode', async () => {

@@ -178,6 +178,7 @@ pub async fn auth_status(
     Ok(Json(json!({
         "setup_required": count == 0,
         "free_api_key_enabled": free_api_key_enabled,
+        "disable_public_pages": state.config.disable_public_pages,
     })))
 }
 

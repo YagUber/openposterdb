@@ -33,6 +33,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ENABLE_CDN_REDIRECTS: ${ENABLE_CDN_REDIRECTS:-false}
       EXTERNAL_CACHE_ONLY: ${EXTERNAL_CACHE_ONLY:-false}
+      DISABLE_PUBLIC_PAGES: ${DISABLE_PUBLIC_PAGES:-false}
     volumes:
       - openposterdb-data:/data
     restart: unless-stopped

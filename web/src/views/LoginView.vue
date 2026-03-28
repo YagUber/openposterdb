@@ -122,7 +122,7 @@ function toggleMode() {
         </button>
       </p>
 
-      <p class="text-center text-sm text-muted-foreground">
+      <p v-if="!auth.disablePublicPages" class="text-center text-sm text-muted-foreground">
         <router-link to="/" class="underline hover:text-foreground">&larr; Back to home</router-link>
       </p>
 

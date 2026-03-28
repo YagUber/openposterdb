@@ -40,6 +40,8 @@ function makeRouter() {
       },
       { path: '/login', name: 'login', component: { template: '<div>Login</div>' } },
       { path: '/setup', name: 'setup', component: { template: '<div>Setup</div>' } },
+      { path: '/docs', name: 'docs', component: { template: '<div>Docs</div>' } },
+      { path: '/legal', name: 'legal', component: { template: '<div>Legal</div>' } },
     ],
   })
   router.beforeEach(routeGuard)
@@ -153,5 +155,59 @@ describe('router', () => {
     await router.isReady()
 
     expect(router.currentRoute.value.name).toBe('episodes')
+  })
+
+  it('unauthenticated user visiting /docs with disablePublicPages is redirected to login', async () => {
+    const router = makeRouter()
+    const auth = useAuthStore()
+    auth.disablePublicPages = true
+
+    await router.push('/docs')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('unauthenticated user visiting /legal with disablePublicPages is redirected to login', async () => {
+    const router = makeRouter()
+    const auth = useAuthStore()
+    auth.disablePublicPages = true
+
+    await router.push('/legal')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('unauthenticated user visiting / with disablePublicPages is redirected to login', async () => {
+    const router = makeRouter()
+    const auth = useAuthStore()
+    auth.disablePublicPages = true
+
+    await router.push('/')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('login')
+  })
+
+  it('authenticated admin visiting /docs with disablePublicPages can access it', async () => {
+    const router = makeRouter()
+    const auth = useAuthStore()
+    auth.token = 'valid-token'
+    auth.disablePublicPages = true
+
+    await router.push('/docs')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('docs')
+  })
+
+  it('unauthenticated user visiting /docs without disablePublicPages can access it', async () => {
+    const router = makeRouter()
+
+    await router.push('/docs')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('docs')
   })
 })

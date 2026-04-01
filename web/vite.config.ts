@@ -16,6 +16,14 @@ export default defineConfig({
     vueDevTools(),
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[hash].js',
+        chunkFileNames: 'assets/[hash].js',
+      }
+    }
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
